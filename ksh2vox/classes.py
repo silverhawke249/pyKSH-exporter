@@ -17,6 +17,8 @@ class TimePoint:
         if not 0 <= self.count < self.subdivision:
             raise ValueError(f'count is out of range (got {self.count})')
 
+    # Define add, subtract, mult (with int) and div (with int)
+
     def __post_init__(self):
         self.validate()
 
@@ -104,39 +106,27 @@ class EasingType(enum.Enum):
 
 
 @dataclasses.dataclass
-class VolumePointInfo:
+class VolInfo:
     start: decimal.Decimal
     end: decimal.Decimal
     spin_type: SpinType
     spin_duration: int
     filter: FilterType
     ease_type: EasingType
+    is_new_segment: bool = True
+    wide_laser: bool = False
 
     def validate(self):
         if not 0 <= self.start <= 1:
             raise ValueError(f'start value out of range (got {self.start})')
         if not 0 <= self.end <= 1:
             raise ValueError(f'end value out of range (got {self.end})')
+        if self.start == self.end and self.spin_type != SpinType.NO_SPIN:
+            raise ValueError(f'spin_type must be NO_SPIN when start is equal end (got {self.spin_type.name})')
         if self.spin_duration < 0:
             raise ValueError(f'spin_duration cannot be negative (got {self.spin_duration})')
         if self.spin_type != SpinType.NO_SPIN and self.spin_duration == 0:
             raise ValueError('spin cannot have zero duration')
-
-
-class Volume(enum.Enum):
-    L = 0
-    R = 1
-
-
-@dataclasses.dataclass
-class VolInfo:
-    which: Volume
-    positions: dict[TimePoint, VolumePointInfo]
-    regular_laser: bool = True
-
-    def validate(self):
-        for vol_info in self.positions.values():
-            vol_info.validate()
 
     def __post_init__(self):
         self.validate()
@@ -163,12 +153,36 @@ class FXParameters:
     pass
 
 
+@dataclasses.dataclass
+class FilterFXInfo:
+    which: int
+    duration: TimePoint
+
+
+@dataclasses.dataclass
+class SPControllerInfo:
+    value: decimal.Decimal
+    is_new_segment: bool = True
+
+
 @dataclasses.dataclass()
 class ChartInfo:
-    bpms: dict[TimePoint, decimal.Decimal]
-    time_sigs: dict[TimePoint, fractions.Fraction]
-    fx_list: list[FXParameters]
-    filter_type: dict[TimePoint, FilterType]
-    bt: dict[TimePoint, BTInfo]
-    fx: dict[TimePoint, FXInfo]
-    vol: dict[TimePoint, VolInfo]
+    bpms: dict[TimePoint, decimal.Decimal] = {}
+    time_sigs: dict[TimePoint, fractions.Fraction] = {}
+
+    # Effect into
+    fx_list: list[FXParameters] = []
+    filter_types: dict[TimePoint, FilterType] = {}
+    filter_fx: dict[TimePoint] = {}
+
+    # Actual chart data
+    bt: dict[TimePoint, BTInfo] = {}
+    fx: dict[TimePoint, FXInfo] = {}
+    vol_l: dict[TimePoint, VolInfo] = {}
+    vol_r: dict[TimePoint, VolInfo] = {}
+
+    # SPController data
+    zoom_bottom: dict[TimePoint, SPControllerInfo] = {}
+    zoom_top: dict[TimePoint, SPControllerInfo] = {}
+    tilt: dict[TimePoint, SPControllerInfo] = {}
+    lane_split: dict[TimePoint, SPControllerInfo] = {}
