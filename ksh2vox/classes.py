@@ -3,15 +3,16 @@ import decimal
 import enum
 import fractions
 
+
 @dataclasses.dataclass(frozen=True)
 class TimePoint:
-    beat: int
+    measure: int
     subdivision: int
     count: int
 
     def validate(self):
-        if self.beat < 0:
-            raise ValueError(f'beat cannot be negative (got {self.beat})')
+        if self.measure < 0:
+            raise ValueError(f'measure cannot be negative (got {self.measure})')
         if self.subdivision <= 0:
             raise ValueError(f'subdivision must be positive (got {self.subdivision})')
         if not 0 <= self.count < self.subdivision:
@@ -23,32 +24,11 @@ class TimePoint:
         self.validate()
 
 
-class Button:
-    @property
-    def A():
-        return 0x1
-
-    @property
-    def B():
-        return 0x2
-
-    @property
-    def C():
-        return 0x4
-
-    @property
-    def D():
-        return 0x8
-
-
 @dataclasses.dataclass
 class BTInfo:
-    which: int
-    duration: int
+    duration: fractions.Fraction
 
     def validate(self):
-        if not 0 < self.which < 16:
-            raise ValueError(f'value out of range (got {self.which})')
         if self.duration <= 0:
             raise ValueError(f'duration cannot be negative (got {self.duration})')
 
@@ -56,25 +36,12 @@ class BTInfo:
         self.validate()
 
 
-class FX:
-    @property
-    def L():
-        return 0x1
-
-    @property
-    def R():
-        return 0x2
-
-
 @dataclasses.dataclass
 class FXInfo:
-    which: int
-    duration: int
+    duration: fractions.Fraction
     special: int
 
     def validate(self):
-        if not 0 < self.which < 4:
-            raise ValueError(f'value out of range (got {self.which})')
         if self.duration <= 0:
             raise ValueError(f'duration cannot be negative (got {self.duration})')
         if self.special < 0:
@@ -132,6 +99,23 @@ class VolInfo:
         self.validate()
 
 
+@dataclasses.dataclass
+class NoteData:
+    # BT
+    bt_a: dict[TimePoint, BTInfo] = dataclasses.field(default_factory=dict)
+    bt_b: dict[TimePoint, BTInfo] = dataclasses.field(default_factory=dict)
+    bt_c: dict[TimePoint, BTInfo] = dataclasses.field(default_factory=dict)
+    bt_d: dict[TimePoint, BTInfo] = dataclasses.field(default_factory=dict)
+
+    # FX
+    fx_l: dict[TimePoint, FXInfo] = dataclasses.field(default_factory=dict)
+    fx_r: dict[TimePoint, FXInfo] = dataclasses.field(default_factory=dict)
+
+    # VOL
+    vol_l: dict[TimePoint, VolInfo] = dataclasses.field(default_factory=dict)
+    vol_r: dict[TimePoint, VolInfo] = dataclasses.field(default_factory=dict)
+
+
 class FXType(enum.Enum):
     NO_EFFECT   = 0
     RETRIGGER_1 = 1
@@ -156,7 +140,7 @@ class FXParameters:
 @dataclasses.dataclass
 class FilterFXInfo:
     which: int
-    duration: TimePoint
+    duration: fractions.Fraction
 
 
 @dataclasses.dataclass
@@ -165,24 +149,28 @@ class SPControllerInfo:
     is_new_segment: bool = True
 
 
+@dataclasses.dataclass
+class SPControllerData:
+    zoom_bottom: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
+    zoom_top   : dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
+
+    tilt: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
+
+    lane_split: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
+
+
 @dataclasses.dataclass()
 class ChartInfo:
-    bpms: dict[TimePoint, decimal.Decimal] = {}
-    time_sigs: dict[TimePoint, fractions.Fraction] = {}
+    bpms     : dict[TimePoint, decimal.Decimal]    = dataclasses.field(default_factory=dict)
+    time_sigs: dict[TimePoint, fractions.Fraction] = dataclasses.field(default_factory=dict)
 
     # Effect into
-    fx_list: list[FXParameters] = []
-    filter_types: dict[TimePoint, FilterType] = {}
-    filter_fx: dict[TimePoint] = {}
+    fx_list     : list[FXParameters]            = dataclasses.field(default_factory=list)
+    filter_types: dict[TimePoint, FilterType]   = dataclasses.field(default_factory=dict)
+    filter_fx   : dict[TimePoint, FilterFXInfo] = dataclasses.field(default_factory=dict)
 
     # Actual chart data
-    bt: dict[TimePoint, BTInfo] = {}
-    fx: dict[TimePoint, FXInfo] = {}
-    vol_l: dict[TimePoint, VolInfo] = {}
-    vol_r: dict[TimePoint, VolInfo] = {}
+    note_data: NoteData = NoteData()
 
     # SPController data
-    zoom_bottom: dict[TimePoint, SPControllerInfo] = {}
-    zoom_top: dict[TimePoint, SPControllerInfo] = {}
-    tilt: dict[TimePoint, SPControllerInfo] = {}
-    lane_split: dict[TimePoint, SPControllerInfo] = {}
+    spcontroller_data: SPControllerData = SPControllerData()
