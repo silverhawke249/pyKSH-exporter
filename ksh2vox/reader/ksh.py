@@ -1,10 +1,10 @@
 import fractions
 import io
 
+from ..classes import ChartInfo, TimePoint
 
-def read_ksh(f: io.TextIOBase) -> None:
-    bpms: list[float] = []
-    time_sigs: list[fractions.Fraction] = []
 
-    for line in f:
+def read_ksh(f: io.TextIOBase) -> ChartInfo:
+    chart = ChartInfo()
 
+    chart.bpms[1] = 0
