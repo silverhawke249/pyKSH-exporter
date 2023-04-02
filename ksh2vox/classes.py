@@ -3,52 +3,72 @@ import decimal
 import enum
 import fractions
 
+from typing import Any
 
-@dataclasses.dataclass(frozen=True)
+
+class ParserWarning(UserWarning):
+    pass
+
+
+@dataclasses.dataclass(frozen=True, order=True)
 class TimePoint:
     measure: int
-    subdivision: int
-    count: int
+    _count: dataclasses.InitVar[int]
+    _subdivision: dataclasses.InitVar[int]
+    position: fractions.Fraction = dataclasses.field(init=False)
 
-    def validate(self):
+    def __post_init__(self, _count, _subdivision):
+        self.validate(_count, _subdivision)
+        object.__setattr__(self, 'position', fractions.Fraction(_count, _subdivision))
+
+    def validate(self, _count, _subdivision):
         if self.measure < 0:
             raise ValueError(f'measure cannot be negative (got {self.measure})')
-        if self.subdivision <= 0:
-            raise ValueError(f'subdivision must be positive (got {self.subdivision})')
-        if not 0 <= self.count < self.subdivision:
-            raise ValueError(f'count is out of range (got {self.count})')
-
-    # Define add, subtract, mult (with int) and div (with int)
-
-    def __post_init__(self):
-        self.validate()
+        if _subdivision <= 0:
+            raise ValueError(f'subdivision must be positive (got {_subdivision})')
+        if _count < 0:
+            raise ValueError(f'count cannot be negative (got {_count})')
 
 
 @dataclasses.dataclass
 class BTInfo:
-    duration: fractions.Fraction
+    _duration: dataclasses.InitVar[fractions.Fraction | int]
+    duration: fractions.Fraction = dataclasses.field(init=False)
+
+    def _setattrhook(self, __name: str, __value: Any):
+        super().__setattr__(__name, __value)
+        self.validate()
+
+    def __post_init__(self, _duration):
+        self.duration = fractions.Fraction(_duration)
+        self.validate()
+        self.__setattr__ = self._setattrhook
 
     def validate(self):
-        if self.duration <= 0:
+        if self.duration < 0:
             raise ValueError(f'duration cannot be negative (got {self.duration})')
-
-    def __post_init__(self):
-        self.validate()
 
 
 @dataclasses.dataclass
 class FXInfo:
-    duration: fractions.Fraction
+    _duration: dataclasses.InitVar[fractions.Fraction | int]
+    duration: fractions.Fraction = dataclasses.field(init=False)
     special: int
 
+    def _setattrhook(self, __name: str, __value: Any):
+        super().__setattr__(__name, __value)
+        self.validate()
+
+    def __post_init__(self, _duration):
+        self.duration = fractions.Fraction(_duration)
+        self.validate()
+        self.__setattr__ = self._setattrhook
+
     def validate(self):
-        if self.duration <= 0:
+        if self.duration < 0:
             raise ValueError(f'duration cannot be negative (got {self.duration})')
         if self.special < 0:
             raise ValueError(f'special must be positive (got {self.special})')
-
-    def __post_init__(self):
-        self.validate()
 
 
 class FilterType(enum.Enum):
@@ -74,14 +94,21 @@ class EasingType(enum.Enum):
 
 @dataclasses.dataclass
 class VolInfo:
-    start: decimal.Decimal
-    end: decimal.Decimal
-    spin_type: SpinType
-    spin_duration: int
-    filter: FilterType
-    ease_type: EasingType
+    start: fractions.Fraction
+    end: fractions.Fraction
+    spin_type: SpinType = SpinType.NO_SPIN
+    spin_duration: int = 0
+    ease_type: EasingType = EasingType.NO_EASING
     is_new_segment: bool = True
     wide_laser: bool = False
+
+    def _setattrhook(self, __name: str, __value: Any):
+        super().__setattr__(__name, __value)
+        self.validate()
+
+    def __post_init__(self):
+        self.validate()
+        self.__setattr__ = self._setattrhook
 
     def validate(self):
         if not 0 <= self.start <= 1:
@@ -89,14 +116,11 @@ class VolInfo:
         if not 0 <= self.end <= 1:
             raise ValueError(f'end value out of range (got {self.end})')
         if self.start == self.end and self.spin_type != SpinType.NO_SPIN:
-            raise ValueError(f'spin_type must be NO_SPIN when start is equal end (got {self.spin_type.name})')
+            raise ValueError(f'spin_type must be NO_SPIN when start is equal to end (got {self.spin_type.name})')
         if self.spin_duration < 0:
             raise ValueError(f'spin_duration cannot be negative (got {self.spin_duration})')
         if self.spin_type != SpinType.NO_SPIN and self.spin_duration == 0:
             raise ValueError('spin cannot have zero duration')
-
-    def __post_init__(self):
-        self.validate()
 
 
 @dataclasses.dataclass
@@ -159,10 +183,25 @@ class SPControllerData:
     lane_split: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
 
 
+@dataclasses.dataclass(frozen=True)
+class TimeSignature:
+    upper: int = 4
+    lower: int = 4
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        if self.upper <= 0:
+            raise ValueError(f'upper number must be positive (got {self.upper})')
+        if self.lower <= 0:
+            raise ValueError(f'lower number must be positive (got {self.lower})')
+
+
 @dataclasses.dataclass()
 class ChartInfo:
-    bpms     : dict[TimePoint, decimal.Decimal]    = dataclasses.field(default_factory=dict)
-    time_sigs: dict[TimePoint, fractions.Fraction] = dataclasses.field(default_factory=dict)
+    bpms     : dict[TimePoint, decimal.Decimal] = dataclasses.field(default_factory=dict)
+    time_sigs: dict[TimePoint, TimeSignature]   = dataclasses.field(default_factory=dict)
 
     # Effect into
     fx_list     : list[FXParameters]            = dataclasses.field(default_factory=list)
@@ -170,7 +209,7 @@ class ChartInfo:
     filter_fx   : dict[TimePoint, FilterFXInfo] = dataclasses.field(default_factory=dict)
 
     # Actual chart data
-    note_data: NoteData = NoteData()
+    note_data: NoteData = dataclasses.field(default_factory=NoteData)
 
     # SPController data
-    spcontroller_data: SPControllerData = SPControllerData()
+    spcontroller_data: SPControllerData = dataclasses.field(default_factory=SPControllerData)
