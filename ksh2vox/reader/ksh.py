@@ -10,6 +10,7 @@ from ..classes import (
     ChartInfo,
     FXInfo,
     ParserWarning,
+    SpinType,
     TimePoint,
     TimeSignature,
     VolInfo,
@@ -22,7 +23,7 @@ FX_STATE_MAP = {'0': '0', '1': '2', '2': '1'}
 
 
 @dataclasses.dataclass
-class _DurationInfo:
+class _HoldInfo:
     start: TimePoint
     duration: Fraction = Fraction(0)
 
@@ -31,6 +32,7 @@ class _DurationInfo:
 class _LastVolInfo:
     when: TimePoint
     duration: Fraction
+    prev_vol: VolInfo
 
 
 def process_ksh_line(s: str) -> dict[str, str]:
@@ -92,13 +94,13 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
     # Information with deferred processing
     spin_info: dict[TimePoint, str] = {}
     # Stateful information
-    holds: dict[str, _DurationInfo] = {}
-    vol_segment = {
+    holds: dict[str, _HoldInfo] = {}
+    is_continued_segment = {
         'vol_l': False,
         'vol_r': False,
     }
     current_timesig = TimeSignature()
-    last_vol_data: dict[str, TimePoint | Fraction] = {}
+    last_vol_data: dict[str, _LastVolInfo] = {}
     for full_line in f:
         # Handle comments
         full_line = full_line.strip()
@@ -154,21 +156,43 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
                                     note_data_fx[input][current_time] = FXInfo(0, 0)
                             elif state == '2':
                                 if input not in holds.keys():
-                                    holds[input] = _DurationInfo(current_time)
+                                    holds[input] = _HoldInfo(current_time)
                                 holds[input].duration += Fraction(1, len(measure_lines))
                         # VOL handled differently
                         elif input.startswith('vol'):
+                            # Extend duration
+                            if state == '-' and input in last_vol_data:
+                                del last_vol_data[input]
+                            elif input in last_vol_data:
+                                last_vol_data[input].duration += Fraction(1 * current_timesig.upper, subdivision_count * current_timesig.lower)
+                                if last_vol_data[input].duration > Fraction(1, 32):
+                                    del last_vol_data[input]
+
+                            # Handle incoming laser
                             if state == '-':
-                                vol_segment[input] = False
+                                is_continued_segment[input] = False
                             elif state == ':':
                                 pass
                             else:
                                 vol_position = Fraction(LASER_POSITION.index(state), len(LASER_POSITION) - 1)
-                                if vol_segment[input]:
-                                    note_data_vol[input][current_time] = VolInfo(vol_position, vol_position, is_new_segment=False)
+                                if (input in last_vol_data and
+                                    last_vol_data[input].duration <= Fraction(1, 32) and
+                                    last_vol_data[input].prev_vol.start != vol_position):
+                                    last_vol_info = last_vol_data[input]
+                                    note_data_vol[input][last_vol_info.when] = VolInfo(
+                                        last_vol_info.prev_vol.start,
+                                        vol_position,
+                                        is_new_segment=last_vol_info.prev_vol.is_new_segment)
                                 else:
-                                    note_data_vol[input][current_time] = VolInfo(vol_position, vol_position)
-                                vol_segment[input] = True
+                                    if is_continued_segment[input]:
+                                        note_data_vol[input][current_time] = VolInfo(vol_position, vol_position, is_new_segment=False)
+                                    else:
+                                        note_data_vol[input][current_time] = VolInfo(vol_position, vol_position)
+                                last_vol_data[input] = _LastVolInfo(
+                                    current_time,
+                                    Fraction(0),
+                                    VolInfo(vol_position, vol_position, is_new_segment=not is_continued_segment[input]))
+                                is_continued_segment[input] = True
                         # Spin handling is deferred
                         elif input == 'spin':
                             if state != '':
