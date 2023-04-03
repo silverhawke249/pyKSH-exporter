@@ -43,7 +43,7 @@ def process_ksh_line(s: str) -> dict[str, str]:
         'bt_c': bt[2],
         'bt_d': bt[3],
         'fx_l': FX_STATE_MAP[fx[0]],
-        'fx_r': FX_STATE_MAP[fx[0]],
+        'fx_r': FX_STATE_MAP[fx[1]],
         'vol_l': vol[0],
         'vol_r': vol[1],
         'spin': vol[2:],
@@ -74,8 +74,8 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
     # Read note data
     # Counters
     measure_lines: list[str] = []
-    measure_count = 0
-    subdivision_count = 0
+    measure_count            = 0
+    subdivision_count        = 0
     # Reference to note data stored in dicts for easier access
     note_data_bt = {
         'bt_a': chart.note_data.bt_a,
@@ -93,8 +93,10 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
     }
     # Information with deferred processing
     spin_info: dict[TimePoint, str] = {}
+    fx_list  : list[str]            = ['']
     # Stateful information
-    holds: dict[str, _HoldInfo] = {}
+    holds : dict[str, _HoldInfo] = {}
+    fx_set: dict[str, int]       = {}
     is_continued_segment = {
         'vol_l': False,
         'vol_r': False,
@@ -127,16 +129,30 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
                         upper, lower = [int(v) for v in value.split('/')]
                         timesig = TimeSignature(upper, lower)
                         # Time signature changes can only occur at the start of a measure
-                        # Changes not at the start of a measaure is pushed to the next measure
+                        # Changes not at the start of a measure is pushed to the next measure
                         if noteline_count != 0:
                             chart.time_sigs[TimePoint(measure_count + 1, 0, 1)] = timesig
                         else:
                             chart.time_sigs[TimePoint(measure_count, 0, 1)] = timesig
                             current_timesig = timesig
+                    elif key in ['fx-l', 'fx-r']:
+                        key = key.replace('-', '_')
+                        if value and value not in fx_list:
+                            fx_list.append(value)
+                        if key in fx_set:
+                            # Send warning only if:
+                            # - effect is not null
+                            # - currently stored effect is not the null effect
+                            # - currently stored effect is different from incoming effect
+                            if value != '' and fx_set[key] != 0 and fx_set[key] != fx_list.index(value):
+                                warnings.warn(f'ignoring effect {value} assigned to {key} that already has an assigned effect {fx_list[fx_set[key]]} at m{measure_count}')
+                            continue
+                        fx_set[key] = fx_list.index(value)
                     # TODO: Check other metadata
                 # Note data
                 else:
                     adjusted_time = Fraction(noteline_count * current_timesig.upper, subdivision_count * current_timesig.lower)
+                    tick_length = Fraction(1 * current_timesig.upper, subdivision_count * current_timesig.lower)
                     current_time = TimePoint(measure_count, adjusted_time.numerator, adjusted_time.denominator)
                     subline_data = process_ksh_line(subline)
                     for input in subline_data.keys():
@@ -147,24 +163,30 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
                                 if input.startswith('bt'):
                                     note_data_bt[input][holds[input].start] = BTInfo(holds[input].duration)
                                 elif input.startswith('fx'):
-                                    note_data_fx[input][holds[input].start] = FXInfo(holds[input].duration, 0)
+                                    fx_index = fx_set.get(input, 0)
+                                    note_data_fx[input][holds[input].start] = FXInfo(holds[input].duration, fx_index)
+                                    if input in fx_set:
+                                        del fx_set[input]
                                 del holds[input]
                             elif state == '1':
                                 if input.startswith('bt'):
                                     note_data_bt[input][current_time] = BTInfo(0)
                                 elif input.startswith('fx'):
                                     note_data_fx[input][current_time] = FXInfo(0, 0)
+                                if input in holds.keys():
+                                    warnings.warn(f'invalid chip directly after a hold at {current_time}', ParserWarning)
+                                    del holds[input]
                             elif state == '2':
                                 if input not in holds.keys():
                                     holds[input] = _HoldInfo(current_time)
-                                holds[input].duration += Fraction(1, len(measure_lines))
+                                holds[input].duration += tick_length
                         # VOL handled differently
                         elif input.startswith('vol'):
                             # Extend duration
                             if state == '-' and input in last_vol_data:
                                 del last_vol_data[input]
                             elif input in last_vol_data:
-                                last_vol_data[input].duration += Fraction(1 * current_timesig.upper, subdivision_count * current_timesig.lower)
+                                last_vol_data[input].duration += tick_length
                                 if last_vol_data[input].duration > Fraction(1, 32):
                                     del last_vol_data[input]
 
@@ -175,6 +197,7 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
                                 pass
                             else:
                                 vol_position = Fraction(LASER_POSITION.index(state), len(LASER_POSITION) - 1)
+                                # This handles the case of short laser segment being treated as a slam
                                 if (input in last_vol_data and
                                     last_vol_data[input].duration <= Fraction(1, 32) and
                                     last_vol_data[input].prev_vol.start != vol_position):
@@ -280,4 +303,6 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
 
         warnings.warn(f'cannot match spin at {timepoint} with any slam', ParserWarning)
 
+    for i, fx in enumerate(fx_list):
+        print(i, fx)
     return chart
