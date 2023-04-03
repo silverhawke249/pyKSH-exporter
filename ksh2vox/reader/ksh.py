@@ -101,7 +101,7 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
     }
     current_timesig = TimeSignature()
     last_vol_data: dict[str, _LastVolInfo] = {}
-    for full_line in f:
+    for line_no, full_line in enumerate(f):
         # Handle comments
         full_line = full_line.strip()
         if '//' in full_line:
@@ -217,25 +217,67 @@ def read_ksh(f: io.TextIOBase) -> ChartInfo:
             subdivision_count += 1
             continue
 
-    '''
-    # Convert short lasers to slams
-    for vol_data in note_data_vol.values():
-        # These were inserted in order, so there's no need to sort
-        timepoints = list(vol_data.keys())
-        for i in range(len(timepoints) - 1):
-            cur_time = timepoints[i]
-            timesig = TimeSignature()
-            # This is guaranteed to finish anyway
-            for m in range(cur_time.measure, -1, -1):
-                if TimePoint(m, 0, 1) in chart.time_sigs:
-                    timesig = chart.time_sigs[TimePoint(m, 0, 1)]
-                    break
-            cur_dist_to_end = Fraction(timesig.upper, timesig.lower) - cur_time.position
+        warnings.warn(f'unrecognized line ({line_no}) ignored: {line}')
 
-            next_time = timepoints[i + 1]
-            if next_time.measure == cur_time.measure:
-                next_dist_to_end = Fraction(timesig.upper, timesig.lower) - next_time.position
-                if abs(cur_dist_to_end - next_dist_to_end) < Fraction(1, 32):
-    '''
+    # Apply spins
+    for timepoint, spin_state in spin_info.items():
+        spin_type, spin_duration_str = spin_state[:2], spin_state[2:]
+        if spin_type[0] == 'S':
+            warnings.warn(f'ignoring swing effect at {timepoint}', ParserWarning)
+            continue
+        if timepoint not in note_data_vol['vol_l'] and timepoint not in note_data_vol['vol_r']:
+            warnings.warn(f'found spin data without associated laser data at {timepoint}', ParserWarning)
+            continue
+
+        # NOTE: spin duration is given as number of 1/192nds regardless of time signature.
+        # spins in KSM persists a little longer -- roughly 1.33x times of its given length.
+        # assuming 4/4 time signature, a spin duration of 192 lasts a whole measure (and a
+        # bit more), so you multiply this by 4 to get the number of beats the spin will last.
+        # ultimately, that means the duration is multiplied by 16/3 and rounded.
+        # TODO: test if the number is actually in beats or if it depends on the time sig.
+        spin_duration = int(spin_duration_str)
+        if timepoint in note_data_vol['vol_l']:
+            vol_data = note_data_vol['vol_l'][timepoint]
+            if vol_data.start < vol_data.end:
+                if spin_type[1] == ')':
+                    vol_data.spin_type = SpinType.SINGLE_SPIN
+                    # TODO: check if spin duration must be a whole number
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+                elif spin_type[1] == '>':
+                    vol_data.spin_type = SpinType.HALF_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+            elif vol_data.start > vol_data.end:
+                if spin_type[1] == '(':
+                    vol_data.spin_type = SpinType.SINGLE_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+                elif spin_type[1] == '<':
+                    vol_data.spin_type = SpinType.HALF_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+        elif timepoint in note_data_vol['vol_r']:
+            vol_data = note_data_vol['vol_r'][timepoint]
+            if vol_data.start < vol_data.end:
+                if spin_type[1] == ')':
+                    vol_data.spin_type = SpinType.SINGLE_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+                elif spin_type[1] == '>':
+                    vol_data.spin_type = SpinType.HALF_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+            elif vol_data.start > vol_data.end:
+                if spin_type[1] == '(':
+                    vol_data.spin_type = SpinType.SINGLE_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+                elif spin_type[1] == '<':
+                    vol_data.spin_type = SpinType.HALF_SPIN
+                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
+                    continue
+
+        warnings.warn(f'cannot match spin at {timepoint} with any slam', ParserWarning)
 
     return chart

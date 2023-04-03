@@ -1,4 +1,3 @@
-import itertools
 import sys
 
 from pprint import pprint
@@ -13,13 +12,13 @@ with open(sys.argv[1], 'r') as f:
     print('=== VOL L ===')
     for when, vol_info in chart.note_data.vol_l.items():
         pprint(when)
-        print(vol_info)
+        pprint(vol_info)
         slam_ctr_l += int(vol_info.start != vol_info.end)
     print()
     print('=== VOL R ===')
     for when, vol_info in chart.note_data.vol_r.items():
         pprint(when)
-        print(vol_info)
+        pprint(vol_info)
         slam_ctr_r += int(vol_info.start != vol_info.end)
     print()
     print(slam_ctr_l, slam_ctr_r)
