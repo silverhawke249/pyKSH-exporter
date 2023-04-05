@@ -35,6 +35,11 @@ class _LastVolInfo:
     prev_vol: VolInfo
 
 
+def KSHParser():
+    def __init__(self, f: io.TextIOBase):
+        pass
+
+
 def process_ksh_line(s: str) -> dict[str, str]:
     bt, fx, vol = s.split('|')
     return {
