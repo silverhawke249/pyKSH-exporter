@@ -2,10 +2,12 @@ import sys
 
 from pprint import pprint
 
-from ksh2vox.reader.ksh import read_ksh
+from ksh2vox.reader.ksh import read_ksh, KSHParser
 
 with open(sys.argv[1], 'r') as f:
-    chart = read_ksh(f)
+    pprint(KSHParser(f))
+
+    # chart = read_ksh(f)
 
     # slam_ctr_l = 0
     # slam_ctr_r = 0
@@ -23,6 +25,6 @@ with open(sys.argv[1], 'r') as f:
     # print()
     # print(slam_ctr_l, slam_ctr_r)
 
-    pprint(chart.note_data.fx_l)
-    print()
-    pprint(chart.note_data.fx_r)
+    # pprint(chart.note_data.fx_l)
+    # print()
+    # pprint(chart.note_data.fx_r)

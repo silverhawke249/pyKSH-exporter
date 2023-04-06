@@ -4,6 +4,7 @@ import re
 import warnings
 
 from fractions import Fraction
+from typing import TextIO
 
 from ..classes import (
     BTInfo,
@@ -35,9 +36,32 @@ class _LastVolInfo:
     prev_vol: VolInfo
 
 
-def KSHParser():
-    def __init__(self, f: io.TextIOBase):
-        pass
+@dataclasses.dataclass(eq=False, )
+class KSHParser:
+    file: dataclasses.InitVar[TextIO]
+
+    _raw_metadata: list[str] = dataclasses.field(init=False)
+    _raw_notedata: list[str] = dataclasses.field(init=False)
+    _raw_definitions: list[str] = dataclasses.field(init=False)
+
+    def __post_init__(self, file: TextIO):
+        self._raw_metadata = []
+        for line in file:
+            line = line.strip()
+            if line == BAR_LINE:
+                break
+            self._raw_metadata.append(line.strip())
+
+        self._raw_notedata = [line.strip() for line in file]
+
+        self._raw_definitions = []
+        for line in reversed(self._raw_notedata):
+            self._raw_notedata.pop()
+            if line == BAR_LINE:
+                break
+            self._raw_definitions.append(line)
+
+        self._raw_definitions.reverse()
 
 
 def process_ksh_line(s: str) -> dict[str, str]:
