@@ -3,7 +3,7 @@ import dataclasses
 from decimal import Decimal
 from enum import Enum
 from fractions import Fraction
-from typing import Any
+from typing import Any, ClassVar
 
 
 class ParserWarning(UserWarning):
@@ -179,14 +179,14 @@ class NoteData:
 
 class FXType(Enum):
     NO_EFFECT   = 0
-    RETRIGGER_1 = 1
+    RETRIGGER   = 1
     GATE        = 2
     FLANGER     = 3
     TAPESTOP    = 4
     SIDECHAIN   = 5
     WOBBLE      = 6
     BITCRUSHER  = 7
-    RETRIGGER_2 = 8
+    ECHO        = 8
     PITCH_SHIFT = 9
     TAPESCRATCH = 10
     LPF         = 11 # fuck around with this later (it's like 11, 75.00, 400.00, 900.00, 2.00)
@@ -196,6 +196,17 @@ class FXType(Enum):
 @dataclasses.dataclass
 class FXParameters:
     pass
+
+
+@dataclasses.dataclass
+class FXRetrigger(FXParameters):
+    index   : ClassVar[FXType] = FXType.RETRIGGER
+    speed   : int   = 4
+    mix     : float = 100.00
+    length  : float = 2.00
+    feedback: float = 1.00
+    amount  : float = 0.85
+    unknown : float = 0.15
 
 
 @dataclasses.dataclass

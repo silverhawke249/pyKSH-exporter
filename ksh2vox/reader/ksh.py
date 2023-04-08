@@ -5,7 +5,7 @@ import warnings
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, TypedDict
 
 from ..classes import (
     BTInfo,
@@ -23,7 +23,11 @@ from ..classes import (
 
 BAR_LINE = '--'
 CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')
-LASER_POSITION = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno'
+LASER_POSITION = [
+    '05AFKPUZejo',
+    '0257ACFHKMPSUXZbehjmo',
+    '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno',
+]
 FX_STATE_MAP = {'0': '0', '1': '2', '2': '1'}
 INPUT_BT  = ['bt_a', 'bt_b', 'bt_c', 'bt_d']
 INPUT_FX  = ['fx_l', 'fx_r']
@@ -76,6 +80,14 @@ class _LastVolInfo:
 # - Limited (3)
 
 
+def convert_laser_pos(s: str) -> Fraction:
+    for laser_str in LASER_POSITION:
+        if s in laser_str:
+            laser_pos = laser_str.index(s)
+            return Fraction(laser_pos, len(laser_str) - 1)
+    return Fraction()
+
+
 @dataclasses.dataclass(eq=False)
 class KSHParser:
     # Init variables
@@ -97,11 +109,15 @@ class KSHParser:
     _cur_timesig: TimeSignature = dataclasses.field(default=TimeSignature(), init=False, repr=False)
     _cur_filter : FilterType    = dataclasses.field(default=FilterType.PEAK, init=False, repr=False)
 
-    _filter_changed: bool = dataclasses.field(default=False, init=False, repr=False)
+    _filter_changed: bool                    = dataclasses.field(default=False, init=False, repr=False)
+    _recent_vol    : dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _cont_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
+    _wide_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
 
     _holds : dict[str, _HoldInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _set_fx: dict[str, str]       = dataclasses.field(default_factory=dict, init=False, repr=False)
     _set_se: dict[str, int]       = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _spins : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _bts : dict[str, dict[TimePoint, BTInfo]]  = dataclasses.field(init=False, repr=False)
     _fxs : dict[str, dict[TimePoint, FXInfo]]  = dataclasses.field(init=False, repr=False)
@@ -208,7 +224,15 @@ class KSHParser:
                 pass
 
     def _parse_notedata(self) -> None:
-        # Initialize these for chart parsing
+        # Initialize these for chart
+        self._cont_segment = {
+            'vol_l': False,
+            'vol_r': False,
+        }
+        self._wide_segment = {
+            'vol_l': False,
+            'vol_r': False,
+        }
         self._bts = {
             'bt_a': {},
             'bt_b': {},
@@ -281,8 +305,14 @@ class KSHParser:
                     pass
                 elif key == 'center_split':
                     pass
-                elif key in ['laserrange_l', 'laserrange_r']:
+                # Is this undocumented?
+                elif key == 'lane_toggle':
                     pass
+                elif key in ['laserrange_l', 'laserrange_r']:
+                    key = f'vol_{key[-1]}'
+                    if not self._cont_segment[key]:
+                        print(f'enabling wideness for {key} at {cur_time}')
+                        self._wide_segment[key] = True
                 elif key in ['fx-l', 'fx-r']:
                     key = key.replace('-', '_')
                     if value and value not in self._fx_list:
@@ -310,7 +340,7 @@ class KSHParser:
                 elif key == 'filtertype':
                     if value in FILTER_TYPE_MAP:
                         self._cur_filter = FILTER_TYPE_MAP[value]
-                        self._filter_changed = True
+                        self._chart_info.filter_types[cur_time] = self._cur_filter
                     else:
                         # Handle track auto tab here
                         pass
@@ -372,9 +402,92 @@ class KSHParser:
                     if fx in self._set_se:
                         del self._set_se[fx]
                 for vol, state in zip(INPUT_VOL, vols):
-                    pass
+                    # Delete if laser segment ends, else extend duration
+                    if state == '-' and vol in self._recent_vol:
+                        del self._recent_vol[vol]
+                    elif vol in self._recent_vol:
+                        self._recent_vol[vol].duration += subdivision
+                        # Forget the info if distance is more than a 32nd
+                        if self._recent_vol[vol].duration > Fraction(1, 32):
+                            del self._recent_vol[vol]
+
+                    # Handle incoming laser
+                    if state == '-':
+                        self._cont_segment[vol] = False
+                        self._wide_segment[vol] = False
+                    elif state == ':':
+                        pass
+                    else:
+                        vol_position = convert_laser_pos(state)
+                        # This handles the case of short laser segment being treated as a slam
+                        if (vol in self._recent_vol and
+                            self._recent_vol[vol].duration <= Fraction(1, 32) and
+                            self._recent_vol[vol].prev_vol.start != vol_position):
+                            last_vol_info = self._recent_vol[vol]
+                            self._vols[vol][last_vol_info.when] = VolInfo(
+                                last_vol_info.prev_vol.start,
+                                vol_position,
+                                is_new_segment=last_vol_info.prev_vol.is_new_segment,
+                                wide_laser=last_vol_info.prev_vol.wide_laser)
+                        else:
+                            self._vols[vol][cur_time] = VolInfo(
+                                vol_position, vol_position,
+                                is_new_segment=not self._cont_segment[vol],
+                                wide_laser=self._wide_segment[vol])
+                        self._recent_vol[vol] = _LastVolInfo(
+                            cur_time,
+                            Fraction(0),
+                            VolInfo(
+                                vol_position, vol_position,
+                                is_new_segment=not self._cont_segment[vol],
+                                wide_laser=self._wide_segment[vol]))
+                        self._cont_segment[vol] = True
+                if spin:
+                    self._spins[cur_time] = spin
 
                 noteline_count += 1
+
+        # Equalize FX effects and SE
+
+        # Apply spins
+        # NOTE: spin duration is given as number of 1/192nds regardless of time signature.
+        # spins in KSM persists a little longer -- roughly 1.33x times of its given length.
+        # assuming 4/4 time signature, a spin duration of 192 lasts a whole measure (and a
+        # bit more), so you multiply this by 4 to get the number of beats the spin will last.
+        # ultimately, that means the duration is multiplied by 16/3 and rounded.
+        # TODO: test if the number is actually in beats or if it depends on the time sig.
+        for cur_time, state in self._spins.items():
+            spin_matched = False
+            spin_type, spin_length_str = state[:2], state[2:]
+            spin_length = round(Fraction(spin_length_str) / 192 * 16 / 3)
+            for vol_data in self._vols.values():
+                if cur_time not in vol_data:
+                    continue
+                vol_info = vol_data[cur_time]
+                if vol_info.start < vol_info.end:
+                    if spin_type[1] == ')':
+                        vol_info.spin_type = SpinType.SINGLE_SPIN
+                        vol_info.spin_duration = spin_length
+                        spin_matched = True
+                    # Converting swing effect to half-spin
+                    elif spin_type[1] == '>':
+                        vol_info.spin_type = SpinType.HALF_SPIN
+                        vol_info.spin_duration = spin_length
+                        spin_matched = True
+                elif vol_info.start > vol_info.end:
+                    if spin_type[1] == '(':
+                        vol_info.spin_type = SpinType.SINGLE_SPIN
+                        vol_info.spin_duration = spin_length
+                        spin_matched = True
+                    # Converting swing effect to half-spin
+                    elif spin_type[1] == '<':
+                        vol_info.spin_type = SpinType.HALF_SPIN
+                        vol_info.spin_duration = spin_length
+                        spin_matched = True
+                if spin_matched:
+                    break
+            if not spin_matched:
+                warnings.warn(f'cannot match spin {state} at {cur_time} with any slam', ParserWarning)
 
         # Store note data in chart
         for k, v1 in self._bts.items():
@@ -386,276 +499,3 @@ class KSHParser:
 
     def _parse_definitions(self):
         pass
-
-
-def process_ksh_line(s: str) -> dict[str, str]:
-    bt, fx, vol = s.split('|')
-    return {
-        'bt_a': bt[0],
-        'bt_b': bt[1],
-        'bt_c': bt[2],
-        'bt_d': bt[3],
-        'fx_l': FX_STATE_MAP[fx[0]],
-        'fx_r': FX_STATE_MAP[fx[1]],
-        'vol_l': vol[0],
-        'vol_r': vol[1],
-        'spin': vol[2:],
-    }
-
-
-def read_ksh(f: TextIO) -> ChartInfo:
-    chart = ChartInfo()
-    chart.time_sigs[TimePoint(0, 0, 1)] = TimeSignature()
-
-    # Metadata read
-    chart_metadata: dict[str, str] = {}
-    for line in f:
-        line = line.strip()
-        if line == BAR_LINE:
-            break
-        if '=' not in line:
-            warnings.warn(f'unrecognized line: {line}', ParserWarning)
-            continue
-
-        key, value = line.split('=', 1)
-        if key in chart_metadata.keys():
-            warnings.warn(f'ignoring extra metadata: {line}', ParserWarning)
-            continue
-
-        chart_metadata[key] = value
-
-    # Read note data
-    # Counters
-    measure_lines: list[str] = []
-    measure_count            = 0
-    subdivision_count        = 0
-    # Reference to note data stored in dicts for easier access
-    note_data_bt = {
-        'bt_a': chart.note_data.bt_a,
-        'bt_b': chart.note_data.bt_b,
-        'bt_c': chart.note_data.bt_c,
-        'bt_d': chart.note_data.bt_d,
-    }
-    note_data_fx = {
-        'fx_l': chart.note_data.fx_l,
-        'fx_r': chart.note_data.fx_r,
-    }
-    note_data_vol = {
-        'vol_l': chart.note_data.vol_l,
-        'vol_r': chart.note_data.vol_r,
-    }
-    # Information with deferred processing
-    spin_info: dict[TimePoint, str] = {}
-    fx_list  : list[str]            = ['']
-    # Stateful information
-    holds : dict[str, _HoldInfo] = {}
-    fx_set: dict[str, int]       = {}
-    is_continued_segment = {
-        'vol_l': False,
-        'vol_r': False,
-    }
-    current_timesig = TimeSignature()
-    last_vol_data: dict[str, _LastVolInfo] = {}
-    for line_no, full_line in enumerate(f):
-        # Handle comments
-        full_line = full_line.strip()
-        if '//' in full_line:
-            line, comment = full_line.split('//', 1)
-            line = line.strip()
-            comment = comment.strip()
-        else:
-            line = full_line
-            comment = ''
-
-        # One complete measure
-        if line == BAR_LINE:
-            # Check time signatures that get pushed to the next measure
-            if TimePoint(measure_count, 0, 1) in chart.time_sigs:
-                current_timesig = chart.time_sigs[TimePoint(measure_count, 0, 1)]
-
-            noteline_count = 0
-            for subline in measure_lines:
-                # Metadata
-                if '=' in subline:
-                    key, value = subline.split('=', 1)
-                    if key == 'beat':
-                        upper, lower = [int(v) for v in value.split('/')]
-                        timesig = TimeSignature(upper, lower)
-                        # Time signature changes can only occur at the start of a measure
-                        # Changes not at the start of a measure is pushed to the next measure
-                        if noteline_count != 0:
-                            chart.time_sigs[TimePoint(measure_count + 1, 0, 1)] = timesig
-                        else:
-                            chart.time_sigs[TimePoint(measure_count, 0, 1)] = timesig
-                            current_timesig = timesig
-                    elif key in ['fx-l', 'fx-r']:
-                        key = key.replace('-', '_')
-                        if value and value not in fx_list:
-                            fx_list.append(value)
-                        if key in fx_set:
-                            # Send warning only if:
-                            # - effect is not null
-                            # - currently stored effect is not the null effect
-                            # - currently stored effect is different from incoming effect
-                            if value != '' and fx_set[key] != 0 and fx_set[key] != fx_list.index(value):
-                                warnings.warn(f'ignoring effect {value} assigned to {key} that already has an assigned effect {fx_list[fx_set[key]]} at m{measure_count}')
-                            continue
-                        fx_set[key] = fx_list.index(value)
-                    # TODO: Check other metadata
-                # Note data
-                else:
-                    adjusted_time = Fraction(noteline_count * current_timesig.upper, subdivision_count * current_timesig.lower)
-                    tick_length = Fraction(1 * current_timesig.upper, subdivision_count * current_timesig.lower)
-                    current_time = TimePoint(measure_count, adjusted_time.numerator, adjusted_time.denominator)
-                    subline_data = process_ksh_line(subline)
-                    for input in subline_data.keys():
-                        state = subline_data[input]
-                        # BT and FX are handled similarly, just different data class
-                        if input.startswith('bt') or input.startswith('fx'):
-                            if state == '0' and input in holds.keys():
-                                if input.startswith('bt'):
-                                    note_data_bt[input][holds[input].start] = BTInfo(holds[input].duration)
-                                elif input.startswith('fx'):
-                                    fx_index = fx_set.get(input, 0)
-                                    note_data_fx[input][holds[input].start] = FXInfo(holds[input].duration, fx_index)
-                                    if input in fx_set:
-                                        del fx_set[input]
-                                del holds[input]
-                            elif state == '1':
-                                if input.startswith('bt'):
-                                    note_data_bt[input][current_time] = BTInfo(0)
-                                elif input.startswith('fx'):
-                                    note_data_fx[input][current_time] = FXInfo(0, 0)
-                                if input in holds.keys():
-                                    warnings.warn(f'invalid chip directly after a hold at {current_time}', ParserWarning)
-                                    del holds[input]
-                            elif state == '2':
-                                if input not in holds.keys():
-                                    holds[input] = _HoldInfo(current_time)
-                                holds[input].duration += tick_length
-                        # VOL handled differently
-                        elif input.startswith('vol'):
-                            # Extend duration
-                            if state == '-' and input in last_vol_data:
-                                del last_vol_data[input]
-                            elif input in last_vol_data:
-                                last_vol_data[input].duration += tick_length
-                                if last_vol_data[input].duration > Fraction(1, 32):
-                                    del last_vol_data[input]
-
-                            # Handle incoming laser
-                            if state == '-':
-                                is_continued_segment[input] = False
-                            elif state == ':':
-                                pass
-                            else:
-                                vol_position = Fraction(LASER_POSITION.index(state), len(LASER_POSITION) - 1)
-                                # This handles the case of short laser segment being treated as a slam
-                                if (input in last_vol_data and
-                                    last_vol_data[input].duration <= Fraction(1, 32) and
-                                    last_vol_data[input].prev_vol.start != vol_position):
-                                    last_vol_info = last_vol_data[input]
-                                    note_data_vol[input][last_vol_info.when] = VolInfo(
-                                        last_vol_info.prev_vol.start,
-                                        vol_position,
-                                        is_new_segment=last_vol_info.prev_vol.is_new_segment)
-                                else:
-                                    if is_continued_segment[input]:
-                                        note_data_vol[input][current_time] = VolInfo(vol_position, vol_position, is_new_segment=False)
-                                    else:
-                                        note_data_vol[input][current_time] = VolInfo(vol_position, vol_position)
-                                last_vol_data[input] = _LastVolInfo(
-                                    current_time,
-                                    Fraction(0),
-                                    VolInfo(vol_position, vol_position, is_new_segment=not is_continued_segment[input]))
-                                is_continued_segment[input] = True
-                        # Spin handling is deferred
-                        elif input == 'spin':
-                            if state != '':
-                                spin_info[current_time] = state
-
-                    noteline_count += 1
-
-            measure_count += 1
-            measure_lines = []
-            subdivision_count = 0
-            continue
-
-        # Metadata
-        if '=' in line:
-            measure_lines.append(line)
-            continue
-
-        # Notedata
-        match = CHART_REGEX.search(line)
-        if match:
-            measure_lines.append(match.group(0))
-            subdivision_count += 1
-            continue
-
-        warnings.warn(f'unrecognized line ({line_no}) ignored: {line}')
-
-    # Apply spins
-    for timepoint, spin_state in spin_info.items():
-        spin_type, spin_duration_str = spin_state[:2], spin_state[2:]
-        if spin_type[0] == 'S':
-            warnings.warn(f'ignoring swing effect at {timepoint}', ParserWarning)
-            continue
-        if timepoint not in note_data_vol['vol_l'] and timepoint not in note_data_vol['vol_r']:
-            warnings.warn(f'found spin data without associated laser data at {timepoint}', ParserWarning)
-            continue
-
-        # NOTE: spin duration is given as number of 1/192nds regardless of time signature.
-        # spins in KSM persists a little longer -- roughly 1.33x times of its given length.
-        # assuming 4/4 time signature, a spin duration of 192 lasts a whole measure (and a
-        # bit more), so you multiply this by 4 to get the number of beats the spin will last.
-        # ultimately, that means the duration is multiplied by 16/3 and rounded.
-        # TODO: test if the number is actually in beats or if it depends on the time sig.
-        spin_duration = int(spin_duration_str)
-        if timepoint in note_data_vol['vol_l']:
-            vol_data = note_data_vol['vol_l'][timepoint]
-            if vol_data.start < vol_data.end:
-                if spin_type[1] == ')':
-                    vol_data.spin_type = SpinType.SINGLE_SPIN
-                    # TODO: check if spin duration must be a whole number
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-                elif spin_type[1] == '>':
-                    vol_data.spin_type = SpinType.HALF_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-            elif vol_data.start > vol_data.end:
-                if spin_type[1] == '(':
-                    vol_data.spin_type = SpinType.SINGLE_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-                elif spin_type[1] == '<':
-                    vol_data.spin_type = SpinType.HALF_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-        elif timepoint in note_data_vol['vol_r']:
-            vol_data = note_data_vol['vol_r'][timepoint]
-            if vol_data.start < vol_data.end:
-                if spin_type[1] == ')':
-                    vol_data.spin_type = SpinType.SINGLE_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-                elif spin_type[1] == '>':
-                    vol_data.spin_type = SpinType.HALF_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-            elif vol_data.start > vol_data.end:
-                if spin_type[1] == '(':
-                    vol_data.spin_type = SpinType.SINGLE_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-                elif spin_type[1] == '<':
-                    vol_data.spin_type = SpinType.HALF_SPIN
-                    vol_data.spin_duration = round(Fraction(spin_duration, 192) * 16 / 3)
-                    continue
-
-        warnings.warn(f'cannot match spin at {timepoint} with any slam', ParserWarning)
-
-    for i, fx in enumerate(fx_list):
-        print(i, fx)
-    return chart
