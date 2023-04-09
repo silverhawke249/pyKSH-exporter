@@ -1,5 +1,6 @@
 import dataclasses
 import re
+import time
 import warnings
 
 from decimal import Decimal
@@ -15,7 +16,9 @@ from ..classes import (
     FXInfo,
     ParserWarning,
     SongInfo,
+    SPControllerInfo,
     SpinType,
+    TiltType,
     TimePoint,
     TimeSignature,
     VolInfo,
@@ -38,6 +41,19 @@ FILTER_TYPE_MAP = {
     'hpf1': FilterType.HPF,
     'bitc': FilterType.BITCRUSH,
 }
+NO_EFFECT_INDEX             = 0
+KSH_SLAM_DISTANCE           = Fraction(1, 32)
+SPIN_CONVERSION_RATE        = Fraction(4, 3) / 48
+STOP_CONVERSION_RATE        = Fraction(1, 192)
+# KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
+# change and distance change... basically, polar coordinates for the camera. This
+# means that the mapping between KSM and SDVX isn't as clean-cut as we'd like and so
+# to avoid untangling this mess, I chose to preserve the conversion rate used by
+# the pre-existing ksh2vox application.
+ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.006667)
+ZOOM_TOP_CONVERSION_RATE    = Decimal(0.006667)
+TILT_CONVERSION_RATE        = Decimal(-0.004200)
+LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
 
 
 @dataclasses.dataclass
@@ -110,6 +126,7 @@ class KSHParser:
     _cur_filter : FilterType    = dataclasses.field(default=FilterType.PEAK, init=False, repr=False)
 
     _filter_changed: bool                    = dataclasses.field(default=False, init=False, repr=False)
+    _tilt_segment  : bool                    = dataclasses.field(default=False, init=False, repr=False)
     _recent_vol    : dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _cont_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
     _wide_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
@@ -223,8 +240,7 @@ class KSHParser:
                 # Ignoring all other metadata
                 pass
 
-    def _parse_notedata(self) -> None:
-        # Initialize these for chart
+    def _initialize_stateful_data(self) -> None:
         self._cont_segment = {
             'vol_l': False,
             'vol_r': False,
@@ -247,6 +263,9 @@ class KSHParser:
             'vol_l': {},
             'vol_r': {},
         }
+
+    def _parse_notedata(self) -> None:
+        self._initialize_stateful_data()
 
         # Measure data
         line_no_offset   : int       = len(self._raw_metadata) + 1
@@ -277,189 +296,221 @@ class KSHParser:
             else:
                 warnings.warn(f'unrecognized line at line {line_no_offset + line_no + 1}: {line}')
 
-    def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
-        # Check time signatures that get pushed to the next measure
-        if TimePoint(m_no, 0, 1) in self._chart_info.time_sigs:
-            self._cur_timesig = self._chart_info.time_sigs[TimePoint(m_no, 0, 1)]
-
-        noteline_count = 0
-        for line in measure:
-            subdivision = Fraction(1 * self._cur_timesig.upper, m_linecount * self._cur_timesig.lower)
-            cur_subdiv  = noteline_count * subdivision
-            cur_time    = TimePoint(m_no, cur_subdiv.numerator, cur_subdiv.denominator)
-
-            # 1. Metadata
-            if '=' in line:
-                key, value = line.split('=', 1)
-                if key == 't':
-                    pass
-                elif key == 'beat':
-                    pass
-                elif key == 'stop':
-                    pass
-                elif key == 'tilt':
-                    pass
-                elif key == 'zoom_top':
-                    pass
-                elif key == 'zoom_bottom':
-                    pass
-                elif key == 'center_split':
-                    pass
-                # Is this undocumented?
-                elif key == 'lane_toggle':
-                    pass
-                elif key in ['laserrange_l', 'laserrange_r']:
-                    key = f'vol_{key[-1]}'
-                    if not self._cont_segment[key]:
-                        print(f'enabling wideness for {key} at {cur_time}')
-                        self._wide_segment[key] = True
-                elif key in ['fx-l', 'fx-r']:
-                    key = key.replace('-', '_')
-                    if value and value not in self._fx_list:
-                        self._fx_list.append(value)
-                    if key in self._set_fx:
-                        # Send warning only if:
-                        # - effect is not null
-                        # - currently stored effect is not the null effect
-                        # - currently stored effect is different from incoming effect
-                        if value and self._set_fx[key] and self._set_fx[key] != value:
-                            warnings.warn(f'ignoring effect {value} assigned to {key} that already has an assigned '
-                                          f'effect {self._set_fx[key]} at m{m_no}', ParserWarning)
-                        continue
-                    self._set_fx[key] = value
-                elif key in ['fx-l_se', 'fx-r_se']:
-                    key = key[:4]
-                    key = key.replace('-', '_')
-                    value = value.split(';')[0]
-                    if value.endswith('.wav'):
-                        value = value[:-4]
-                    try:
-                        self._set_se[key] = int(value)
-                    except ValueError:
-                        pass
-                elif key == 'filtertype':
-                    if value in FILTER_TYPE_MAP:
-                        self._cur_filter = FILTER_TYPE_MAP[value]
-                        self._chart_info.filter_types[cur_time] = self._cur_filter
-                    else:
-                        # Handle track auto tab here
-                        pass
-                elif ':' in key:
-                    # This is for filter settings
-                    # > filter:[filter_name]:[parameter]=[value]
-                    # Technically FX parameters can also be changed here but like no one uses that
-                    pass
-                else:
-                    # Ignoring all other metadata
-                    pass
-            # 2. Comment
-            elif line.startswith('//'):
-                # Remove initial `//`
-                line = line[2:]
-                if '=' in line:
-                    # Define custom commands here
-                    pass
-            # 3. Notedata
+    def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
+        key, value = line.split('=', 1)
+        if key == 't':
+            self._chart_info.bpms[cur_time] = Decimal(value)
+        elif key == 'beat':
+            upper_str, lower_str = value.split('/')
+            upper, lower = int(upper_str), int(lower_str)
+            # Time signature changes should be at the start of the measure
+            # Otherwise, it takes effect on the next measure
+            if cur_time.position != 0:
+                self._chart_info.time_sigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
             else:
-                bts, fxs, vols_and_spin = line.split('|')
-                vols = vols_and_spin[:2]
-                spin = vols_and_spin[2:]
-                for bt, state in zip(INPUT_BT, bts):
-                    if state == '0' and bt in self._holds:
-                        self._bts[bt][self._holds[bt].start] = BTInfo(self._holds[bt].duration)
-                        del self._holds[bt]
-                    if state == '1':
-                        if bt in self._holds:
-                            warnings.warn(f'improperly terminated hold at {cur_time}', ParserWarning)
-                            del self._holds[bt]
-                        self._bts[bt][cur_time] = BTInfo(0)
-                    if state == '2':
-                        if bt not in self._holds:
-                            self._holds[bt] = _HoldInfo(cur_time)
-                        self._holds[bt].duration += subdivision
-                for fx, state in zip(INPUT_FX, fxs):
-                    if state == '0' and fx in self._holds:
-                        fx_effect = self._set_fx.get(fx, None)
-                        if fx in self._set_fx:
-                            del self._set_fx[fx]
-                        if not fx_effect:
-                            fx_index = 0
-                        else:
-                            fx_index = self._fx_list.index(fx_effect) + 2
-                        self._fxs[fx][self._holds[fx].start] = FXInfo(self._holds[fx].duration, fx_index)
-                        del self._holds[fx]
-                    if state == '1':
-                        if fx not in self._holds:
-                            self._holds[fx] = _HoldInfo(cur_time)
-                        self._holds[fx].duration += subdivision
-                    if state == '2':
-                        if fx in self._holds:
-                            warnings.warn(f'improperly terminated hold at {cur_time}', ParserWarning)
-                            del self._holds[fx]
-                        se_index = self._set_se.get(fx, 0)
-                        self._fxs[fx][cur_time] = FXInfo(0, se_index)
-                    # Clean up -- FX SE only affects the FX chip immediately after
-                    if fx in self._set_se:
-                        del self._set_se[fx]
-                for vol, state in zip(INPUT_VOL, vols):
-                    # Delete if laser segment ends, else extend duration
-                    if state == '-' and vol in self._recent_vol:
-                        del self._recent_vol[vol]
-                    elif vol in self._recent_vol:
-                        self._recent_vol[vol].duration += subdivision
-                        # Forget the info if distance is more than a 32nd
-                        if self._recent_vol[vol].duration > Fraction(1, 32):
-                            del self._recent_vol[vol]
+                self._chart_info.time_sigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
+        elif key == 'stop':
+            self._chart_info.stops[cur_time] = int(value) * STOP_CONVERSION_RATE
+        elif key == 'tilt':
+            try:
+                if value == 'zero':
+                    tilt_val = Decimal()
+                else:
+                    tilt_val = (int(value) * TILT_CONVERSION_RATE).normalize() + 0
+                # Modify existing tilt value if it exists
+                if cur_time in self._chart_info.spcontroller_data.tilt:
+                    self._chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
+                else:
+                    self._chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
+                        tilt_val, tilt_val,
+                        is_new_segment=not self._tilt_segment)
+                self._tilt_segment = True
+            except ValueError:
+                if value == 'normal':
+                    self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
+                    self._tilt_segment = False
+                elif value in ['bigger', 'biggest']:
+                    self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
+                    self._tilt_segment = False
+                    if value == 'biggest':
+                        warnings.warn(f'downgrading tilt {value} at m{m_no} to "bigger"', ParserWarning)
+                elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
+                    self._chart_info.tilt_type[cur_time] = TiltType.KEEP
+                    self._tilt_segment = False
+                else:
+                    warnings.warn(f'unrecognized tilt mode {value} at m{m_no}', ParserWarning)
+        elif key == 'zoom_top':
+            zoom_val = (int(value) * ZOOM_TOP_CONVERSION_RATE).normalize() + 0
+            if cur_time in self._chart_info.spcontroller_data.zoom_top:
+                self._chart_info.spcontroller_data.zoom_top[cur_time].end = zoom_val
+            else:
+                self._chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
+                    zoom_val, zoom_val,
+                    is_new_segment=False)
+        elif key == 'zoom_bottom':
+            zoom_val = (int(value) * ZOOM_BOTTOM_CONVERSION_RATE).normalize() + 0
+            if cur_time in self._chart_info.spcontroller_data.zoom_bottom:
+                self._chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
+            else:
+                self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(zoom_val, zoom_val,
+                is_new_segment=False)
+        elif key == 'center_split':
+            split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
+            if cur_time in self._chart_info.spcontroller_data.lane_split:
+                self._chart_info.spcontroller_data.lane_split[cur_time].end = split_val
+            else:
+                self._chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(split_val, split_val)
+        elif key in ['laserrange_l', 'laserrange_r']:
+            key = f'vol_{key[-1]}'
+            if not self._cont_segment[key]:
+                self._wide_segment[key] = True
+        elif key in ['fx-l', 'fx-r']:
+            key = key.replace('-', '_')
+            if value and value not in self._fx_list:
+                self._fx_list.append(value)
+            if key in self._set_fx:
+                # Send warning only if:
+                # - effect is not null
+                # - currently stored effect is not the null effect
+                # - currently stored effect is different from incoming effect
+                if value and self._set_fx[key] and self._set_fx[key] != value:
+                    warnings.warn(f'ignoring effect {value} assigned to {key} that already has an assigned '
+                                    f'effect {self._set_fx[key]} at m{m_no}', ParserWarning)
+                return
+            self._set_fx[key] = value
+        elif key in ['fx-l_se', 'fx-r_se']:
+            key = key[:4]
+            key = key.replace('-', '_')
+            value = value.split(';')[0]
+            if value.endswith('.wav'):
+                value = value[:-4]
+            try:
+                self._set_se[key] = int(value)
+            except ValueError:
+                pass
+        elif key == 'filtertype':
+            if value in FILTER_TYPE_MAP:
+                self._cur_filter = FILTER_TYPE_MAP[value]
+                self._chart_info.filter_types[cur_time] = self._cur_filter
+            else:
+                # TODO: Handle track auto tab
+                pass
+        elif ':' in key:
+            # TODO: Filter settings
+            # > filter:[filter_name]:[parameter]=[value]
+            # Technically FX parameters can also be changed here but like no one uses that
+            pass
+        else:
+            # Ignoring all other metadata
+            pass
 
-                    # Handle incoming laser
-                    if state == '-':
-                        self._cont_segment[vol] = False
-                        self._wide_segment[vol] = False
-                    elif state == ':':
-                        pass
-                    else:
-                        vol_position = convert_laser_pos(state)
-                        # This handles the case of short laser segment being treated as a slam
-                        if (vol in self._recent_vol and
-                            self._recent_vol[vol].duration <= Fraction(1, 32) and
-                            self._recent_vol[vol].prev_vol.start != vol_position):
-                            last_vol_info = self._recent_vol[vol]
-                            self._vols[vol][last_vol_info.when] = VolInfo(
-                                last_vol_info.prev_vol.start,
-                                vol_position,
-                                is_new_segment=last_vol_info.prev_vol.is_new_segment,
-                                wide_laser=last_vol_info.prev_vol.wide_laser)
-                        else:
-                            self._vols[vol][cur_time] = VolInfo(
-                                vol_position, vol_position,
-                                is_new_segment=not self._cont_segment[vol],
-                                wide_laser=self._wide_segment[vol])
-                        self._recent_vol[vol] = _LastVolInfo(
-                            cur_time,
-                            Fraction(0),
-                            VolInfo(
-                                vol_position, vol_position,
-                                is_new_segment=not self._cont_segment[vol],
-                                wide_laser=self._wide_segment[vol]))
-                        self._cont_segment[vol] = True
-                if spin:
-                    self._spins[cur_time] = spin
+    def _handle_notechart_custom_commands(self, line: str, cur_time: TimePoint) -> None:
+        # Remove initial `//`
+        line = line[2:]
+        if '=' in line:
+            # TODO: Define custom commands here
+            pass
 
-                noteline_count += 1
+    def _handle_notechart_notedata(self, line: str, cur_time: TimePoint, subdivision: Fraction) -> None:
+        bts, fxs, vols_and_spin = line.split('|')
+        vols = vols_and_spin[:2]
+        spin = vols_and_spin[2:]
+        for bt, state in zip(INPUT_BT, bts):
+            if state == '0' and bt in self._holds:
+                self._bts[bt][self._holds[bt].start] = BTInfo(self._holds[bt].duration)
+                del self._holds[bt]
+            if state == '1':
+                if bt in self._holds:
+                    warnings.warn(f'improperly terminated hold at {cur_time}', ParserWarning)
+                    del self._holds[bt]
+                self._bts[bt][cur_time] = BTInfo(0)
+            if state == '2':
+                if bt not in self._holds:
+                    self._holds[bt] = _HoldInfo(cur_time)
+                self._holds[bt].duration += subdivision
+        for fx, state in zip(INPUT_FX, fxs):
+            if state == '0' and fx in self._holds:
+                fx_effect = self._set_fx.get(fx, None)
+                if fx in self._set_fx:
+                    del self._set_fx[fx]
+                if not fx_effect:
+                    fx_index = NO_EFFECT_INDEX
+                else:
+                    fx_index = self._fx_list.index(fx_effect) + 2
+                self._fxs[fx][self._holds[fx].start] = FXInfo(self._holds[fx].duration, fx_index)
+                del self._holds[fx]
+            if state == '1':
+                if fx not in self._holds:
+                    self._holds[fx] = _HoldInfo(cur_time)
+                self._holds[fx].duration += subdivision
+            if state == '2':
+                if fx in self._holds:
+                    warnings.warn(f'improperly terminated hold at {cur_time}', ParserWarning)
+                    del self._holds[fx]
+                se_index = self._set_se.get(fx, 0)
+                self._fxs[fx][cur_time] = FXInfo(0, se_index)
+            # Clean up -- FX SE only affects the FX chip immediately after
+            if fx in self._set_se:
+                del self._set_se[fx]
+        for vol, state in zip(INPUT_VOL, vols):
+            # Delete "last vol point" if laser segment ends, else extend duration
+            if state == '-' and vol in self._recent_vol:
+                del self._recent_vol[vol]
+            elif vol in self._recent_vol:
+                self._recent_vol[vol].duration += subdivision
+                # Forget the info if distance is more than a 32nd
+                if self._recent_vol[vol].duration > KSH_SLAM_DISTANCE:
+                    del self._recent_vol[vol]
+            # Handle incoming laser
+            if state == '-':
+                self._cont_segment[vol] = False
+                self._wide_segment[vol] = False
+            elif state == ':':
+                pass
+            else:
+                vol_position = convert_laser_pos(state)
+                # This handles the case of short laser segment being treated as a slam
+                if (vol in self._recent_vol and
+                    self._recent_vol[vol].duration <= KSH_SLAM_DISTANCE and
+                    self._recent_vol[vol].prev_vol.start != vol_position):
+                    last_vol_info = self._recent_vol[vol]
+                    self._vols[vol][last_vol_info.when] = VolInfo(
+                        last_vol_info.prev_vol.start,
+                        vol_position,
+                        is_new_segment=last_vol_info.prev_vol.is_new_segment,
+                        wide_laser=last_vol_info.prev_vol.wide_laser)
+                else:
+                    self._vols[vol][cur_time] = VolInfo(
+                        vol_position, vol_position,
+                        is_new_segment=not self._cont_segment[vol],
+                        wide_laser=self._wide_segment[vol])
+                self._recent_vol[vol] = _LastVolInfo(
+                    cur_time,
+                    Fraction(0),
+                    VolInfo(
+                        vol_position, vol_position,
+                        is_new_segment=not self._cont_segment[vol],
+                        wide_laser=self._wide_segment[vol]))
+                self._cont_segment[vol] = True
+        if spin:
+            self._spins[cur_time] = spin
 
-        # Equalize FX effects and SE
+    def _handle_notechart_postprocessing(self) -> None:
+        # TODO: Equalize FX effects and SE
+        for cur_time, fxl_info in self._fxs['fx_l'].items():
+            pass
 
         # Apply spins
-        # NOTE: spin duration is given as number of 1/192nds regardless of time signature.
+        # NOTE: Spin duration is given as number of 1/192nds regardless of time signature.
         # spins in KSM persists a little longer -- roughly 1.33x times of its given length.
         # assuming 4/4 time signature, a spin duration of 192 lasts a whole measure (and a
         # bit more), so you multiply this by 4 to get the number of beats the spin will last.
         # ultimately, that means the duration is multiplied by 16/3 and rounded.
-        # TODO: test if the number is actually in beats or if it depends on the time sig.
+        # TODO: Test if the number is actually in beats or if it depends on the time sig.
         for cur_time, state in self._spins.items():
             spin_matched = False
             spin_type, spin_length_str = state[:2], state[2:]
-            spin_length = round(Fraction(spin_length_str) / 192 * 16 / 3)
+            spin_length = round(Fraction(spin_length_str) * SPIN_CONVERSION_RATE)
             for vol_data in self._vols.values():
                 if cur_time not in vol_data:
                     continue
@@ -489,6 +540,30 @@ class KSHParser:
             if not spin_matched:
                 warnings.warn(f'cannot match spin {state} at {cur_time} with any slam', ParserWarning)
 
+    def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
+        # Check time signatures that get pushed to the next measure
+        if TimePoint(m_no, 0, 1) in self._chart_info.time_sigs:
+            self._cur_timesig = self._chart_info.time_sigs[TimePoint(m_no, 0, 1)]
+
+        noteline_count = 0
+        for line in measure:
+            subdivision = Fraction(1 * self._cur_timesig.upper, m_linecount * self._cur_timesig.lower)
+            cur_subdiv  = noteline_count * subdivision
+            cur_time    = TimePoint(m_no, cur_subdiv.numerator, cur_subdiv.denominator)
+
+            # 1. Metadata
+            if '=' in line:
+                self._handle_notechart_metadata(line, cur_time, m_no)
+            # 2. Comment
+            elif line.startswith('//'):
+                self._handle_notechart_custom_commands(line, cur_time)
+            # 3. Notedata
+            else:
+                self._handle_notechart_notedata(line, cur_time, subdivision)
+                noteline_count += 1
+
+        self._handle_notechart_postprocessing()
+
         # Store note data in chart
         for k, v1 in self._bts.items():
             setattr(self._chart_info.note_data, k, v1)
@@ -499,3 +574,56 @@ class KSHParser:
 
     def _parse_definitions(self):
         pass
+
+    def write_vox(self, f: TextIO):
+        # Header
+        f.write('//====================================\n'
+                '// SOUND VOLTEX OUTPUT TEXT FILE\n'
+               f'// Converted from {self._ksh_path.name}\n'
+               f'// at {time.strftime("%Y.%m.%d %H:%M:%S")}\n'
+                '//====================================\n'
+                '\n')
+
+        # VOX version
+        f.write('#FORMAT VERSION\n'
+                '12\n'
+                '#END\n'
+                '\n')
+
+        # Time signatures
+        # BPMs
+        # Tilt modes
+        # Lyric info (?)
+        f.write('#LYRIC INFO\n'
+                '#END\n'
+                '\n')
+
+        # End position
+        # Filter parameters
+        # FX parameters
+        # Tab parameters (FX on lasers parameters)
+        # Reverb effect param (?)
+        f.write('#REVERB EFFECT PARAM\n'
+                '#END\n'
+                '\n')
+
+        # == TRACK INFO ==
+        f.write('//====================================\n'
+                '// TRACK INFO\n'
+                '//====================================\n'
+                '\n')
+
+        # Note data (TRACK1~8)
+        # Track auto tab (FX on lasers activation)
+        # Original TRACK1/8
+
+        # == SPCONTROLER INFO == (sic)
+        f.write('//====================================\n'
+                '// SPCONTROLER INFO\n'
+                '//====================================\n'
+                '\n')
+
+        # SPController data
+
+        f.write('//====================================\n'
+                '\n')

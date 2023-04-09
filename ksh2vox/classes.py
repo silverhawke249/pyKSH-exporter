@@ -6,7 +6,7 @@ from fractions import Fraction
 from typing import Any, ClassVar
 
 
-class ParserWarning(UserWarning):
+class ParserWarning(Warning):
     pass
 
 
@@ -107,7 +107,6 @@ class FXInfo:
             raise ValueError(f'special must be positive (got {self.special})')
 
 
-# TODO: redo this with the proper index (1 = lpf, 2 = hpf, 3 = bitcrush)
 class FilterType(Enum):
     PEAK = 0
     LPF = 2
@@ -177,6 +176,11 @@ class NoteData:
     vol_r: dict[TimePoint, VolInfo] = dataclasses.field(default_factory=dict)
 
 
+@dataclasses.dataclass
+class FilterParameters:
+    pass
+
+
 class FXType(Enum):
     NO_EFFECT   = 0
     RETRIGGER   = 1
@@ -217,7 +221,8 @@ class FilterFXInfo:
 
 @dataclasses.dataclass
 class SPControllerInfo:
-    value: Decimal
+    start: Decimal
+    end: Decimal
     is_new_segment: bool = True
 
 
@@ -246,6 +251,12 @@ class TimeSignature:
             raise ValueError(f'lower number must be positive (got {self.lower})')
 
 
+class TiltType(Enum):
+    NORMAL = 0
+    BIGGER = 1
+    KEEP = 2
+
+
 @dataclasses.dataclass()
 class ChartInfo:
     # Metadata stuff
@@ -263,9 +274,12 @@ class ChartInfo:
     # Song data that may change mid-song
     bpms     : dict[TimePoint, Decimal] = dataclasses.field(default_factory=dict)
     time_sigs: dict[TimePoint, TimeSignature] = dataclasses.field(default_factory=dict)
+    stops    : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict)
+    tilt_type: dict[TimePoint, TiltType] = dataclasses.field(default_factory=dict)
 
     # Effect into
     fx_list     : list[FXParameters]            = dataclasses.field(default_factory=list)
+    filter_list : list[FilterParameters]        = dataclasses.field(default_factory=list)
     filter_types: dict[TimePoint, FilterType]   = dataclasses.field(default_factory=dict)
     filter_fx   : dict[TimePoint, FilterFXInfo] = dataclasses.field(default_factory=dict)
 
@@ -280,3 +294,6 @@ class ChartInfo:
         self.bpms[TimePoint(1, 0, 1)]         = Decimal(120)
         self.time_sigs[TimePoint(1, 0, 1)]    = TimeSignature()
         self.filter_types[TimePoint(1, 0, 1)] = FilterType.PEAK
+
+        self.spcontroller_data.zoom_bottom[TimePoint(1, 0, 1)] = SPControllerInfo(Decimal(), Decimal())
+        self.spcontroller_data.zoom_top[TimePoint(1, 0, 1)]    = SPControllerInfo(Decimal(), Decimal())
