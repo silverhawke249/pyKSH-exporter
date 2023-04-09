@@ -2,7 +2,7 @@ import sys
 
 from pprint import pprint
 
-from ksh2vox.reader.ksh import read_ksh, KSHParser
+from ksh2vox.reader.ksh import KSHParser
 
 with open(sys.argv[1], 'r') as f:
     pprint(KSHParser(f))
