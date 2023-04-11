@@ -46,6 +46,24 @@ class DifficultySlot(Enum):
     MAXIMUM  = 5
 
 
+@dataclasses.dataclass(frozen=True)
+class TimeSignature:
+    upper: int = 4
+    lower: int = 4
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        if self.upper <= 0:
+            raise ValueError(f'upper number must be positive (got {self.upper})')
+        if self.lower <= 0:
+            raise ValueError(f'lower number must be positive (got {self.lower})')
+
+    def as_fraction(self) -> Fraction:
+        return Fraction(self.upper, self.lower)
+
+
 @dataclasses.dataclass(frozen=True, order=True)
 class TimePoint:
     measure: int
@@ -64,6 +82,16 @@ class TimePoint:
             raise ValueError(f'subdivision must be positive (got {_subdivision})')
         if _count < 0:
             raise ValueError(f'count cannot be negative (got {_count})')
+
+    def to_vox_format(self, time_sig: TimeSignature) -> str:
+        time_sig_frac = time_sig.as_fraction()
+        if self.position > time_sig_frac:
+            raise ValueError(f'time signature ({time_sig.upper}/{time_sig.lower}) does not fit the '
+                             f'timepoint position ({self.position})')
+        note_val = Fraction(1, time_sig.lower)
+        div = self.position // note_val
+        subdiv = round(192 * (self.position % note_val))
+        return f'{self.measure:03},{div:02},{subdiv:02}'
 
 
 @dataclasses.dataclass
@@ -193,7 +221,7 @@ class FXType(Enum):
     ECHO        = 8
     PITCH_SHIFT = 9
     TAPESCRATCH = 10
-    LPF         = 11 # fuck around with this later (it's like 11, 75.00, 400.00, 900.00, 2.00)
+    LPF         = 11 # This is definitely LPF (it's like 11, 75.00, 400.00, 900.00, 2.00)
     HPF         = 12
 
 
@@ -236,21 +264,6 @@ class SPControllerData:
     lane_split: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
 
 
-@dataclasses.dataclass(frozen=True)
-class TimeSignature:
-    upper: int = 4
-    lower: int = 4
-
-    def __post_init__(self):
-        self.validate()
-
-    def validate(self):
-        if self.upper <= 0:
-            raise ValueError(f'upper number must be positive (got {self.upper})')
-        if self.lower <= 0:
-            raise ValueError(f'lower number must be positive (got {self.lower})')
-
-
 class TiltType(Enum):
     NORMAL = 0
     BIGGER = 1
@@ -266,10 +279,11 @@ class ChartInfo:
     illustrator: str = 'dummy'
 
     # To be used by converters
-    music_path   : str = ''
-    music_offset : int = 0
-    preview_start: int = 0
-    jacket_path  : str = ''
+    music_path    : str = ''
+    music_offset  : int = 0
+    preview_start : int = 0
+    jacket_path   : str = ''
+    total_measures: int = 0
 
     # Song data that may change mid-song
     bpms     : dict[TimePoint, Decimal] = dataclasses.field(default_factory=dict)
@@ -297,3 +311,13 @@ class ChartInfo:
 
         self.spcontroller_data.zoom_bottom[TimePoint(1, 0, 1)] = SPControllerInfo(Decimal(), Decimal())
         self.spcontroller_data.zoom_top[TimePoint(1, 0, 1)]    = SPControllerInfo(Decimal(), Decimal())
+
+    def get_time_sig(self, measure: int) -> TimeSignature:
+        """ Return the prevailing time signature at the given measure. """
+        prev_time_sig = TimeSignature()
+        for timept, time_sig in self.time_sigs.items():
+            if timept.measure > measure:
+                break
+            prev_time_sig = time_sig
+
+        return prev_time_sig

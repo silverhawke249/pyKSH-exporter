@@ -47,10 +47,8 @@ SPIN_CONVERSION_RATE        = Fraction(4, 3) / 48
 STOP_CONVERSION_RATE        = Fraction(1, 192)
 # KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
 # change and distance change... basically, polar coordinates for the camera. This
-# means that the mapping between KSM and SDVX isn't as clean-cut as we'd like and so
-# to avoid untangling this mess, I chose to preserve the conversion rate used by
-# the pre-existing ksh2vox application.
-ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.006667)
+# means that the mapping between KSM and SDVX isn't as clean-cut as we'd like.
+ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.002222)
 ZOOM_TOP_CONVERSION_RATE    = Decimal(0.006667)
 TILT_CONVERSION_RATE        = Decimal(-0.004200)
 LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
@@ -119,7 +117,9 @@ class KSHParser:
     _song_info : SongInfo  = dataclasses.field(init=False)
     _chart_info: ChartInfo = dataclasses.field(init=False)
 
-    _fx_list: list[str]            = dataclasses.field(default_factory=list, init=False, repr=False)
+    _measure_lengths: list[Fraction] = dataclasses.field(default_factory=list, init=False, repr=False)
+
+    _fx_list: list[str] = dataclasses.field(default_factory=list, init=False, repr=False)
 
     # Stateful data for notechart parsing
     _cur_timesig: TimeSignature = dataclasses.field(default=TimeSignature(), init=False, repr=False)
@@ -295,6 +295,8 @@ class KSHParser:
                 subdivision_count = 0
             else:
                 warnings.warn(f'unrecognized line at line {line_no_offset + line_no + 1}: {line}')
+
+        self._chart_info.total_measures = measure_number + 1
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split('=', 1)
@@ -496,9 +498,19 @@ class KSHParser:
             self._spins[cur_time] = spin
 
     def _handle_notechart_postprocessing(self) -> None:
-        # TODO: Equalize FX effects and SE
+        # Equalize FX effects and SE
         for cur_time, fxl_info in self._fxs['fx_l'].items():
-            pass
+            if cur_time not in self._fxs['fx_r']:
+                continue
+            # Ignore inequal duration
+            fxr_info = self._fxs['fx_r'][cur_time]
+            if fxl_info.duration != fxr_info.duration:
+                continue
+            # Copy over effects/SE if and only if one of them is unassigned
+            if fxl_info.special == 0 and fxr_info.special != 0:
+                fxl_info.special = fxr_info.special
+            elif fxl_info.special != 0 and fxr_info.special == 0:
+                fxr_info.special = fxl_info.special
 
         # Apply spins
         # NOTE: Spin duration is given as number of 1/192nds regardless of time signature.
@@ -506,7 +518,7 @@ class KSHParser:
         # assuming 4/4 time signature, a spin duration of 192 lasts a whole measure (and a
         # bit more), so you multiply this by 4 to get the number of beats the spin will last.
         # ultimately, that means the duration is multiplied by 16/3 and rounded.
-        # TODO: Test if the number is actually in beats or if it depends on the time sig.
+        # Spin duration in VOX is given as whole multiples of 1/4th notes.
         for cur_time, state in self._spins.items():
             spin_matched = False
             spin_type, spin_length_str = state[:2], state[2:]
@@ -573,7 +585,24 @@ class KSHParser:
             setattr(self._chart_info.note_data, k, v3)
 
     def _parse_definitions(self):
+        # TODO: This
         pass
+
+    def _get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
+        if a == b:
+            return Fraction()
+        if b < a:
+            a, b = b, a
+        if not self._measure_lengths:
+            time_sig = TimeSignature()
+            for i in range(self._chart_info.total_measures):
+                time_sig = self._chart_info.time_sigs.get(TimePoint(i + 1, 0, 1), time_sig)
+                self._measure_lengths.append(time_sig.as_fraction())
+
+        distance = sum(self._measure_lengths[a.measure - 1:b.measure])
+        distance += b.position - a.position
+
+        return distance
 
     def write_vox(self, f: TextIO):
         # Header
