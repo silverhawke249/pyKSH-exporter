@@ -83,15 +83,15 @@ class TimePoint:
         if _count < 0:
             raise ValueError(f'count cannot be negative (got {_count})')
 
-    def to_vox_format(self, time_sig: TimeSignature) -> str:
-        time_sig_frac = time_sig.as_fraction()
-        if self.position > time_sig_frac:
-            raise ValueError(f'time signature ({time_sig.upper}/{time_sig.lower}) does not fit the '
+    def to_vox_format(self, timesig: TimeSignature) -> str:
+        timesig_frac = timesig.as_fraction()
+        if self.position > timesig_frac:
+            raise ValueError(f'time signature ({timesig.upper}/{timesig.lower}) does not fit the '
                              f'timepoint position ({self.position})')
-        note_val = Fraction(1, time_sig.lower)
+        note_val = Fraction(1, timesig.lower)
         div = self.position // note_val
         subdiv = round(192 * (self.position % note_val))
-        return f'{self.measure:03},{div:02},{subdiv:02}'
+        return f'{self.measure:03},{div + 1:02},{subdiv:02}'
 
 
 @dataclasses.dataclass
@@ -111,6 +111,9 @@ class BTInfo:
     def validate(self):
         if self.duration < 0:
             raise ValueError(f'duration cannot be negative (got {self.duration})')
+
+    def duration_as_tick(self) -> int:
+        return round(192 * self.duration)
 
 
 @dataclasses.dataclass
@@ -133,6 +136,9 @@ class FXInfo:
             raise ValueError(f'duration cannot be negative (got {self.duration})')
         if self.special < 0:
             raise ValueError(f'special must be positive (got {self.special})')
+
+    def duration_as_tick(self) -> int:
+        return round(192 * self.duration)
 
 
 class FilterType(Enum):
@@ -164,6 +170,7 @@ class VolInfo:
     spin_duration: int = 0
     ease_type: EasingType = EasingType.NO_EASING
     is_new_segment: bool = True
+    last_of_segment: bool = False
     wide_laser: bool = False
 
     def _setattrhook(self, __name: str, __value: Any):
@@ -262,6 +269,7 @@ class SPControllerData:
     tilt: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
 
     lane_split: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
+    lane_toggle: dict[TimePoint, SPControllerInfo] = dataclasses.field(default_factory=dict)
 
 
 class TiltType(Enum):
@@ -286,10 +294,10 @@ class ChartInfo:
     total_measures: int = 0
 
     # Song data that may change mid-song
-    bpms     : dict[TimePoint, Decimal] = dataclasses.field(default_factory=dict)
-    time_sigs: dict[TimePoint, TimeSignature] = dataclasses.field(default_factory=dict)
-    stops    : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict)
-    tilt_type: dict[TimePoint, TiltType] = dataclasses.field(default_factory=dict)
+    bpms     : dict[TimePoint, Decimal]       = dataclasses.field(default_factory=dict)
+    timesigs : dict[TimePoint, TimeSignature] = dataclasses.field(default_factory=dict)
+    stops    : dict[TimePoint, bool]          = dataclasses.field(default_factory=dict)
+    tilt_type: dict[TimePoint, TiltType]      = dataclasses.field(default_factory=dict)
 
     # Effect into
     fx_list     : list[FXParameters]            = dataclasses.field(default_factory=list)
@@ -303,21 +311,28 @@ class ChartInfo:
     # SPController data
     spcontroller_data: SPControllerData = dataclasses.field(default_factory=SPControllerData)
 
+    # Private data
+    _timesig_memo: dict[int, TimeSignature] = dataclasses.field(default_factory=dict, init=False, repr=False)
+
     def __post_init__(self):
         # Default values
         self.bpms[TimePoint(1, 0, 1)]         = Decimal(120)
-        self.time_sigs[TimePoint(1, 0, 1)]    = TimeSignature()
+        self.timesigs[TimePoint(1, 0, 1)]     = TimeSignature()
+        self.tilt_type[TimePoint(1, 0, 1)]    = TiltType.NORMAL
         self.filter_types[TimePoint(1, 0, 1)] = FilterType.PEAK
 
         self.spcontroller_data.zoom_bottom[TimePoint(1, 0, 1)] = SPControllerInfo(Decimal(), Decimal())
         self.spcontroller_data.zoom_top[TimePoint(1, 0, 1)]    = SPControllerInfo(Decimal(), Decimal())
 
-    def get_time_sig(self, measure: int) -> TimeSignature:
+    def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
-        prev_time_sig = TimeSignature()
-        for timept, time_sig in self.time_sigs.items():
-            if timept.measure > measure:
-                break
-            prev_time_sig = time_sig
+        if measure not in self._timesig_memo:
+            prev_timesig = TimeSignature()
+            for timept, timesig in self.timesigs.items():
+                if timept.measure > measure:
+                    break
+                prev_timesig = timesig
 
-        return prev_time_sig
+            self._timesig_memo[measure] = prev_timesig
+
+        return self._timesig_memo[measure]

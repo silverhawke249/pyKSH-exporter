@@ -5,7 +5,11 @@ from pprint import pprint
 from ksh2vox.reader.ksh import KSHParser
 
 with open(sys.argv[1], 'r') as f:
-    pprint(KSHParser(f))
+    parser = KSHParser(f)
+    # pprint(parser)
+
+    with open('test.vox', 'w') as f:
+        parser.write_vox(f)
 
     # chart = read_ksh(f)
 

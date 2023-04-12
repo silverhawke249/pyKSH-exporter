@@ -1,4 +1,5 @@
 import dataclasses
+import itertools
 import re
 import time
 import warnings
@@ -131,10 +132,11 @@ class KSHParser:
     _cont_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
     _wide_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
 
-    _holds : dict[str, _HoldInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _set_fx: dict[str, str]       = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _set_se: dict[str, int]       = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _spins : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _holds : dict[str, _HoldInfo]      = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _set_fx: dict[str, str]            = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _set_se: dict[str, int]            = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _spins : dict[TimePoint, str]      = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _stops : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _bts : dict[str, dict[TimePoint, BTInfo]]  = dataclasses.field(init=False, repr=False)
     _fxs : dict[str, dict[TimePoint, FXInfo]]  = dataclasses.field(init=False, repr=False)
@@ -208,7 +210,7 @@ class KSHParser:
             elif key == 'beat':
                 upper_str, lower_str = value.split('/')
                 upper, lower = int(upper_str), int(lower_str)
-                self._chart_info.time_sigs[TimePoint(1, 0, 1)] = TimeSignature(upper, lower)
+                self._chart_info.timesigs[TimePoint(1, 0, 1)] = TimeSignature(upper, lower)
                 self._cur_timesig = TimeSignature(upper, lower)
             elif key == 'm':
                 self._chart_info.music_path = value
@@ -298,6 +300,16 @@ class KSHParser:
 
         self._chart_info.total_measures = measure_number + 1
 
+        self._handle_notechart_postprocessing()
+
+        # Store note data in chart
+        for k, v1 in self._bts.items():
+            setattr(self._chart_info.note_data, k, v1)
+        for k, v2 in self._fxs.items():
+            setattr(self._chart_info.note_data, k, v2)
+        for k, v3 in self._vols.items():
+            setattr(self._chart_info.note_data, k, v3)
+
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split('=', 1)
         if key == 't':
@@ -308,11 +320,11 @@ class KSHParser:
             # Time signature changes should be at the start of the measure
             # Otherwise, it takes effect on the next measure
             if cur_time.position != 0:
-                self._chart_info.time_sigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
+                self._chart_info.timesigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
             else:
-                self._chart_info.time_sigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
+                self._chart_info.timesigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
         elif key == 'stop':
-            self._chart_info.stops[cur_time] = int(value) * STOP_CONVERSION_RATE
+            self._stops[cur_time] = int(value) * STOP_CONVERSION_RATE
         elif key == 'tilt':
             try:
                 if value == 'zero':
@@ -552,10 +564,24 @@ class KSHParser:
             if not spin_matched:
                 warnings.warn(f'cannot match spin {state} at {cur_time} with any slam', ParserWarning)
 
+        # TODO: Convert stop durations to timepoints
+        for cur_time, duration in self._stops.items():
+            pass
+
+        # TODO: Mark laser points as end of segment
+        for vol_data in self._vols.values():
+            if not vol_data:
+                continue
+            time_list = list(vol_data.keys())
+            for cur_time, next_time in itertools.pairwise(time_list):
+                if vol_data[next_time].is_new_segment:
+                    vol_data[cur_time].last_of_segment = True
+            vol_data[next_time].last_of_segment = True
+
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
-        if TimePoint(m_no, 0, 1) in self._chart_info.time_sigs:
-            self._cur_timesig = self._chart_info.time_sigs[TimePoint(m_no, 0, 1)]
+        if TimePoint(m_no, 0, 1) in self._chart_info.timesigs:
+            self._cur_timesig = self._chart_info.timesigs[TimePoint(m_no, 0, 1)]
 
         noteline_count = 0
         for line in measure:
@@ -574,16 +600,6 @@ class KSHParser:
                 self._handle_notechart_notedata(line, cur_time, subdivision)
                 noteline_count += 1
 
-        self._handle_notechart_postprocessing()
-
-        # Store note data in chart
-        for k, v1 in self._bts.items():
-            setattr(self._chart_info.note_data, k, v1)
-        for k, v2 in self._fxs.items():
-            setattr(self._chart_info.note_data, k, v2)
-        for k, v3 in self._vols.items():
-            setattr(self._chart_info.note_data, k, v3)
-
     def _parse_definitions(self):
         # TODO: This
         pass
@@ -594,10 +610,10 @@ class KSHParser:
         if b < a:
             a, b = b, a
         if not self._measure_lengths:
-            time_sig = TimeSignature()
+            timesig = TimeSignature()
             for i in range(self._chart_info.total_measures):
-                time_sig = self._chart_info.time_sigs.get(TimePoint(i + 1, 0, 1), time_sig)
-                self._measure_lengths.append(time_sig.as_fraction())
+                timesig = self._chart_info.timesigs.get(TimePoint(i + 1, 0, 1), timesig)
+                self._measure_lengths.append(timesig.as_fraction())
 
         distance = sum(self._measure_lengths[a.measure - 1:b.measure])
         distance += b.position - a.position
@@ -619,18 +635,59 @@ class KSHParser:
                 '#END\n'
                 '\n')
 
-        # Time signatures
+        # Time signaturescha
+        f.write('#BEAT INFO\n')
+        for timept, timesig in self._chart_info.timesigs.items():
+            f.write(f'{timept.to_vox_format(timesig)}\t{timesig.upper}\t{timesig.lower}\n')
+        f.write('#END\n')
+        f.write('\n')
+
         # BPMs
+        f.write('#BPM INFO\n')
+        timepoint_set = set(self._chart_info.bpms.keys())
+        timepoint_set.update(self._chart_info.stops.keys())
+        for timept in sorted(timepoint_set):
+            pass
+        f.write('#END\n')
+        f.write('\n')
+
         # Tilt modes
+        f.write('#TILT MODE INFO\n')
+        for timept, tilt_type in self._chart_info.tilt_type.items():
+            f.write(f'{timept.to_vox_format(timesig)}\t{tilt_type.value}\n')
+        f.write('#END\n')
+        f.write('\n')
+
         # Lyric info (?)
         f.write('#LYRIC INFO\n'
                 '#END\n'
                 '\n')
 
         # End position
+        f.write('#END POSITION\n'
+               f'{self._chart_info.total_measures:03},01,00\n'
+                '#END\n')
+        f.write('\n')
+
         # Filter parameters
+        f.write('#TAB EFFECT INFO\n')
+        for filter in self._chart_info.filter_list:
+            pass
+        f.write('#END\n')
+        f.write('\n')
+
         # FX parameters
-        # Tab parameters (FX on lasers parameters)
+        f.write('#FXBUTTON EFFECT INFO\n')
+        for effect in self._chart_info.fx_list:
+            pass
+        f.write('#END\n')
+        f.write('\n')
+
+        # TODO: Tab parameters (FX on lasers parameters)
+        f.write('#TAB PARAM ASSIGN INFO\n')
+        f.write('#END\n')
+        f.write('\n')
+
         # Reverb effect param (?)
         f.write('#REVERB EFFECT PARAM\n'
                 '#END\n'
@@ -643,8 +700,103 @@ class KSHParser:
                 '\n')
 
         # Note data (TRACK1~8)
-        # Track auto tab (FX on lasers activation)
+        f.write('#TRACK1\n')
+        for timept, vol in self._chart_info.note_data.vol_l.items():
+            pass
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK2\n')
+        for timept, fx in self._chart_info.note_data.fx_l.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # Why 3? Who knows!
+            f.write(f'{timept.to_vox_format(timesig)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK3\n')
+        for timept, bt in self._chart_info.note_data.bt_a.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # Why 3? Who knows!
+            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK4\n')
+        for timept, bt in self._chart_info.note_data.bt_b.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # Why 3? Who knows!
+            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK5\n')
+        for timept, bt in self._chart_info.note_data.bt_c.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # Why 3? Who knows!
+            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK6\n')
+        for timept, bt in self._chart_info.note_data.bt_d.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # What even is the last number for in BT holds?
+            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t0\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK7\n')
+        for timept, fx in self._chart_info.note_data.fx_r.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            f.write(f'{timept.to_vox_format(timesig)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK8\n')
+        for timept, vol in self._chart_info.note_data.vol_r.items():
+            pass
+        f.write('#END\n')
+        f.write('\n')
+
+        # TODO: Track auto tab (FX on lasers activation)
+        f.write('#TRACK AUTO TAB\n')
+        for timept, filterfx in self._chart_info.filter_fx.items():
+            pass
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('//====================================\n'
+                '\n')
+
         # Original TRACK1/8
+        f.write('#TRACK ORIGINAL L\n')
+        for timept, vol in self._chart_info.note_data.vol_l.items():
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # Not slam
+            if vol.start == vol.end:
+                pass
+            # Slam
+            else:
+                pass
+            segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
+            filter_type = 0
+            wide_indicator = 2 if vol.wide_laser else 1
+            f.write(f'{timept.to_vox_format(timesig)}\t{round(vol.start, 6):.6}\t'
+                    f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
+                    f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+            if vol.start != vol.end:
+                f.write(f'{timept.to_vox_format(timesig)}\t{round(vol.end, 6):.6}\t'
+                        f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
+                        f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+        f.write('#END\n')
+        f.write('\n')
+
+        f.write('#TRACK ORIGINAL R\n')
+        for timept, vol in self._chart_info.note_data.vol_r.items():
+            pass
+        f.write('#END\n')
+        f.write('\n')
 
         # == SPCONTROLER INFO == (sic)
         f.write('//====================================\n'
@@ -653,6 +805,23 @@ class KSHParser:
                 '\n')
 
         # SPController data
+        f.write('#SPCONTROLER\n')
+        f.write('001,01,00\tRealize	3\t0\t36.12\t60.12\t110.12\t0.00\n'
+                '001,01,00\tRealize	4\t0\t0.62\t0.72\t1.03\t0.00\n'
+                '001,01,00\tAIRL_ScaX\t1\t0\t0.00\t1.00\t0.00\t0.00\n'
+                '001,01,00\tAIRR_ScaX\t1\t0\t0.00\t2.00\t0.00\t0.00\n')
+        for timept, zt in self._chart_info.spcontroller_data.zoom_top.items():
+            pass
+        for timept, zb in self._chart_info.spcontroller_data.zoom_bottom.items():
+            pass
+        for timept, tilt in self._chart_info.spcontroller_data.tilt.items():
+            pass
+        for timept, ls in self._chart_info.spcontroller_data.lane_split.items():
+            pass
+        for timept, lt in self._chart_info.spcontroller_data.lane_toggle.items():
+            pass
+        f.write('#END\n')
+        f.write('\n')
 
         f.write('//====================================\n'
                 '\n')
