@@ -782,11 +782,11 @@ class KSHParser:
             segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
             filter_type = 0
             wide_indicator = 2 if vol.wide_laser else 1
-            f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.start):.6}\t'
+            f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.start):.6f}\t'
                     f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
                     f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
             if vol.start != vol.end:
-                f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.end):.6}\t'
+                f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.end):.6f}\t'
                         f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
                         f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
         f.write('#END\n')
@@ -794,7 +794,23 @@ class KSHParser:
 
         f.write('#TRACK ORIGINAL R\n')
         for timept, vol in self._chart_info.note_data.vol_r.items():
-            pass
+            timesig = self._chart_info.get_timesig(timept.measure)
+            # Not slam
+            if vol.start == vol.end:
+                pass
+            # Slam
+            else:
+                pass
+            segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
+            filter_type = 0
+            wide_indicator = 2 if vol.wide_laser else 1
+            f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.start):.6f}\t'
+                    f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
+                    f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+            if vol.start != vol.end:
+                f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.end):.6f}\t'
+                        f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
+                        f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
         f.write('#END\n')
         f.write('\n')
 
