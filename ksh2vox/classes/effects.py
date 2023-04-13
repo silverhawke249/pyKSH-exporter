@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .base import VoxEntity
+
 class FXType(Enum):
     NO_EFFECT    = 0
     RETRIGGER    = 1
@@ -29,7 +31,7 @@ class WaveShape(Enum):
     SINE = 3
 
 @dataclass
-class Effect(ABC):
+class Effect(VoxEntity):
     @abstractproperty
     def effect_index(self) -> FXType:
         pass
@@ -275,7 +277,7 @@ class HighpassFilter(Effect):
                            f'{self.bandwidth:.2f}'])
 
 @dataclass
-class EffectEntry:
+class EffectEntry(VoxEntity):
     effect1: Effect = field(default_factory=NullEffect)
     effect2: Effect = field(default_factory=NullEffect)
 

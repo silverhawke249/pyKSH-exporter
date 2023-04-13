@@ -2,14 +2,16 @@ from abc import ABC, abstractmethod, abstractproperty
 from dataclasses import dataclass
 from enum import Enum
 
+from .base import VoxEntity
+
 class FilterType(Enum):
-    PEAK     = 0
-    LPF      = 1
-    HPF      = 2
-    BITCRUSH = 3
+    PEAK      = 0
+    LPF       = 1
+    HPF       = 2
+    BITCRUSH  = 3
 
 @dataclass
-class Filter(ABC):
+class Filter(VoxEntity):
     @abstractproperty
     def filter_index(self) -> FilterType:
         pass
@@ -67,3 +69,25 @@ class BitcrushFilter(Filter):
         return ',\t'.join([f'{self.filter_index.value}',
                            f'{self.mix:.2}',
                            f'{self.max_amount}'])
+
+@dataclass
+class AutoTabSetting(VoxEntity):
+    effect_index: int
+    param_index: int = 0
+    min_value: float = 0.00
+    max_value: float = 0.00
+
+    def to_vox_string(self) -> str:
+        return ',\t'.join([f'{self.effect_index}',
+                           f'{self.param_index}',
+                           f'{self.min_value:.2f}',
+                           f'{self.max_value:.2f}'])
+
+@dataclass
+class AutoTabEntry(VoxEntity):
+    effect1: AutoTabSetting
+    effect2: AutoTabSetting
+
+    def to_vox_string(self) -> str:
+        return (f'{self.effect1.to_vox_string()}\n'
+                f'{self.effect1.to_vox_string()}\n')
