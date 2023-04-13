@@ -2,11 +2,15 @@ import sys
 
 from pprint import pprint
 
-from ksh2vox.reader.ksh import KSHParser
+from ksh2vox.parser.ksh import KSHParser
 
 with open(sys.argv[1], 'r') as f:
     parser = KSHParser(f)
-    # pprint(parser)
+
+    pprint(parser._fx_list)
+
+    with open('test.xml', 'w') as f:
+        parser.write_xml(f)
 
     with open('test.vox', 'w') as f:
         parser.write_vox(f)

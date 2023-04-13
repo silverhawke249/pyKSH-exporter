@@ -13,7 +13,7 @@ from ..classes import (
     BTInfo,
     ChartInfo,
     DifficultySlot,
-    FilterType,
+    FilterIndex,
     FXInfo,
     ParserWarning,
     SongInfo,
@@ -37,10 +37,10 @@ INPUT_BT  = ['bt_a', 'bt_b', 'bt_c', 'bt_d']
 INPUT_FX  = ['fx_l', 'fx_r']
 INPUT_VOL = ['vol_l', 'vol_r']
 FILTER_TYPE_MAP = {
-    'peak': FilterType.PEAK,
-    'lpf1': FilterType.LPF,
-    'hpf1': FilterType.HPF,
-    'bitc': FilterType.BITCRUSH,
+    'peak': FilterIndex.PEAK,
+    'lpf1': FilterIndex.LPF,
+    'hpf1': FilterIndex.HPF,
+    'bitc': FilterIndex.BITCRUSH,
 }
 NO_EFFECT_INDEX             = 0
 KSH_SLAM_DISTANCE           = Fraction(1, 32)
@@ -124,7 +124,7 @@ class KSHParser:
 
     # Stateful data for notechart parsing
     _cur_timesig: TimeSignature = dataclasses.field(default=TimeSignature(), init=False, repr=False)
-    _cur_filter : FilterType    = dataclasses.field(default=FilterType.PEAK, init=False, repr=False)
+    _cur_filter : FilterIndex   = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
 
     _filter_changed: bool                    = dataclasses.field(default=False, init=False, repr=False)
     _tilt_segment  : bool                    = dataclasses.field(default=False, init=False, repr=False)
@@ -221,14 +221,8 @@ class KSHParser:
             elif key == 'po':
                 self._chart_info.preview_start = int(value)
             elif key == 'filtertype':
-                if value == 'peak':
-                    self._chart_info.filter_types[TimePoint(1, 0, 1)] = FilterType.PEAK
-                elif value == 'hpf1':
-                    self._chart_info.filter_types[TimePoint(1, 0, 1)] = FilterType.HPF
-                elif value == 'lpf1':
-                    self._chart_info.filter_types[TimePoint(1, 0, 1)] = FilterType.LPF
-                elif value == 'bitc':
-                    self._chart_info.filter_types[TimePoint(1, 0, 1)] = FilterType.BITCRUSH
+                if value in FILTER_TYPE_MAP:
+                    self._chart_info.active_filter[TimePoint(1, 0, 1)] = FILTER_TYPE_MAP[value]
             elif key == 'ver':
                 # You know, I should probably differentiate handling top/bottom zooms depending if
                 # the version is >= 167 or not, but I'm most likely not going to fucking bother
@@ -405,7 +399,7 @@ class KSHParser:
         elif key == 'filtertype':
             if value in FILTER_TYPE_MAP:
                 self._cur_filter = FILTER_TYPE_MAP[value]
-                self._chart_info.filter_types[cur_time] = self._cur_filter
+                self._chart_info.active_filter[cur_time] = self._cur_filter
             else:
                 # TODO: Handle track auto tab
                 pass
@@ -578,6 +572,8 @@ class KSHParser:
                     vol_data[cur_time].last_of_segment = True
             vol_data[next_time].last_of_segment = True
 
+        # TODO: Convert detected FX list into effect instances
+
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
         if TimePoint(m_no, 0, 1) in self._chart_info.timesigs:
@@ -615,10 +611,74 @@ class KSHParser:
                 timesig = self._chart_info.timesigs.get(TimePoint(i + 1, 0, 1), timesig)
                 self._measure_lengths.append(timesig.as_fraction())
 
-        distance = sum(self._measure_lengths[a.measure - 1:b.measure])
+        distance = sum(self._measure_lengths[a.measure - 1:b.measure], start=Fraction())
         distance += b.position - a.position
 
         return distance
+
+    def write_xml(self, f: TextIO):
+        f.write(f'  <music id="{self._song_info.id}">\n'
+                 '    <info>\n'
+                f'      <label>{self._song_info.id}</label>\n'
+                f'      <title_name>{self._song_info.title}</title_name>\n'
+                f'      <title_yomigana>{self._song_info.title_yomigana}</title_yomigana>\n'
+                f'      <artist_name>{self._song_info.artist}</artist_name>\n'
+                f'      <artist_yomigana>{self._song_info.artist_yomigana}</artist_yomigana>\n'
+                f'      <ascii>{self._song_info.ascii_label}</ascii>\n'
+                f'      <bpm_max __type="u32">{self._song_info.max_bpm * 100:.0f}</bpm_max>\n'
+                f'      <bpm_min __type="u32">{self._song_info.min_bpm * 100:.0f}</bpm_min>\n'
+                f'      <distribution_date __type="u32">{self._song_info.release_date}</distribution_date>\n'
+                f'      <volume __type="u16">{self._song_info.music_volume}</volume>\n'
+                f'      <bg_no __type="u16">{self._song_info.background.value}</bg_no>\n'
+                 '      <genre __type="u8">32</genre>\n'
+                 '      <is_fixed __type="u8">1</is_fixed>\n'
+                 '      <version __type="u8">4</version>\n'
+                 '      <demo_pri __type="s8">-2</demo_pri>\n'
+                f'      <inf_ver __type="u8">{self._song_info.inf_ver.value}</inf_ver>\n'
+                 '    </info>\n'
+                 '    <difficulty>\n')
+
+        for diff in DifficultySlot:
+            f.write(f'      <{diff.name.lower()}>\n')
+            if self._chart_info.difficulty == diff:
+                f.write(f'        <difnum __type="u8">{self._chart_info.level}</difnum>\n'
+                        f'        <illustrator>{self._chart_info.illustrator}</illustrator>\n'
+                        f'        <effected_by>{self._chart_info.effector}</effected_by>\n')
+            else:
+                f.write('        <difnum __type="u8">0</difnum>\n'
+                        '        <illustrator>dummy</illustrator>\n'
+                        '        <effected_by>dummy</effected_by>\n')
+            f.write('        <price __type="s32">-1</price>\n'
+                    '        <limited __type="u8">3</limited>\n'
+                   f'      </{diff.name.lower()}>\n')
+
+    def write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
+        for timept, vol in notedata.items():
+            # Not slam
+            if vol.start == vol.end:
+                pass
+            # Slam
+            else:
+                pass
+            segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
+            filter_type = 0
+            wide_indicator = 2 if vol.wide_laser else 1
+            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.start):.6f}\t'
+                    f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
+                    f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+            if vol.start != vol.end:
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.end):.6f}\t'
+                        f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t'
+                        f'{wide_indicator}\t0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+
+    def write_fx(self, f: TextIO, notedata: dict[TimePoint, FXInfo]):
+        for timept, fx in notedata.items():
+            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+
+    def write_bt(self, f: TextIO, notedata: dict[TimePoint, BTInfo]):
+        for timept, bt in notedata.items():
+            # What even is the last number for in BT holds?
+            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{bt.duration_as_tick()}\t0\n')
 
     def write_vox(self, f: TextIO):
         # Header
@@ -635,10 +695,10 @@ class KSHParser:
                 '#END\n'
                 '\n')
 
-        # Time signaturescha
+        # Time signatures
         f.write('#BEAT INFO\n')
         for timept, timesig in self._chart_info.timesigs.items():
-            f.write(f'{timept.to_vox_format(timesig)}\t{timesig.upper}\t{timesig.lower}\n')
+            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{timesig.upper}\t{timesig.lower}\n')
         f.write('#END\n')
         f.write('\n')
 
@@ -654,7 +714,7 @@ class KSHParser:
         # Tilt modes
         f.write('#TILT MODE INFO\n')
         for timept, tilt_type in self._chart_info.tilt_type.items():
-            f.write(f'{timept.to_vox_format(timesig)}\t{tilt_type.value}\n')
+            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{tilt_type.value}\n')
         f.write('#END\n')
         f.write('\n')
 
@@ -672,19 +732,23 @@ class KSHParser:
         # Filter parameters
         f.write('#TAB EFFECT INFO\n')
         for filter in self._chart_info.filter_list:
-            pass
+            f.write(filter.to_vox_string())
+            f.write('\n')
         f.write('#END\n')
         f.write('\n')
 
         # FX parameters
         f.write('#FXBUTTON EFFECT INFO\n')
-        for effect in self._chart_info.fx_list:
-            pass
+        for effect in self._chart_info.effect_list:
+            f.write(effect.to_vox_string())
+            f.write('\n')
         f.write('#END\n')
         f.write('\n')
 
         # TODO: Tab parameters (FX on lasers parameters)
         f.write('#TAB PARAM ASSIGN INFO\n')
+        for autotab in self._chart_info.autotab_list:
+            f.write(autotab.to_vox_string())
         f.write('#END\n')
         f.write('\n')
 
@@ -700,9 +764,9 @@ class KSHParser:
                 '\n')
 
         # Note data (TRACK1~8)
+        # This could be handled better but fuck it lmao
         f.write('#TRACK1\n')
-        for timept, vol in self._chart_info.note_data.vol_l.items():
-            pass
+        self.write_vol(f, self._chart_info.note_data.vol_l, apply_ease=True)
         f.write('#END\n')
         f.write('\n')
 
@@ -710,10 +774,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK2\n')
-        for timept, fx in self._chart_info.note_data.fx_l.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # Why 3? Who knows!
-            f.write(f'{timept.to_vox_format(timesig)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+        self.write_fx(f, self._chart_info.note_data.fx_l)
         f.write('#END\n')
         f.write('\n')
 
@@ -721,10 +782,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK3\n')
-        for timept, bt in self._chart_info.note_data.bt_a.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # Why 3? Who knows!
-            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
+        self.write_bt(f, self._chart_info.note_data.bt_a)
         f.write('#END\n')
         f.write('\n')
 
@@ -732,10 +790,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK4\n')
-        for timept, bt in self._chart_info.note_data.bt_b.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # Why 3? Who knows!
-            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
+        self.write_bt(f, self._chart_info.note_data.bt_b)
         f.write('#END\n')
         f.write('\n')
 
@@ -743,10 +798,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK5\n')
-        for timept, bt in self._chart_info.note_data.bt_c.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # Why 3? Who knows!
-            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
+        self.write_bt(f, self._chart_info.note_data.bt_c)
         f.write('#END\n')
         f.write('\n')
 
@@ -754,10 +806,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK6\n')
-        for timept, bt in self._chart_info.note_data.bt_d.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # What even is the last number for in BT holds?
-            f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t0\n')
+        self.write_bt(f, self._chart_info.note_data.bt_d)
         f.write('#END\n')
         f.write('\n')
 
@@ -765,9 +814,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK7\n')
-        for timept, fx in self._chart_info.note_data.fx_r.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            f.write(f'{timept.to_vox_format(timesig)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+        self.write_fx(f, self._chart_info.note_data.fx_r)
         f.write('#END\n')
         f.write('\n')
 
@@ -775,8 +822,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK8\n')
-        for timept, vol in self._chart_info.note_data.vol_r.items():
-            pass
+        self.write_vol(f, self._chart_info.note_data.vol_r, apply_ease=True)
         f.write('#END\n')
         f.write('\n')
 
@@ -785,7 +831,7 @@ class KSHParser:
 
         # TODO: Track auto tab (FX on lasers activation)
         f.write('#TRACK AUTO TAB\n')
-        for timept, filterfx in self._chart_info.filter_fx.items():
+        for timept, autotab_info in self._chart_info.autotab_infos.items():
             pass
         f.write('#END\n')
         f.write('\n')
@@ -795,46 +841,12 @@ class KSHParser:
 
         # Original TRACK1/8
         f.write('#TRACK ORIGINAL L\n')
-        for timept, vol in self._chart_info.note_data.vol_l.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # Not slam
-            if vol.start == vol.end:
-                pass
-            # Slam
-            else:
-                pass
-            segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
-            filter_type = 0
-            wide_indicator = 2 if vol.wide_laser else 1
-            f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.start):.6f}\t'
-                    f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
-                    f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
-            if vol.start != vol.end:
-                f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.end):.6f}\t'
-                        f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
-                        f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+        self.write_vol(f, self._chart_info.note_data.vol_l, apply_ease=False)
         f.write('#END\n')
         f.write('\n')
 
         f.write('#TRACK ORIGINAL R\n')
-        for timept, vol in self._chart_info.note_data.vol_r.items():
-            timesig = self._chart_info.get_timesig(timept.measure)
-            # Not slam
-            if vol.start == vol.end:
-                pass
-            # Slam
-            else:
-                pass
-            segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
-            filter_type = 0
-            wide_indicator = 2 if vol.wide_laser else 1
-            f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.start):.6f}\t'
-                    f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
-                    f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
-            if vol.start != vol.end:
-                f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.end):.6f}\t'
-                        f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
-                        f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+        self.write_vol(f, self._chart_info.note_data.vol_r, apply_ease=False)
         f.write('#END\n')
         f.write('\n')
 
