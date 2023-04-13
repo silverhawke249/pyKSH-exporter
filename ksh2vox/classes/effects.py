@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod, abstractproperty
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 class FXType(Enum):
@@ -10,7 +10,7 @@ class FXType(Enum):
     TAPESTOP     = 4
     SIDECHAIN    = 5
     WOBBLE       = 6
-    BITCRUSHER   = 7
+    BITCRUSH     = 7
     RETRIGGER_EX = 8
     PITCH_SHIFT  = 9
     TAPESCRATCH  = 10
@@ -64,10 +64,10 @@ class Retrigger(Effect):
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.wavelength}',
-                           f'{self.mix:.2}',
-                           f'{self.update_period:.2}',
-                           f'{self.feedback:.2}',
-                           f'{self.amount:.2}',
+                           f'{self.mix:.2f}',
+                           f'{self.update_period:.2f}',
+                           f'{self.feedback:.2f}',
+                           f'{self.amount:.2f}',
                            f'{self.decay}'])
 
 @dataclass
@@ -82,7 +82,7 @@ class Gate(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
+                           f'{self.mix:.2f}',
                            f'{self.wavelength}',
                            f'{self.length}'])
 
@@ -101,11 +101,11 @@ class Flanger(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.period:.2}',
-                           f'{self.feedback:.2}',
+                           f'{self.mix:.2f}',
+                           f'{self.period:.2f}',
+                           f'{self.feedback:.2f}',
                            f'{self.stereo_width}',
-                           f'{self.hicut_gain:.2}'])
+                           f'{self.hicut_gain:.2f}'])
 
 @dataclass
 class Tapestop(Effect):
@@ -119,9 +119,9 @@ class Tapestop(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.speed:.2}',
-                           f'{self.rate:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.speed:.2f}',
+                           f'{self.rate:.2f}'])
 
 @dataclass
 class Sidechain(Effect):
@@ -137,8 +137,8 @@ class Sidechain(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.frequency:.2}',
+                           f'{self.mix:.2f}',
+                           f'{self.frequency:.2f}',
                            f'{self.attack}',
                            f'{self.hold}',
                            f'{self.release}'])
@@ -161,11 +161,11 @@ class Wobble(Effect):
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.filter_type.value}',
                            f'{self.wave_shape.value}',
-                           f'{self.mix:.2}',
-                           f'{self.low_cutoff:.2}',
-                           f'{self.hi_cutoff:.2}',
-                           f'{self.frequency:.2}',
-                           f'{self.bandwidth:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.low_cutoff:.2f}',
+                           f'{self.hi_cutoff:.2f}',
+                           f'{self.frequency:.2f}',
+                           f'{self.bandwidth:.2f}'])
 
 @dataclass
 class Bitcrush(Effect):
@@ -174,11 +174,11 @@ class Bitcrush(Effect):
 
     @property
     def effect_index(self) -> FXType:
-        return FXType.BITCRUSHER
+        return FXType.BITCRUSH
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
+                           f'{self.mix:.2f}',
                            f'{self.amount}'])
 
 @dataclass
@@ -198,10 +198,10 @@ class RetriggerEx(Effect):
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.wavelength}',
-                           f'{self.mix:.2}',
-                           f'{self.update_period:.2}',
-                           f'{self.feedback:.2}',
-                           f'{self.amount:.2}',
+                           f'{self.mix:.2f}',
+                           f'{self.update_period:.2f}',
+                           f'{self.feedback:.2f}',
+                           f'{self.amount:.2f}',
                            f'{self.decay}'])
 
 @dataclass
@@ -215,7 +215,7 @@ class PitchShift(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
+                           f'{self.mix:.2f}',
                            f'{self.amount}'])
 
 @dataclass
@@ -232,11 +232,11 @@ class Tapescratch(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.curve_slope:.2}',
-                           f'{self.attack:.2}',
-                           f'{self.hold:.2}',
-                           f'{self.release:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.curve_slope:.2f}',
+                           f'{self.attack:.2f}',
+                           f'{self.hold:.2f}',
+                           f'{self.release:.2f}'])
 
 @dataclass
 class LowpassFilter(Effect):
@@ -251,10 +251,10 @@ class LowpassFilter(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.low_cutoff:.2}',
-                           f'{self.hi_cutoff:.2}',
-                           f'{self.bandwidth:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.low_cutoff:.2f}',
+                           f'{self.hi_cutoff:.2f}',
+                           f'{self.bandwidth:.2f}'])
 
 @dataclass
 class HighpassFilter(Effect):
@@ -269,7 +269,16 @@ class HighpassFilter(Effect):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.cutoff:.2}',
-                           f'{self.curve_slope:.2}',
-                           f'{self.bandwidth:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.cutoff:.2f}',
+                           f'{self.curve_slope:.2f}',
+                           f'{self.bandwidth:.2f}'])
+
+@dataclass
+class EffectEntry:
+    effect1: Effect = field(default_factory=NullEffect)
+    effect2: Effect = field(default_factory=NullEffect)
+
+    def to_vox_string(self) -> str:
+        return (f'{self.effect1.to_vox_string()}\n'
+                f'{self.effect2.to_vox_string()}\n')
