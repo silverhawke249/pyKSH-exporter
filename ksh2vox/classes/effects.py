@@ -4,6 +4,7 @@ from enum import Enum
 
 from .base import VoxEntity
 
+
 class FXType(Enum):
     NO_EFFECT    = 0
     RETRIGGER    = 1
@@ -19,16 +20,19 @@ class FXType(Enum):
     LPF          = 11
     HPF          = 12
 
+
 class PassFilterType(Enum):
     LPF = 0
     HPF = 1
     BANDPASS = 2
+
 
 class WaveShape(Enum):
     SAW = 0
     SQUARE = 1
     LINEAR = 2
     SINE = 3
+
 
 @dataclass
 class Effect(VoxEntity):
@@ -40,6 +44,7 @@ class Effect(VoxEntity):
     def to_vox_string(self) -> str:
         pass
 
+
 @dataclass
 class NullEffect(Effect):
     @property
@@ -49,6 +54,7 @@ class NullEffect(Effect):
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                             '0', '0', '0', '0', '0', '0'])
+
 
 @dataclass
 class Retrigger(Effect):
@@ -72,6 +78,7 @@ class Retrigger(Effect):
                            f'{self.amount:.2f}',
                            f'{self.decay}'])
 
+
 @dataclass
 class Gate(Effect):
     mix: float = 98.00
@@ -88,14 +95,15 @@ class Gate(Effect):
                            f'{self.wavelength}',
                            f'{self.length}'])
 
+
 @dataclass
 class Flanger(Effect):
     # Parameter names yoinked off VoxCharger lol
     mix: float = 75.00
     period: float = 2.00
-    feedback: float = 1.00
+    feedback: float = 0.50
     stereo_width: int = 90
-    hicut_gain: float = 2.00
+    hicut_gain: float = 1.00
 
     @property
     def effect_index(self) -> FXType:
@@ -108,6 +116,7 @@ class Flanger(Effect):
                            f'{self.feedback:.2f}',
                            f'{self.stereo_width}',
                            f'{self.hicut_gain:.2f}'])
+
 
 @dataclass
 class Tapestop(Effect):
@@ -124,6 +133,7 @@ class Tapestop(Effect):
                            f'{self.mix:.2f}',
                            f'{self.speed:.2f}',
                            f'{self.rate:.2f}'])
+
 
 @dataclass
 class Sidechain(Effect):
@@ -144,6 +154,7 @@ class Sidechain(Effect):
                            f'{self.attack}',
                            f'{self.hold}',
                            f'{self.release}'])
+
 
 @dataclass
 class Wobble(Effect):
@@ -169,6 +180,7 @@ class Wobble(Effect):
                            f'{self.frequency:.2f}',
                            f'{self.bandwidth:.2f}'])
 
+
 @dataclass
 class Bitcrush(Effect):
     mix: float = 100.00
@@ -182,6 +194,7 @@ class Bitcrush(Effect):
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
                            f'{self.amount}'])
+
 
 @dataclass
 class RetriggerEx(Effect):
@@ -206,6 +219,7 @@ class RetriggerEx(Effect):
                            f'{self.amount:.2f}',
                            f'{self.decay}'])
 
+
 @dataclass
 class PitchShift(Effect):
     mix: float = 100.00
@@ -219,6 +233,7 @@ class PitchShift(Effect):
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
                            f'{self.amount}'])
+
 
 @dataclass
 class Tapescratch(Effect):
@@ -240,6 +255,7 @@ class Tapescratch(Effect):
                            f'{self.hold:.2f}',
                            f'{self.release:.2f}'])
 
+
 @dataclass
 class LowpassFilter(Effect):
     mix: float = 75.00
@@ -257,6 +273,7 @@ class LowpassFilter(Effect):
                            f'{self.low_cutoff:.2f}',
                            f'{self.hi_cutoff:.2f}',
                            f'{self.bandwidth:.2f}'])
+
 
 @dataclass
 class HighpassFilter(Effect):
@@ -276,6 +293,7 @@ class HighpassFilter(Effect):
                            f'{self.curve_slope:.2f}',
                            f'{self.bandwidth:.2f}'])
 
+
 @dataclass
 class EffectEntry(VoxEntity):
     effect1: Effect = field(default_factory=NullEffect)
@@ -284,3 +302,32 @@ class EffectEntry(VoxEntity):
     def to_vox_string(self) -> str:
         return (f'{self.effect1.to_vox_string()}\n'
                 f'{self.effect2.to_vox_string()}\n')
+
+
+def get_default_effects() -> list[EffectEntry]:
+    return [
+        # Re8
+        EffectEntry(Retrigger(wavelength=4)),
+        # Re16
+        EffectEntry(Retrigger(decay=0.1)),
+        # Ga16
+        EffectEntry(Gate()),
+        # Flanger
+        EffectEntry(Flanger()),
+        # Re32
+        EffectEntry(Retrigger(wavelength=16, amount=0.87, decay=0.13)),
+        # Ga8
+        EffectEntry(Gate(wavelength=4)),
+        # Echo4
+        EffectEntry(RetriggerEx(mix=100, wavelength=4, update_period=4, feedback=0.6, amount=1, decay=0.8)),
+        # Tapestop
+        EffectEntry(Tapestop()),
+        # Sidechain
+        EffectEntry(Sidechain()),
+        # Wo12
+        EffectEntry(Wobble()),
+        # Re12
+        EffectEntry(Retrigger(wavelength=6)),
+        # Bitcrush
+        EffectEntry(Bitcrush()),
+    ]

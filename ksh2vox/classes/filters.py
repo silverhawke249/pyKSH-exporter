@@ -4,11 +4,13 @@ from enum import Enum
 
 from .base import VoxEntity
 
+
 class FilterType(Enum):
     PEAK      = 0
     LPF       = 1
     HPF       = 2
     BITCRUSH  = 3
+
 
 @dataclass
 class Filter(VoxEntity):
@@ -19,6 +21,7 @@ class Filter(VoxEntity):
     @abstractmethod
     def to_vox_string(self) -> str:
         pass
+
 
 @dataclass
 class LowpassFilter(Filter):
@@ -33,10 +36,11 @@ class LowpassFilter(Filter):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.filter_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.min_cutoff:.2}',
-                           f'{self.max_cutoff:.2}',
-                           f'{self.bandwidth:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.min_cutoff:.2f}',
+                           f'{self.max_cutoff:.2f}',
+                           f'{self.bandwidth:.2f}'])
+
 
 @dataclass
 class HighpassFilter(Filter):
@@ -51,10 +55,11 @@ class HighpassFilter(Filter):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.filter_index.value}',
-                           f'{self.mix:.2}',
-                           f'{self.min_cutoff:.2}',
-                           f'{self.max_cutoff:.2}',
-                           f'{self.bandwidth:.2}'])
+                           f'{self.mix:.2f}',
+                           f'{self.min_cutoff:.2f}',
+                           f'{self.max_cutoff:.2f}',
+                           f'{self.bandwidth:.2f}'])
+
 
 @dataclass
 class BitcrushFilter(Filter):
@@ -67,8 +72,19 @@ class BitcrushFilter(Filter):
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.filter_index.value}',
-                           f'{self.mix:.2}',
+                           f'{self.mix:.2f}',
                            f'{self.max_amount}'])
+
+
+def get_default_filters() -> list[Filter]:
+    return [
+        LowpassFilter(),
+        LowpassFilter(min_cutoff=600.00, max_cutoff=15000.00, bandwidth=5.00),
+        HighpassFilter(),
+        HighpassFilter(max_cutoff=2000.00, bandwidth=3.00),
+        BitcrushFilter()
+    ]
+
 
 @dataclass
 class AutoTabSetting(VoxEntity):
@@ -83,6 +99,7 @@ class AutoTabSetting(VoxEntity):
                            f'{self.min_value:.2f}',
                            f'{self.max_value:.2f}'])
 
+
 @dataclass
 class AutoTabEntry(VoxEntity):
     effect1: AutoTabSetting
@@ -91,3 +108,20 @@ class AutoTabEntry(VoxEntity):
     def to_vox_string(self) -> str:
         return (f'{self.effect1.to_vox_string()}\n'
                 f'{self.effect1.to_vox_string()}\n')
+
+
+def get_default_autotab() -> list[AutoTabEntry]:
+    return [
+        AutoTabEntry(AutoTabSetting(0), AutoTabSetting(0)),
+        AutoTabEntry(AutoTabSetting(1), AutoTabSetting(1)),
+        AutoTabEntry(AutoTabSetting(2), AutoTabSetting(2)),
+        AutoTabEntry(AutoTabSetting(3), AutoTabSetting(3)),
+        AutoTabEntry(AutoTabSetting(4), AutoTabSetting(4)),
+        AutoTabEntry(AutoTabSetting(5), AutoTabSetting(5)),
+        AutoTabEntry(AutoTabSetting(6), AutoTabSetting(6)),
+        AutoTabEntry(AutoTabSetting(7), AutoTabSetting(7)),
+        AutoTabEntry(AutoTabSetting(8), AutoTabSetting(8)),
+        AutoTabEntry(AutoTabSetting(9), AutoTabSetting(9)),
+        AutoTabEntry(AutoTabSetting(10), AutoTabSetting(10)),
+        AutoTabEntry(AutoTabSetting(11), AutoTabSetting(11)),
+    ]
