@@ -118,8 +118,6 @@ class KSHParser:
     _song_info : SongInfo  = dataclasses.field(init=False)
     _chart_info: ChartInfo = dataclasses.field(init=False)
 
-    _measure_lengths: list[Fraction] = dataclasses.field(default_factory=list, init=False, repr=False)
-
     _fx_list: list[str] = dataclasses.field(default_factory=list, init=False, repr=False)
 
     # Stateful data for notechart parsing
@@ -165,8 +163,8 @@ class KSHParser:
         self._raw_definitions.reverse()
 
         self._parse_metadata()
-        self._parse_notedata()
         self._parse_definitions()
+        self._parse_notedata()
 
     def _parse_metadata(self) -> None:
         self._song_info = SongInfo()
@@ -264,7 +262,7 @@ class KSHParser:
         self._initialize_stateful_data()
 
         # Measure data
-        line_no_offset   : int       = len(self._raw_metadata) + 1
+        ln_offset   : int       = len(self._raw_metadata) + 1
         measure_data     : list[str] = []
         measure_number   : int       = 1
         subdivision_count: int       = 0
@@ -290,7 +288,7 @@ class KSHParser:
                 measure_data      = []
                 subdivision_count = 0
             else:
-                warnings.warn(f'unrecognized line at line {line_no_offset + line_no + 1}: {line}')
+                warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: {line}')
 
         self._chart_info.total_measures = measure_number + 1
 
@@ -399,10 +397,10 @@ class KSHParser:
         elif key == 'filtertype':
             if value in FILTER_TYPE_MAP:
                 self._cur_filter = FILTER_TYPE_MAP[value]
-                self._chart_info.active_filter[cur_time] = self._cur_filter
             else:
                 # TODO: Handle track auto tab
-                pass
+                self._cur_filter = FilterIndex.CUSTOM
+            self._chart_info.active_filter[cur_time] = self._cur_filter
         elif ':' in key:
             # TODO: Filter settings
             # > filter:[filter_name]:[parameter]=[value]
@@ -485,6 +483,7 @@ class KSHParser:
                     self._vols[vol][last_vol_info.when] = VolInfo(
                         last_vol_info.prev_vol.start,
                         vol_position,
+                        filter_index=self._cur_filter,
                         is_new_segment=last_vol_info.prev_vol.is_new_segment,
                         wide_laser=last_vol_info.prev_vol.wide_laser)
                 else:
@@ -528,7 +527,8 @@ class KSHParser:
         for cur_time, state in self._spins.items():
             spin_matched = False
             spin_type, spin_length_str = state[:2], state[2:]
-            spin_length = round(Fraction(spin_length_str) * SPIN_CONVERSION_RATE)
+            # Rounding down to avoid spins distracting gameplay
+            spin_length = int(Fraction(spin_length_str) * SPIN_CONVERSION_RATE)
             for vol_data in self._vols.values():
                 if cur_time not in vol_data:
                     continue
@@ -562,7 +562,7 @@ class KSHParser:
         for cur_time, duration in self._stops.items():
             pass
 
-        # TODO: Mark laser points as end of segment
+        # Mark laser points as end of segment
         for vol_data in self._vols.values():
             if not vol_data:
                 continue
@@ -573,6 +573,8 @@ class KSHParser:
             vol_data[next_time].last_of_segment = True
 
         # TODO: Convert detected FX list into effect instances
+
+        # TODO: Insert laser midpoints where filter type changes
 
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
@@ -596,25 +598,44 @@ class KSHParser:
                 self._handle_notechart_notedata(line, cur_time, subdivision)
                 noteline_count += 1
 
-    def _parse_definitions(self):
+    def _parse_definitions(self) -> None:
         # TODO: This
-        pass
+        ln_offset: int = len(self._raw_metadata) + len(self._raw_notedata) + 1
+        for line_no, line in enumerate(self._raw_definitions):
+            if not line.startswith('#'):
+                warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: {line}', ParserWarning)
+            line_type, name, definition = line[1:].split(' ')
+            if line_type == 'define_fx':
+                print(f'{name}: {definition}')
+            elif line_type == 'define_filter':
+                print(f'{name}: {definition}')
+            else:
+                warnings.warn(f'unrecognized definition at line {ln_offset + line_no + 1}: {definition}', ParserWarning)
 
     def _get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
+        """ Calculate the distance between two timepoints as a fraction. """
         if a == b:
             return Fraction()
         if b < a:
             a, b = b, a
-        if not self._measure_lengths:
-            timesig = TimeSignature()
-            for i in range(self._chart_info.total_measures):
-                timesig = self._chart_info.timesigs.get(TimePoint(i + 1, 0, 1), timesig)
-                self._measure_lengths.append(timesig.as_fraction())
 
-        distance = sum(self._measure_lengths[a.measure - 1:b.measure], start=Fraction())
+        distance = Fraction()
+        for m_no in range(a.measure, b.measure):
+            distance += self._chart_info.get_timesig(m_no).as_fraction()
         distance += b.position - a.position
 
         return distance
+
+    def _add_duration(self, a: TimePoint, b: Fraction) -> TimePoint:
+        """ Calculate the resulting timepoint after adding an amount of time to a timepoint. """
+        modified_length = a.position + b
+
+        m_no = a.measure
+        while modified_length >= (m_len := self._chart_info.get_timesig(m_no).as_fraction()):
+            modified_length -= m_len
+            m_no += 1
+
+        return TimePoint(m_no, modified_length.numerator, modified_length.denominator)
 
     def write_xml(self, f: TextIO):
         f.write(f'  <music id="{self._song_info.id}">\n'
@@ -653,6 +674,7 @@ class KSHParser:
                    f'      </{diff.name.lower()}>\n')
 
     def write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
+        # TODO: Handle easing
         for timept, vol in notedata.items():
             # Not slam
             if vol.start == vol.end:
@@ -764,7 +786,6 @@ class KSHParser:
                 '\n')
 
         # Note data (TRACK1~8)
-        # This could be handled better but fuck it lmao
         f.write('#TRACK1\n')
         self.write_vol(f, self._chart_info.note_data.vol_l, apply_ease=True)
         f.write('#END\n')

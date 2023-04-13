@@ -88,7 +88,7 @@ def get_default_filters() -> list[Filter]:
 
 @dataclass
 class AutoTabSetting(VoxEntity):
-    effect_index: int
+    effect_index: int  # This actually doesn't do anything, to my knowledge
     param_index: int = 0
     min_value: float = 0.00
     max_value: float = 0.00
