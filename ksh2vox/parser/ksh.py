@@ -673,6 +673,9 @@ class KSHParser:
                     '        <limited __type="u8">3</limited>\n'
                    f'      </{diff.name.lower()}>\n')
 
+        f.write('    </difficulty>\n'
+                '  </music>\n')
+
     def write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
         # TODO: Handle easing
         for timept, vol in notedata.items():
