@@ -782,11 +782,11 @@ class KSHParser:
             segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
             filter_type = 0
             wide_indicator = 2 if vol.wide_laser else 1
-            f.write(f'{timept.to_vox_format(timesig)}\t{round(vol.start, 6):.6}\t'
+            f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.start):.6}\t'
                     f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
                     f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
             if vol.start != vol.end:
-                f.write(f'{timept.to_vox_format(timesig)}\t{round(vol.end, 6):.6}\t'
+                f.write(f'{timept.to_vox_format(timesig)}\t{float(vol.end):.6}\t'
                         f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
                         f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
         f.write('#END\n')
