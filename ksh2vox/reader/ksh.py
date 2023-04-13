@@ -706,6 +706,9 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
+        f.write('//====================================\n'
+                '\n')
+
         f.write('#TRACK2\n')
         for timept, fx in self._chart_info.note_data.fx_l.items():
             timesig = self._chart_info.get_timesig(timept.measure)
@@ -713,6 +716,9 @@ class KSHParser:
             f.write(f'{timept.to_vox_format(timesig)}\t{fx.duration_as_tick()}\t{fx.special}\n')
         f.write('#END\n')
         f.write('\n')
+
+        f.write('//====================================\n'
+                '\n')
 
         f.write('#TRACK3\n')
         for timept, bt in self._chart_info.note_data.bt_a.items():
@@ -722,6 +728,9 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
+        f.write('//====================================\n'
+                '\n')
+
         f.write('#TRACK4\n')
         for timept, bt in self._chart_info.note_data.bt_b.items():
             timesig = self._chart_info.get_timesig(timept.measure)
@@ -729,6 +738,9 @@ class KSHParser:
             f.write(f'{timept.to_vox_format(timesig)}\t{bt.duration_as_tick()}\t3\n')
         f.write('#END\n')
         f.write('\n')
+
+        f.write('//====================================\n'
+                '\n')
 
         f.write('#TRACK5\n')
         for timept, bt in self._chart_info.note_data.bt_c.items():
@@ -738,6 +750,9 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
+        f.write('//====================================\n'
+                '\n')
+
         f.write('#TRACK6\n')
         for timept, bt in self._chart_info.note_data.bt_d.items():
             timesig = self._chart_info.get_timesig(timept.measure)
@@ -746,6 +761,9 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
+        f.write('//====================================\n'
+                '\n')
+
         f.write('#TRACK7\n')
         for timept, fx in self._chart_info.note_data.fx_r.items():
             timesig = self._chart_info.get_timesig(timept.measure)
@@ -753,11 +771,17 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
+        f.write('//====================================\n'
+                '\n')
+
         f.write('#TRACK8\n')
         for timept, vol in self._chart_info.note_data.vol_r.items():
             pass
         f.write('#END\n')
         f.write('\n')
+
+        f.write('//====================================\n'
+                '\n')
 
         # TODO: Track auto tab (FX on lasers activation)
         f.write('#TRACK AUTO TAB\n')
