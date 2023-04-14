@@ -7,7 +7,7 @@ from ksh2vox.parser.ksh import KSHParser
 with open(sys.argv[1], 'r') as f:
     parser = KSHParser(f)
 
-    pprint(parser._fx_list)
+    pprint(parser)
 
     with open('test.xml', 'w') as f:
         parser.write_xml(f)

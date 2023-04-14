@@ -221,3 +221,28 @@ class ChartInfo:
         subdiv = round(192 * (timepoint.position % note_val))
 
         return f'{timepoint.measure:03},{div + 1:02},{subdiv:02}'
+
+    def get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
+        """ Calculate the distance between two timepoints as a fraction. """
+        if a == b:
+            return Fraction()
+        if b < a:
+            a, b = b, a
+
+        distance = Fraction()
+        for m_no in range(a.measure, b.measure):
+            distance += self.get_timesig(m_no).as_fraction()
+        distance += b.position - a.position
+
+        return distance
+
+    def add_duration(self, a: TimePoint, b: Fraction) -> TimePoint:
+        """ Calculate the resulting timepoint after adding an amount of time to a timepoint. """
+        modified_length = a.position + b
+
+        m_no = a.measure
+        while modified_length >= (m_len := self.get_timesig(m_no).as_fraction()):
+            modified_length -= m_len
+            m_no += 1
+
+        return TimePoint(m_no, modified_length.numerator, modified_length.denominator)

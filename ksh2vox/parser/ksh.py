@@ -4,10 +4,10 @@ import re
 import time
 import warnings
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
-from typing import TextIO, TypedDict
+from typing import TextIO
 
 from ..classes import (
     BTInfo,
@@ -51,7 +51,7 @@ STOP_CONVERSION_RATE        = Fraction(1, 192)
 # means that the mapping between KSM and SDVX isn't as clean-cut as we'd like.
 ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.002222)
 ZOOM_TOP_CONVERSION_RATE    = Decimal(0.006667)
-TILT_CONVERSION_RATE        = Decimal(-0.004200)
+TILT_CONVERSION_RATE        = Decimal(-0.420000)
 LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
 
 
@@ -172,7 +172,7 @@ class KSHParser:
 
         for line_no, line in enumerate(self._raw_metadata):
             if '=' not in line:
-                warnings.warn(f'unrecognized line at line {line_no + 1}: {line}')
+                warnings.warn(f'unrecognized line at line {line_no + 1}: "{line}"')
             key, value = line.split('=', 1)
             if key == 'title':
                 self._song_info.title = value
@@ -288,7 +288,7 @@ class KSHParser:
                 measure_data      = []
                 subdivision_count = 0
             else:
-                warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: {line}')
+                warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"')
 
         self._chart_info.total_measures = measure_number + 1
 
@@ -322,7 +322,7 @@ class KSHParser:
                 if value == 'zero':
                     tilt_val = Decimal()
                 else:
-                    tilt_val = (int(value) * TILT_CONVERSION_RATE).normalize() + 0
+                    tilt_val = (Decimal(value) * TILT_CONVERSION_RATE).normalize() + 0
                 # Modify existing tilt value if it exists
                 if cur_time in self._chart_info.spcontroller_data.tilt:
                     self._chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
@@ -331,7 +331,7 @@ class KSHParser:
                         tilt_val, tilt_val,
                         is_new_segment=not self._tilt_segment)
                 self._tilt_segment = True
-            except ValueError:
+            except InvalidOperation:
                 if value == 'normal':
                     self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
                     self._tilt_segment = False
@@ -339,12 +339,12 @@ class KSHParser:
                     self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
                     self._tilt_segment = False
                     if value == 'biggest':
-                        warnings.warn(f'downgrading tilt {value} at m{m_no} to "bigger"', ParserWarning)
+                        warnings.warn(f'downgrading tilt "{value}" at m{m_no} to "bigger"', ParserWarning)
                 elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
                     self._chart_info.tilt_type[cur_time] = TiltType.KEEP
                     self._tilt_segment = False
                 else:
-                    warnings.warn(f'unrecognized tilt mode {value} at m{m_no}', ParserWarning)
+                    warnings.warn(f'unrecognized tilt mode "{value}" at m{m_no}', ParserWarning)
         elif key == 'zoom_top':
             zoom_val = (int(value) * ZOOM_TOP_CONVERSION_RATE).normalize() + 0
             if cur_time in self._chart_info.spcontroller_data.zoom_top:
@@ -380,8 +380,8 @@ class KSHParser:
                 # - currently stored effect is not the null effect
                 # - currently stored effect is different from incoming effect
                 if value and self._set_fx[key] and self._set_fx[key] != value:
-                    warnings.warn(f'ignoring effect {value} assigned to {key} that already has an assigned '
-                                    f'effect {self._set_fx[key]} at m{m_no}', ParserWarning)
+                    warnings.warn(f'ignoring effect "{value}" assigned to {key} that already has an assigned '
+                                    f'effect "{self._set_fx[key]}" at m{m_no}', ParserWarning)
                 return
             self._set_fx[key] = value
         elif key in ['fx-l_se', 'fx-r_se']:
@@ -556,11 +556,13 @@ class KSHParser:
                 if spin_matched:
                     break
             if not spin_matched:
-                warnings.warn(f'cannot match spin {state} at {cur_time} with any slam', ParserWarning)
+                warnings.warn(f'cannot match spin "{state}" at {cur_time} with any slam', ParserWarning)
 
-        # TODO: Convert stop durations to timepoints
+        # Convert stop durations to timepoints
         for cur_time, duration in self._stops.items():
-            pass
+            self._chart_info.stops[cur_time] = True
+            stop_end = self._chart_info.add_duration(cur_time, duration)
+            self._chart_info.stops[stop_end] = False
 
         # Mark laser points as end of segment
         for vol_data in self._vols.values():
@@ -603,39 +605,14 @@ class KSHParser:
         ln_offset: int = len(self._raw_metadata) + len(self._raw_notedata) + 1
         for line_no, line in enumerate(self._raw_definitions):
             if not line.startswith('#'):
-                warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: {line}', ParserWarning)
+                warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"', ParserWarning)
             line_type, name, definition = line[1:].split(' ')
             if line_type == 'define_fx':
                 print(f'{name}: {definition}')
             elif line_type == 'define_filter':
                 print(f'{name}: {definition}')
             else:
-                warnings.warn(f'unrecognized definition at line {ln_offset + line_no + 1}: {definition}', ParserWarning)
-
-    def _get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
-        """ Calculate the distance between two timepoints as a fraction. """
-        if a == b:
-            return Fraction()
-        if b < a:
-            a, b = b, a
-
-        distance = Fraction()
-        for m_no in range(a.measure, b.measure):
-            distance += self._chart_info.get_timesig(m_no).as_fraction()
-        distance += b.position - a.position
-
-        return distance
-
-    def _add_duration(self, a: TimePoint, b: Fraction) -> TimePoint:
-        """ Calculate the resulting timepoint after adding an amount of time to a timepoint. """
-        modified_length = a.position + b
-
-        m_no = a.measure
-        while modified_length >= (m_len := self._chart_info.get_timesig(m_no).as_fraction()):
-            modified_length -= m_len
-            m_no += 1
-
-        return TimePoint(m_no, modified_length.numerator, modified_length.denominator)
+                warnings.warn(f'unrecognized defn at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
 
     def write_xml(self, f: TextIO):
         f.write(f'  <music id="{self._song_info.id}">\n'
@@ -679,22 +656,22 @@ class KSHParser:
     def write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
         # TODO: Handle easing
         for timept, vol in notedata.items():
+            wide_indicator = 2 if vol.wide_laser else 1
             # Not slam
             if vol.start == vol.end:
-                pass
+                vol_flag = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.start):.6f}\t{vol_flag}\t'
+                        f'{vol.spin_type.value}\t{vol.filter_index.value}\t{wide_indicator}\t0\t{vol.ease_type.value}\t'
+                        f'{vol.spin_duration}\n')
             # Slam
             else:
-                pass
-            segment_indicator = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
-            filter_type = 0
-            wide_indicator = 2 if vol.wide_laser else 1
-            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.start):.6f}\t'
-                    f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t{wide_indicator}\t'
-                    f'0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
-            if vol.start != vol.end:
-                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.end):.6f}\t'
-                        f'{segment_indicator}\t{vol.spin_type.value}\t{filter_type}\t'
-                        f'{wide_indicator}\t0\t{vol.ease_type.value}\t{vol.spin_duration}\n')
+                vol_flag_start = 1 if vol.is_new_segment else 0
+                vol_flag_end = 2 if vol.last_of_segment else 0
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.start):.6f}\t{vol_flag_start}\t'
+                        f'{vol.spin_type.value}\t{vol.filter_index.value}\t{wide_indicator}\t0\t{vol.ease_type.value}\t'
+                        f'{vol.spin_duration}\n')
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.end):.6f}\t{vol_flag_end}\t0\t'
+                        f'{vol.filter_index.value}\t{wide_indicator}\t0\t{vol.ease_type.value}\t0\n')
 
     def write_fx(self, f: TextIO, notedata: dict[TimePoint, FXInfo]):
         for timept, fx in notedata.items():
@@ -731,8 +708,17 @@ class KSHParser:
         f.write('#BPM INFO\n')
         timepoint_set = set(self._chart_info.bpms.keys())
         timepoint_set.update(self._chart_info.stops.keys())
+        current_bpm = self._song_info.min_bpm
+        is_stop_active = False
         for timept in sorted(timepoint_set):
-            pass
+            if timept in self._chart_info.bpms:
+                current_bpm = self._chart_info.bpms[timept]
+            if timept in self._chart_info.stops:
+                is_stop_active = self._chart_info.stops[timept]
+            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{current_bpm:.2f}\t4')
+            if is_stop_active:
+                f.write('-')
+            f.write('\n')
         f.write('#END\n')
         f.write('\n')
 
@@ -899,5 +885,4 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
-        f.write('//====================================\n'
-                '\n')
+        f.write('//====================================\n')
