@@ -49,8 +49,8 @@ STOP_CONVERSION_RATE        = Fraction(1, 192)
 # KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
 # change and distance change... basically, polar coordinates for the camera. This
 # means that the mapping between KSM and SDVX isn't as clean-cut as we'd like.
-ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.002222)
-ZOOM_TOP_CONVERSION_RATE    = Decimal(0.006667)
+ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.006667)
+ZOOM_TOP_CONVERSION_RATE    = Decimal(0.002222)
 TILT_CONVERSION_RATE        = Decimal(-0.420000)
 LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
 
@@ -139,6 +139,9 @@ class KSHParser:
     _bts : dict[str, dict[TimePoint, BTInfo]]  = dataclasses.field(init=False, repr=False)
     _fxs : dict[str, dict[TimePoint, FXInfo]]  = dataclasses.field(init=False, repr=False)
     _vols: dict[str, dict[TimePoint, VolInfo]] = dataclasses.field(init=False, repr=False)
+
+    _final_zoom_top_timepoint   : TimePoint = dataclasses.field(init=False, repr=False)
+    _final_zoom_bottom_timepoint: TimePoint = dataclasses.field(init=False, repr=False)
 
     def __post_init__(self, file: TextIO):
         self._ksh_path = Path(file.name).resolve()
@@ -353,6 +356,7 @@ class KSHParser:
                 self._chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
                     zoom_val, zoom_val,
                     is_new_segment=False)
+            self._final_zoom_top_timepoint = cur_time
         elif key == 'zoom_bottom':
             zoom_val = (int(value) * ZOOM_BOTTOM_CONVERSION_RATE).normalize() + 0
             if cur_time in self._chart_info.spcontroller_data.zoom_bottom:
@@ -360,6 +364,7 @@ class KSHParser:
             else:
                 self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(zoom_val, zoom_val,
                 is_new_segment=False)
+            self._final_zoom_bottom_timepoint = cur_time
         elif key == 'center_split':
             split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
             if cur_time in self._chart_info.spcontroller_data.lane_split:
@@ -569,14 +574,21 @@ class KSHParser:
             if not vol_data:
                 continue
             time_list = list(vol_data.keys())
-            for cur_time, next_time in itertools.pairwise(time_list):
-                if vol_data[next_time].is_new_segment:
-                    vol_data[cur_time].last_of_segment = True
-            vol_data[next_time].last_of_segment = True
+            for time_i, time_f in itertools.pairwise(time_list):
+                if vol_data[time_f].is_new_segment:
+                    vol_data[time_i].last_of_segment = True
+            vol_data[time_f].last_of_segment = True
 
         # TODO: Convert detected FX list into effect instances
 
         # TODO: Insert laser midpoints where filter type changes
+
+        # Add final point for zooms
+        end_point = TimePoint(self._chart_info.total_measures, 0, 1)
+        top_end_value = self._chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint]
+        self._chart_info.spcontroller_data.zoom_top[end_point] = top_end_value
+        bottom_end_value = self._chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint]
+        self._chart_info.spcontroller_data.zoom_bottom[end_point] = bottom_end_value
 
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
@@ -660,18 +672,43 @@ class KSHParser:
             # Not slam
             if vol.start == vol.end:
                 vol_flag = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
-                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.start):.6f}\t{vol_flag}\t'
-                        f'{vol.spin_type.value}\t{vol.filter_index.value}\t{wide_indicator}\t0\t{vol.ease_type.value}\t'
-                        f'{vol.spin_duration}\n')
+                f.write('\t'.join([
+                    f'{self._chart_info.timepoint_to_vox(timept)}',
+                    f'{float(vol.start):.6f}',
+                    f'{vol_flag}',
+                    f'{vol.spin_type.value}',
+                    f'{vol.filter_index.value}',
+                    f'{wide_indicator}',
+                     '0',
+                    f'{vol.ease_type.value}',
+                    f'{vol.spin_duration}\n',
+                ]))
             # Slam
             else:
                 vol_flag_start = 1 if vol.is_new_segment else 0
                 vol_flag_end = 2 if vol.last_of_segment else 0
-                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.start):.6f}\t{vol_flag_start}\t'
-                        f'{vol.spin_type.value}\t{vol.filter_index.value}\t{wide_indicator}\t0\t{vol.ease_type.value}\t'
-                        f'{vol.spin_duration}\n')
-                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{float(vol.end):.6f}\t{vol_flag_end}\t0\t'
-                        f'{vol.filter_index.value}\t{wide_indicator}\t0\t{vol.ease_type.value}\t0\n')
+                f.write('\t'.join([
+                    f'{self._chart_info.timepoint_to_vox(timept)}',
+                    f'{float(vol.start):.6f}',
+                    f'{vol_flag_start}',
+                    f'{vol.spin_type.value}',
+                    f'{vol.filter_index.value}',
+                    f'{wide_indicator}',
+                     '0',
+                    f'{vol.ease_type.value}',
+                    f'{vol.spin_duration}\n',
+                ]))
+                f.write('\t'.join([
+                    f'{self._chart_info.timepoint_to_vox(timept)}',
+                    f'{float(vol.end):.6f}',
+                    f'{vol_flag_end}',
+                     '0',
+                    f'{vol.filter_index.value}',
+                    f'{wide_indicator}',
+                     '0',
+                    f'{vol.ease_type.value}',
+                     '0\n',
+                ]))
 
     def write_fx(self, f: TextIO, notedata: dict[TimePoint, FXInfo]):
         for timept, fx in notedata.items():
@@ -729,7 +766,7 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
-        # Lyric info (?)
+        # Lyric info (unused)
         f.write('#LYRIC INFO\n'
                 '#END\n'
                 '\n')
@@ -763,7 +800,7 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
-        # Reverb effect param (?)
+        # Reverb effect param (unused)
         f.write('#REVERB EFFECT PARAM\n'
                 '#END\n'
                 '\n')
@@ -866,22 +903,101 @@ class KSHParser:
                 '//====================================\n'
                 '\n')
 
-        # SPController data
+        # SPController data and default stuff I never tried to figure out
         f.write('#SPCONTROLER\n')
         f.write('001,01,00\tRealize	3\t0\t36.12\t60.12\t110.12\t0.00\n'
                 '001,01,00\tRealize	4\t0\t0.62\t0.72\t1.03\t0.00\n'
                 '001,01,00\tAIRL_ScaX\t1\t0\t0.00\t1.00\t0.00\t0.00\n'
                 '001,01,00\tAIRR_ScaX\t1\t0\t0.00\t2.00\t0.00\t0.00\n')
-        for timept, zt in self._chart_info.spcontroller_data.zoom_top.items():
-            pass
-        for timept, zb in self._chart_info.spcontroller_data.zoom_bottom.items():
-            pass
-        for timept, tilt in self._chart_info.spcontroller_data.tilt.items():
-            pass
+
+        # Zoom top -> CAM_RotX
+        zoom_top_keys = list(self._chart_info.spcontroller_data.zoom_top.keys())
+        for timept_i, timept_f in itertools.pairwise(zoom_top_keys):
+            zt_i = self._chart_info.spcontroller_data.zoom_top[timept_i]
+            zt_f = self._chart_info.spcontroller_data.zoom_top[timept_f]
+            if zt_i.start != zt_i.end:
+                f.write('\t'.join([
+                    f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                     'CAM_RotX',
+                     '2',
+                     '0',
+                    f'{zt_i.start:.2f}',
+                    f'{zt_i.end:.2f}',
+                     '0.00',
+                     '0.00\n'
+                ]))
+            tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
+            f.write('\t'.join([
+                f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                 'CAM_RotX',
+                 '2',
+                f'{tick_amt}',
+                f'{zt_i.end:.2f}',
+                f'{zt_f.start:.2f}',
+                 '0.00',
+                 '0.00\n'
+            ]))
+
+        # Zoom bottom -> CAM_Radi
+        zoom_bottom_keys = list(self._chart_info.spcontroller_data.zoom_bottom.keys())
+        for timept_i, timept_f in itertools.pairwise(zoom_bottom_keys):
+            zt_i = self._chart_info.spcontroller_data.zoom_bottom[timept_i]
+            zt_f = self._chart_info.spcontroller_data.zoom_bottom[timept_f]
+            if zt_i.start != zt_i.end:
+                f.write('\t'.join([
+                    f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                     'CAM_Radi',
+                     '2',
+                     '0',
+                    f'{zt_i.start:.2f}',
+                    f'{zt_i.end:.2f}',
+                     '0.00',
+                     '0.00\n'
+                ]))
+            tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
+            f.write('\t'.join([
+                f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                 'CAM_Radi',
+                 '2',
+                f'{tick_amt}',
+                f'{zt_i.end:.2f}',
+                f'{zt_f.start:.2f}',
+                 '0.00',
+                 '0.00\n'
+            ]))
+
+        # Tilt info
+        tilt_keys = list(self._chart_info.spcontroller_data.tilt.keys())
+        for timept_i, timept_f in itertools.pairwise(tilt_keys):
+            zt_i = self._chart_info.spcontroller_data.tilt[timept_i]
+            zt_f = self._chart_info.spcontroller_data.tilt[timept_f]
+            if zt_i.start != zt_i.end:
+                f.write('\t'.join([
+                    f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                     'CAM_Radi',
+                     '2',
+                     '0',
+                    f'{zt_i.start:.2f}',
+                    f'{zt_i.end:.2f}',
+                     '0.00',
+                     '0.00\n'
+                ]))
+            tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
+            f.write('\t'.join([
+                f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                 'CAM_Radi',
+                 '2',
+                f'{tick_amt}',
+                f'{zt_i.end:.2f}',
+                f'{zt_f.start:.2f}',
+                 '0.00',
+                 '0.00\n'
+            ]))
+
+        # Lane split
         for timept, ls in self._chart_info.spcontroller_data.lane_split.items():
             pass
-        for timept, lt in self._chart_info.spcontroller_data.lane_toggle.items():
-            pass
+
         f.write('#END\n')
         f.write('\n')
 
