@@ -48,3 +48,9 @@ class FilterIndex(Enum):
     HPF      = 4
     BITCRUSH = 5
     CUSTOM   = 6
+
+
+class SegmentFlag(Enum):
+    MIDDLE = 0
+    START  = 1
+    END    = 2
