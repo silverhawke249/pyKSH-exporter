@@ -59,7 +59,7 @@ class NullEffect(Effect):
 @dataclass
 class Retrigger(Effect):
     mix: float = 95.00
-    wavelength: int = 8
+    wavelength: int = 4
     update_period: float = 2.00
     feedback: float = 1.00
     amount: float = 0.85
@@ -307,9 +307,9 @@ class EffectEntry(VoxEntity):
 def get_default_effects() -> list[EffectEntry]:
     return [
         # Re8
-        EffectEntry(Retrigger(wavelength=4)),
+        EffectEntry(Retrigger()),
         # Re16
-        EffectEntry(Retrigger(decay=0.1)),
+        EffectEntry(Retrigger(wavelength=8, decay=0.1)),
         # Ga16
         EffectEntry(Gate()),
         # Flanger
