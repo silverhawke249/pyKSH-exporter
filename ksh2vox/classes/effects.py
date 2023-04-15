@@ -163,7 +163,7 @@ class Wobble(Effect):
     wave_shape: WaveShape = WaveShape.SINE
     low_cutoff: float = 500.00
     hi_cutoff: float = 18000.00
-    frequency: float = 3.00
+    frequency: float = 4.00
     bandwidth: float = 1.40
 
     @property
