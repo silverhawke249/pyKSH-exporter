@@ -16,6 +16,7 @@ from .enums import (
     DifficultySlot,
     EasingType,
     FilterIndex,
+    SegmentFlag,
     SpinType,
     TiltType,
 )
@@ -30,7 +31,7 @@ from .filters import (
 @dataclass
 class BTInfo:
     _duration: InitVar[Fraction | int]
-    duration: Fraction = field(init=False)
+    duration : Fraction = field(init=False)
 
     def _setattrhook(self, __name: str, __value: Any):
         super().__setattr__(__name, __value)
@@ -52,8 +53,8 @@ class BTInfo:
 @dataclass
 class FXInfo:
     _duration: InitVar[Fraction | int]
-    duration: Fraction = field(init=False)
-    special: int
+    duration : Fraction = field(init=False)
+    special  : int
 
     def _setattrhook(self, __name: str, __value: Any):
         super().__setattr__(__name, __value)
@@ -76,15 +77,15 @@ class FXInfo:
 
 @dataclass
 class VolInfo:
-    start: Fraction
-    end: Fraction
-    spin_type: SpinType = SpinType.NO_SPIN
-    spin_duration: int = 0
-    ease_type: EasingType = EasingType.NO_EASING
-    filter_index: FilterIndex = FilterIndex.PEAK
-    is_new_segment: bool = True
-    last_of_segment: bool = False
-    wide_laser: bool = False
+    start        : Fraction
+    end          : Fraction
+    spin_type    : SpinType    = SpinType.NO_SPIN
+    spin_duration: int         = 0
+    ease_type    : EasingType  = EasingType.NO_EASING
+    filter_index : FilterIndex = FilterIndex.PEAK
+    point_type   : SegmentFlag = SegmentFlag.START
+    wide_laser   : bool        = False
+    interpolated : bool        = False
 
     def _setattrhook(self, __name: str, __value: Any):
         super().__setattr__(__name, __value)
@@ -126,9 +127,9 @@ class NoteData:
 
 @dataclass
 class SPControllerInfo:
-    start: Decimal
-    end: Decimal
-    is_new_segment: bool = True
+    start     : Decimal
+    end       : Decimal
+    point_type: SegmentFlag = SegmentFlag.START
 
 
 @dataclass
@@ -139,7 +140,6 @@ class SPControllerData:
     tilt: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
 
     lane_split: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
-    lane_toggle: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
 
 
 @dataclass
