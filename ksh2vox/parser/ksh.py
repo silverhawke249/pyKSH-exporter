@@ -13,17 +13,20 @@ from ..classes import (
     BTInfo,
     ChartInfo,
     DifficultySlot,
-    FilterIndex,
+    EasingType,
     FXInfo,
+    FilterIndex,
     ParserWarning,
-    SongInfo,
     SPControllerInfo,
+    SongInfo,
+    SegmentFlag,
     SpinType,
     TiltType,
     TimePoint,
     TimeSignature,
     VolInfo,
 )
+from ..utils import interpolate
 
 BAR_LINE = '--'
 CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')
@@ -32,7 +35,6 @@ LASER_POSITION = [
     '0257ACFHKMPSUXZbehjmo',
     '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno',
 ]
-FX_STATE_MAP = {'0': '0', '1': '2', '2': '1'}
 INPUT_BT  = ['bt_a', 'bt_b', 'bt_c', 'bt_d']
 INPUT_FX  = ['fx_l', 'fx_r']
 INPUT_VOL = ['vol_l', 'vol_r']
@@ -44,6 +46,7 @@ FILTER_TYPE_MAP = {
 }
 NO_EFFECT_INDEX             = 0
 KSH_SLAM_DISTANCE           = Fraction(1, 32)
+INTERPOLATION_DISTANCE      = Fraction(1, 64)
 SPIN_CONVERSION_RATE        = Fraction(4, 3) / 48
 STOP_CONVERSION_RATE        = Fraction(1, 192)
 # KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
@@ -332,7 +335,7 @@ class KSHParser:
                 else:
                     self._chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
                         tilt_val, tilt_val,
-                        is_new_segment=not self._tilt_segment)
+                        point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START)
                 self._tilt_segment = True
             except InvalidOperation:
                 if value == 'normal':
@@ -355,7 +358,7 @@ class KSHParser:
             else:
                 self._chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
                     zoom_val, zoom_val,
-                    is_new_segment=False)
+                    point_type=SegmentFlag.MIDDLE)
             self._final_zoom_top_timepoint = cur_time
         elif key == 'zoom_bottom':
             zoom_val = (int(value) * ZOOM_BOTTOM_CONVERSION_RATE).normalize() + 0
@@ -363,7 +366,7 @@ class KSHParser:
                 self._chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
             else:
                 self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(zoom_val, zoom_val,
-                is_new_segment=False)
+                point_type=SegmentFlag.MIDDLE)
             self._final_zoom_bottom_timepoint = cur_time
         elif key == 'center_split':
             split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
@@ -401,11 +404,13 @@ class KSHParser:
                 pass
         elif key == 'filtertype':
             if value in FILTER_TYPE_MAP:
-                self._cur_filter = FILTER_TYPE_MAP[value]
+                filter_now = FILTER_TYPE_MAP[value]
             else:
                 # TODO: Handle track auto tab
-                self._cur_filter = FilterIndex.CUSTOM
-            self._chart_info.active_filter[cur_time] = self._cur_filter
+                filter_now = FilterIndex.CUSTOM
+            if filter_now != self._cur_filter:
+                self._cur_filter = filter_now
+                self._chart_info.active_filter[cur_time] = filter_now
         elif ':' in key:
             # TODO: Filter settings
             # > filter:[filter_name]:[parameter]=[value]
@@ -486,22 +491,21 @@ class KSHParser:
                     self._recent_vol[vol].prev_vol.start != vol_position):
                     last_vol_info = self._recent_vol[vol]
                     self._vols[vol][last_vol_info.when] = VolInfo(
-                        last_vol_info.prev_vol.start,
-                        vol_position,
+                        last_vol_info.prev_vol.start, vol_position,
                         filter_index=self._cur_filter,
-                        is_new_segment=last_vol_info.prev_vol.is_new_segment,
+                        point_type=last_vol_info.prev_vol.point_type,
                         wide_laser=last_vol_info.prev_vol.wide_laser)
                 else:
                     self._vols[vol][cur_time] = VolInfo(
                         vol_position, vol_position,
-                        is_new_segment=not self._cont_segment[vol],
+                        point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
                         wide_laser=self._wide_segment[vol])
                 self._recent_vol[vol] = _LastVolInfo(
                     cur_time,
                     Fraction(0),
                     VolInfo(
                         vol_position, vol_position,
-                        is_new_segment=not self._cont_segment[vol],
+                        point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
                         wide_laser=self._wide_segment[vol]))
                 self._cont_segment[vol] = True
         if spin:
@@ -569,19 +573,79 @@ class KSHParser:
             stop_end = self._chart_info.add_duration(cur_time, duration)
             self._chart_info.stops[stop_end] = False
 
-        # Mark laser points as end of segment
         for vol_data in self._vols.values():
             if not vol_data:
                 continue
             time_list = list(vol_data.keys())
             for time_i, time_f in itertools.pairwise(time_list):
-                if vol_data[time_f].is_new_segment:
-                    vol_data[time_i].last_of_segment = True
-            vol_data[time_f].last_of_segment = True
+                vol_i, vol_f = vol_data[time_i], vol_data[time_f]
+                # Mark laser points as end of segment
+                if vol_f.point_type == SegmentFlag.START:
+                    vol_i.point_type = SegmentFlag.END
+                    continue
+                # Interpolate lasers (no interpolation done if the first point is an endpoint)
+                if vol_i.ease_type != EasingType.NO_EASING:
+                    div_count = int(self._chart_info.get_distance(time_i, time_f) / INTERPOLATION_DISTANCE)
+                    for i in range(1, div_count):
+                        distance = INTERPOLATION_DISTANCE * i
+                        timept = self._chart_info.add_duration(time_i, distance)
+                        position = interpolate(vol_i.ease_type, i, div_count, vol_i.end, vol_f.start)
+                        vol_data[timept] = VolInfo(
+                            position, position,
+                            spin_type=SpinType.NO_SPIN,
+                            spin_duration=0,
+                            ease_type=vol_i.ease_type,
+                            filter_index=vol_i.filter_index,
+                            point_type=SegmentFlag.MIDDLE,
+                            wide_laser=vol_i.wide_laser,
+                            interpolated=True)
+            vol_data[time_f].point_type == SegmentFlag.END
 
-        # TODO: Convert detected FX list into effect instances
+        # Insert laser midpoints where filter type changes
+        for vol_data in self._vols.values():
+            new_points: dict[TimePoint, VolInfo] = {}
+            for timept, filter_index in self._chart_info.active_filter.items():
+                if timept not in vol_data:
+                    time_i = TimePoint(0, 0, 1)
+                    for time_f in vol_data:
+                        if time_f > timept:
+                            break
+                        time_i = time_f
+                    # Ignore filter changes before the start of the chart
+                    if time_i == TimePoint(0, 0, 1):
+                        continue
+                    # Ignore filter changes between segments
+                    if vol_data[time_i].point_type == SegmentFlag.END:
+                        continue
+                    part_dist = self._chart_info.get_distance(time_i, timept)
+                    total_dist = self._chart_info.get_distance(time_i, time_f)
+                    position = interpolate(
+                        EasingType.LINEAR, part_dist, total_dist,
+                        vol_data[time_i].end, vol_data[time_f].start)
+                    new_points[timept] = VolInfo(
+                        position, position,
+                        ease_type=vol_data[time_i].ease_type,
+                        filter_index=filter_index,
+                        point_type=SegmentFlag.MIDDLE,
+                        wide_laser=vol_data[time_i].wide_laser)
+                else:
+                    vol_data[timept].filter_index = filter_index
+                    vol_data[timept].interpolated = False
+            vol_data.update(new_points)
 
-        # TODO: Insert laser midpoints where filter type changes
+        # Mark tilt and lane split points as end of segment
+        tilt_timepts = list(self._chart_info.spcontroller_data.tilt.keys())
+        if tilt_timepts:
+            for time_i, time_f in itertools.pairwise(tilt_timepts):
+                if self._chart_info.spcontroller_data.tilt[time_f].point_type == SegmentFlag.START:
+                    self._chart_info.spcontroller_data.tilt[time_i].point_type = SegmentFlag.END
+            self._chart_info.spcontroller_data.tilt[time_f].point_type = SegmentFlag.END
+        lane_split_timepts = list(self._chart_info.spcontroller_data.lane_split.keys())
+        if lane_split_timepts:
+            for time_i, time_f in itertools.pairwise(lane_split_timepts):
+                if self._chart_info.spcontroller_data.lane_split[time_f].point_type == SegmentFlag.START:
+                    self._chart_info.spcontroller_data.lane_split[time_i].point_type = SegmentFlag.END
+            self._chart_info.spcontroller_data.lane_split[time_f].point_type = SegmentFlag.END
 
         # Add final point for zooms
         end_point = TimePoint(self._chart_info.total_measures, 0, 1)
@@ -671,11 +735,10 @@ class KSHParser:
             wide_indicator = 2 if vol.wide_laser else 1
             # Not slam
             if vol.start == vol.end:
-                vol_flag = 1 if vol.is_new_segment else 2 if vol.last_of_segment else 0
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept)}',
                     f'{float(vol.start):.6f}',
-                    f'{vol_flag}',
+                    f'{vol.point_type.value}',
                     f'{vol.spin_type.value}',
                     f'{vol.filter_index.value}',
                     f'{wide_indicator}',
@@ -685,8 +748,8 @@ class KSHParser:
                 ]))
             # Slam
             else:
-                vol_flag_start = 1 if vol.is_new_segment else 0
-                vol_flag_end = 2 if vol.last_of_segment else 0
+                vol_flag_start = 1 if vol.point_type == SegmentFlag.START else 0
+                vol_flag_end = 2 if vol.point_type == SegmentFlag.END else 0
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept)}',
                     f'{float(vol.start):.6f}',
