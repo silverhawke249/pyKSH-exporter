@@ -30,7 +30,9 @@ from .effects import (
 
 from .enums import (
     DifficultySlot,
+    EasingType,
     FilterIndex,
+    SegmentFlag,
     SpinType,
     TiltType,
 )
