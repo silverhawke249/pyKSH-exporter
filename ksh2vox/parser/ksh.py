@@ -25,8 +25,10 @@ from ..classes import (
     TimePoint,
     TimeSignature,
     VolInfo,
+    effects,
+    filters,
 )
-from ..utils import interpolate
+from ..utils import interpolate, parse_decibel, parse_frequency, parse_length
 
 BAR_LINE = '--'
 CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')
@@ -263,6 +265,8 @@ class KSHParser:
             'vol_l': {},
             'vol_r': {},
         }
+        self._final_zoom_bottom_timepoint = TimePoint(1, 0, 1)
+        self._final_zoom_top_timepoint = TimePoint(1, 0, 1)
 
     def _parse_notedata(self) -> None:
         self._initialize_stateful_data()
@@ -321,6 +325,7 @@ class KSHParser:
                 self._chart_info.timesigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
             else:
                 self._chart_info.timesigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
+                self._cur_timesig = TimeSignature(upper, lower)
         elif key == 'stop':
             self._stops[cur_time] = int(value) * STOP_CONVERSION_RATE
         elif key == 'tilt':
@@ -654,6 +659,55 @@ class KSHParser:
         bottom_end_value = self._chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint]
         self._chart_info.spcontroller_data.zoom_bottom[end_point] = bottom_end_value
 
+        # TODO: Convert detected FX list into effect instances
+        if len(self._fx_list) > 12:
+            warnings.warn(f'found more than 12 distinct effects', ParserWarning)
+            while len(self._chart_info.effect_list) < len(self._fx_list):
+                self._chart_info.effect_list.append(effects.EffectEntry())
+                self._chart_info.autotab_list.append(
+                    filters.AutoTabEntry(
+                        filters.AutoTabSetting(len(self._fx_list) - 1),
+                        filters.AutoTabSetting(len(self._fx_list) - 1)))
+        for i, fx_entry in enumerate(self._fx_list):
+            if ';' in fx_entry:
+                fx_name, *fx_params_str = fx_entry.split(';')
+            else:
+                fx_name, fx_params_str = fx_entry, []
+            try:
+                fx_params = [int(s) for s in fx_params_str]
+            except ValueError:
+                warnings.warn(f'cannot convert effect parameters "{fx_entry}" to int', ParserWarning)
+                fx_params = []
+            # Hoo boy
+            effect: effects.Effect = effects.NullEffect()
+            if fx_name == 'Retrigger':
+                effect = effects.Retrigger()
+            elif fx_name == 'Gate':
+                effect = effects.Gate()
+            elif fx_name == 'Flanger':
+                effect = effects.Flanger()
+            elif fx_name == 'PitchShift':
+                effect = effects.PitchShift()
+            elif fx_name == 'BitCrusher':
+                effect = effects.Bitcrush()
+            elif fx_name == 'Phaser':
+                effect = effects.Flanger(
+                    mix=50, period=2, feedback=0.35, stereo_width=0, hicut_gain=8)
+            elif fx_name == 'Wobble':
+                effect = effects.Wobble()
+            elif fx_name == 'TapeStop':
+                effect = effects.Tapestop()
+            elif fx_name == 'Echo':
+                effect = effects.RetriggerEx(
+                    mix=100, wavelength=4, update_period=4, feedback=0.6, amount=1, decay=0.8)
+            elif fx_name == 'SideChain':
+                effect = effects.Sidechain()
+            else:  # Custom effect -- check definitions
+                effect = self._chart_info._custom_effect[fx_name].duplicate()
+            effect.map_params(fx_params)
+            print(i, fx_entry, effect)
+            self._chart_info.effect_list[i] = effects.EffectEntry(effect)
+
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
         if TimePoint(m_no, 0, 1) in self._chart_info.timesigs:
@@ -677,15 +731,54 @@ class KSHParser:
                 noteline_count += 1
 
     def _parse_definitions(self) -> None:
-        # TODO: This
         ln_offset: int = len(self._raw_metadata) + len(self._raw_notedata) + 1
         for line_no, line in enumerate(self._raw_definitions):
             if not line.startswith('#'):
                 warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"', ParserWarning)
+                continue
             line_type, name, definition = line[1:].split(' ')
+            params_list = [s.split('=', 1) for s in definition.split(';')]
+            params_dict: dict[str, str] = {s[0]: s[1] for s in params_list}
+            if 'type' not in params_dict:
+                warnings.warn(
+                    f'ignoring custom fx at line {ln_offset + line_no + 1}, "type" parameter missing: "{line}"',
+                    ParserWarning)
+                continue
             if line_type == 'define_fx':
-                print(f'{name}: {definition}')
+                effect_class: type[effects.Effect]
+                if params_dict['type'] in ['Retrigger', 'Echo']:
+                    effect_class = effects.Retrigger
+                    if 'updatePeriod' in params_dict:
+                        value = parse_length(params_dict['updatePeriod'])
+                        if value == 0:
+                            effect_class = effects.RetriggerEx
+                elif params_dict['type'] == 'Gate':
+                    effect_class = effects.Gate
+                elif params_dict['type'] == 'Flanger':
+                    effect_class = effects.Flanger
+                elif params_dict['type'] == 'PitchShift':
+                    effect_class = effects.PitchShift
+                elif params_dict['type'] == 'BitCrusher':
+                    effect_class = effects.Bitcrush
+                elif params_dict['type'] == 'Phaser':
+                    effect_class = effects.Flanger
+                    params_dict['period'] = params_dict.get('period', '1/2')
+                    params_dict['feedback'] = params_dict.get('feedback', '35%')
+                    params_dict['stereo_width'] = params_dict.get('stereoWidth', '0%')
+                    params_dict['hicut_gain'] = params_dict.get('hiCutGain', '8dB')
+                    params_dict['mix'] = params_dict.get('mix', '50%')
+                elif params_dict['type'] == 'Wobble':
+                    effect_class = effects.Wobble
+                elif params_dict['type'] == 'TapeStop':
+                    effect_class = effects.Tapestop
+                elif params_dict['type'] == 'SideChain':
+                    effect_class = effects.Sidechain
+                else:
+                    warnings.warn(f'custom fx at line {ln_offset + line_no + 1} not parsed: "{line}"', ParserWarning)
+                    continue
+                self._chart_info._custom_effect[name] = effect_class.from_dict(params_dict)
             elif line_type == 'define_filter':
+                # TODO: This
                 print(f'{name}: {definition}')
             else:
                 warnings.warn(f'unrecognized defn at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
@@ -856,7 +949,7 @@ class KSHParser:
         f.write('#END\n')
         f.write('\n')
 
-        # TODO: Tab parameters (FX on lasers parameters)
+        # Tab parameters (FX on lasers parameters)
         f.write('#TAB PARAM ASSIGN INFO\n')
         for autotab in self._chart_info.autotab_list:
             f.write(autotab.to_vox_string())

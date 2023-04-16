@@ -9,6 +9,7 @@ from .base import (
     TimeSignature,
 )
 from .effects import (
+    Effect,
     EffectEntry,
     get_default_effects,
 )
@@ -178,7 +179,8 @@ class ChartInfo:
     spcontroller_data: SPControllerData = field(default_factory=SPControllerData)
 
     # Private data
-    _timesig_memo: dict[int, TimeSignature] = field(default_factory=dict, init=False, repr=False)
+    _timesig_memo : dict[int, TimeSignature] = field(default_factory=dict, init=False, repr=False)
+    _custom_effect: dict[str, Effect]        = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self):
         # Default values
