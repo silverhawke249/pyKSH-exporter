@@ -269,6 +269,7 @@ tilt=normal
 0000|00|:-
 fx-l_se=clap_impact
 fx-r_se=clap_impact
+//lightFXLR=3
 0000|22|:-
 0000|00|:-
 0000|00|:-
@@ -280,6 +281,7 @@ fx-r_se=clap_impact
 --
 fx-l_se=clap_impact
 fx-r_se=clap_impact
+//lightFXLR=3
 0000|22|o-
 0000|00|:-
 0000|00|0-
@@ -886,6 +888,7 @@ filtertype=peak
 0000|00|UU
 0000|00|-:
 --
+//curveBeginL=4
 0000|00|AA
 0000|00|::
 0000|00|P:
@@ -894,6 +897,7 @@ filtertype=peak
 0000|00|::
 0000|00|d:
 0000|00|::
+//curveBeginL=5
 0000|00|e:
 0000|00|::
 0000|00|::
@@ -902,6 +906,7 @@ filtertype=peak
 0000|00|::
 0000|00|X:
 0000|00|::
+//curveEndL;curveBeginR=4
 0000|00|PP
 0000|00|::
 0000|00|:H
@@ -910,6 +915,7 @@ filtertype=peak
 0000|00|::
 0000|00|::
 0000|00|::
+//curveBeginR=5
 0000|00|:A
 0000|00|::
 0000|00|:B
@@ -919,6 +925,7 @@ filtertype=peak
 0000|00|:P
 0000|00|::
 --
+//curveEndR
 filtertype=hpf1
 0000|00|ee
 0000|00|:-
@@ -1021,6 +1028,7 @@ filtertype=peak
 0000|00|KK
 0000|00|:-
 --
+//curveBeginR=4
 0000|00|ee
 0000|00|::
 0000|00|:P
@@ -1029,6 +1037,7 @@ filtertype=peak
 0000|00|::
 0000|00|:B
 0000|00|::
+//curveBeginR=5
 0000|00|:A
 0000|00|::
 0000|00|::
@@ -1037,6 +1046,7 @@ filtertype=peak
 0000|00|::
 0000|00|:H
 0000|00|::
+//curveEndR;curveBeginL=4
 0000|00|PP
 0000|00|::
 0000|00|X:
@@ -1045,6 +1055,7 @@ filtertype=peak
 0000|00|::
 0000|00|::
 0000|00|::
+//curveBeginL=5
 0000|00|e:
 0000|00|::
 0000|00|d:
@@ -1054,6 +1065,7 @@ filtertype=peak
 0000|00|P:
 0000|00|::
 --
+//curveEndL
 zoom_bottom=50
 0000|00|AA
 0000|00|::
@@ -1124,6 +1136,7 @@ filtertype=GLTC
 --
 fx-l_se=clap_impact
 fx-r_se=clap_impact
+//lightFXLR=3
 filtertype=peak
 zoom_bottom=0
 0000|22|0o
@@ -1516,6 +1529,7 @@ fx-r=Wobble;1
 0000|00|-:
 fx-l_se=clap_impact
 fx-r_se=clap_impact
+//lightFXLR=3
 filtertype=peak
 0000|22|-o
 0000|00|-:
@@ -1563,6 +1577,7 @@ laserrange_r=2x
 0220|00|::
 0220|00|::
 0220|00|::
+//curveBeginR=2
 filtertype=hpf1
 0000|22|XH
 0000|00|-:
@@ -1605,6 +1620,7 @@ filtertype=hpf1
 0000|00|-:
 0000|00|-:
 --
+//curveEndR
 filtertype=lpf1
 laserrange_l=2x
 fx-l=Flanger
@@ -1633,6 +1649,7 @@ fx-r=Flanger
 0000|11|::
 0000|11|::
 0000|11|::
+//curveBeginL=2
 filtertype=bitc
 0110|00|Cb
 0000|00|:-
@@ -1658,6 +1675,7 @@ filtertype=bitc
 0000|00|:-
 0000|00|:-
 0000|00|:-
+//curveEndL
 laserrange_r=2x
 0000|00|0o
 0000|00|::
@@ -1703,6 +1721,7 @@ laserrange_r=2x
 0220|00|::
 0220|00|::
 0220|00|::
+//curveBeginL=2
 filtertype=lpf1
 0000|22|XH
 0000|00|:-
@@ -1745,6 +1764,7 @@ filtertype=lpf1
 0000|00|:-
 0000|00|:-
 --
+//curveEndL
 filtertype=hpf1
 laserrange_r=2x
 fx-l=Flanger
@@ -1773,6 +1793,7 @@ fx-r=Flanger
 0000|11|::
 0000|11|::
 0000|11|::
+//curveBeginR=2
 filtertype=lpf1
 0110|00|Cb
 0000|00|-:
@@ -1798,6 +1819,7 @@ filtertype=lpf1
 0000|00|-:
 0000|00|-:
 0000|00|-:
+//curveEndR
 laserrange_l=2x
 0000|00|0o
 0000|00|::
@@ -1843,6 +1865,7 @@ laserrange_r=2x
 0220|00|::
 0220|00|::
 0220|00|::
+//curveBeginR=2
 filtertype=lpf1
 fx-l=Flanger
 fx-r=Flanger
@@ -1938,6 +1961,7 @@ filtertype=lpf1
 0000|00|::
 0000|00|::
 0000|00|::
+//curveEndR
 0000|00|o0
 0000|00|::
 0000|00|PP
@@ -1982,6 +2006,7 @@ laserrange_r=2x
 0220|00|::
 0220|00|::
 0220|00|::
+//curveBeginL=2
 filtertype=bitc
 fx-l=Flanger
 fx-r=Flanger
@@ -2077,6 +2102,7 @@ filtertype=hpf1
 0000|00|::
 0000|00|::
 0000|00|::
+//curveEndL
 filtertype=lpf1
 zoom_top=75
 zoom_bottom=-75
@@ -2302,6 +2328,7 @@ filtertype=peak
 0010|00|::
 0000|00|::
 --
+//curveBeginL=2
 filtertype=hpf1
 tilt=1.5
 zoom_top=150
@@ -2340,6 +2367,7 @@ fx-r=Wobble;1
 0000|11|:-
 0000|11|:-
 0000|11|:-
+//curveEndL
 filtertype=peak
 tilt=-1
 0000|00|C-
@@ -3255,6 +3283,7 @@ zoom_bottom=75
 0000|00|:-
 0000|00|:-
 fx-r_se=clap_impact
+//lightFXR=3
 0000|02|:-
 0000|00|:-
 0000|00|:-
@@ -3273,6 +3302,7 @@ filtertype=GA08
 0000|00|::
 0000|00|::
 fx-l_se=clap_impact
+//lightFXL=3
 0000|20|::
 0000|00|::
 0000|00|::
@@ -4171,6 +4201,7 @@ filtertype=peak
 0000|00|--
 fx-l_se=clap_impact
 fx-r_se=clap_impact
+//lightFXLR=11
 0000|22|--
 0000|00|--
 0000|00|--
@@ -4981,6 +5012,7 @@ laserrange_r=2x
 0000|00|::
 0000|00|::
 0000|00|::
+//curveBeginR=2
 filtertype=lpf1
 0000|00|Pj
 0000|00|::
@@ -5000,6 +5032,7 @@ filtertype=GLTC
 0000|00|-:
 0000|00|-:
 --
+//curveEndR
 filtertype=peak
 zoom_top=100
 zoom_bottom=-100
@@ -5285,6 +5318,7 @@ filtertype=lpf1
 --
 fx-l_se=clap_impact
 fx-r_se=clap_impact
+//lightFXLR=7
 zoom_top=-75
 zoom_bottom=75
 0000|22|--
