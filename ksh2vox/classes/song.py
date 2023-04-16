@@ -17,5 +17,5 @@ class SongInfo:
     min_bpm: Decimal = Decimal(0)
     release_date: str = ''
     music_volume: int = 100
-    background: GameBackground = GameBackground.WHAT
+    background: GameBackground = GameBackground.EXCEED_GEAR_TOWER_1
     inf_ver: InfVer = InfVer.INFINITE
