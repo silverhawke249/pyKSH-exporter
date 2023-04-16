@@ -10,26 +10,36 @@ from pathlib import Path
 from typing import TextIO
 
 from ..classes import (
-    BTInfo,
-    ChartInfo,
-    DifficultySlot,
-    EasingType,
-    FXInfo,
-    FilterIndex,
-    ParserWarning,
-    SPControllerInfo,
-    SongInfo,
-    SegmentFlag,
-    SpinType,
-    TiltType,
-    TimePoint,
-    TimeSignature,
-    VolInfo,
     effects,
     filters,
 )
-from ..classes.base import AutoTabInfo
-from ..utils import interpolate
+from ..classes.base import (
+    AutoTabInfo,
+    ParserWarning,
+    TimePoint,
+    TimeSignature,
+)
+from ..classes.chart import (
+    BTInfo,
+    ChartInfo,
+    FXInfo,
+    SPControllerInfo,
+    VolInfo,
+)
+from ..classes.enums import (
+    DifficultySlot,
+    EasingType,
+    FilterIndex,
+    SegmentFlag,
+    SpinType,
+    TiltType,
+)
+from ..classes.song import (
+    SongInfo,
+)
+from ..utils import (
+    interpolate,
+)
 
 BAR_LINE = '--'
 CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')

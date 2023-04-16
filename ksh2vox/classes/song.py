@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TextIO
 
-from .enums import DifficultySlot, GameBackground, InfVer
+from .enums import GameBackground, InfVer
 
 
 @dataclass
