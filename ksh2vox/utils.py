@@ -2,7 +2,7 @@ from math import pi, sin
 from numbers import Real
 from typing import TypeVar
 
-from .classes import EasingType
+from .classes.enums import EasingType
 
 T = TypeVar('T', int, float, Real)
 U = TypeVar('U', bound=Real)
@@ -24,8 +24,8 @@ def interpolate(
     if ease_type == EasingType.LINEAR:
         return initial_value + count / total * difference
     elif ease_type == EasingType.EASE_IN_SINE:
-        return initial_value + (sin((count / total - 1) * pi / 2) + 1) * difference
-    elif ease_type == EasingType.EASE_OUT_SINE:
         return initial_value + sin(count / total * pi / 2) * difference
+    elif ease_type == EasingType.EASE_OUT_SINE:
+        return initial_value + (sin((count / total - 1) * pi / 2) + 1) * difference
     else:
         raise ValueError(f'invalid ease type (got {ease_type})')
