@@ -1,8 +1,11 @@
-from abc import ABC, abstractmethod, abstractproperty
-from dataclasses import dataclass, field
+from abc import abstractmethod, abstractproperty
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from enum import Enum
+from warnings import warn
 
-from .base import VoxEntity
+from .base import ParserWarning, VoxEntity
+from ..utils import parse_decibel, parse_frequency, parse_length, parse_time
 
 
 class FXType(Enum):
@@ -40,9 +43,21 @@ class Effect(VoxEntity):
     def effect_index(self) -> FXType:
         pass
 
+    @staticmethod
+    @abstractmethod
+    def from_dict(s: Mapping[str, str]):
+        pass
+
+    @abstractmethod
+    def map_params(self, s: Sequence[int]) -> None:
+        pass
+
     @abstractmethod
     def to_vox_string(self) -> str:
         pass
+
+    def duplicate(self):
+        return replace(self)
 
 
 @dataclass
@@ -50,6 +65,13 @@ class NullEffect(Effect):
     @property
     def effect_index(self) -> FXType:
         return FXType.NO_EFFECT
+
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        return NullEffect()
+
+    def map_params(self, s: Sequence[int]) -> None:
+        return
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
@@ -69,6 +91,23 @@ class Retrigger(Effect):
     def effect_index(self) -> FXType:
         return FXType.RETRIGGER
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Retrigger()
+        if 'updatePeriod' in s:
+            effect.update_period = parse_length(s['updatePeriod'])
+        if 'rate' in s:
+            effect.amount = parse_length(s['rate'])
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
+            return
+        self.wavelength = int(s[0] * self.update_period / 4)
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.wavelength}',
@@ -82,12 +121,25 @@ class Retrigger(Effect):
 @dataclass
 class Gate(Effect):
     mix: float = 98.00
-    wavelength: int = 8
-    length: float = 1.00
+    wavelength: int = 16
+    length: float = 2.00
 
     @property
     def effect_index(self) -> FXType:
         return FXType.GATE
+
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Gate()
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
+            return
+        self.wavelength = int(s[0] * self.length / 2)
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
@@ -109,6 +161,24 @@ class Flanger(Effect):
     def effect_index(self) -> FXType:
         return FXType.FLANGER
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Flanger()
+        if 'period' in s:
+            effect.period = parse_length(s['period']) * 4
+        if 'feedback' in s:
+            effect.feedback = parse_length(s['feedback'])
+        if 'stereoWidth' in s:
+            effect.stereo_width = int(parse_length(s['stereoWidth']) * 100)
+        if 'hiCutGain' in s:
+            effect.hicut_gain = parse_decibel(s['hiCutGain'])
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        pass
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
@@ -128,6 +198,23 @@ class Tapestop(Effect):
     def effect_index(self) -> FXType:
         return FXType.TAPESTOP
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Tapestop()
+        if 'speed' in s:
+            effect.speed = parse_length(s['speed']) * 0.1
+            effect.rate = effect.rate * 0.2
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
+            return
+        self.speed = s[0] * 0.1
+        self.rate = s[0] * 0.02
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
@@ -146,6 +233,25 @@ class Sidechain(Effect):
     @property
     def effect_index(self) -> FXType:
         return FXType.SIDECHAIN
+
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Sidechain()
+        if 'period' in s:
+            effect.frequency = 0.25 / parse_length(s['period'])
+        if 'attackTime' in s:
+            effect.attack = int(parse_time(s['attackTime']))
+        if 'holdTime' in s:
+            effect.hold = int(parse_time(s['holdTime']))
+        if 'releaseTime' in s:
+            effect.release = int(parse_time(s['releaseTime']))
+        # Not actually in KSM spec
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        pass
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
@@ -170,6 +276,27 @@ class Wobble(Effect):
     def effect_index(self) -> FXType:
         return FXType.WOBBLE
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Wobble()
+        if 'waveLength' in s:
+            effect.frequency = 0.25 / parse_length(s['waveLength'])
+        if 'loFreq' in s:
+            effect.low_cutoff = parse_frequency(s['loFreq'])
+        if 'hiFreq' in s:
+            effect.hi_cutoff = parse_frequency(s['hiFreq'])
+        if 'Q' in s:
+            effect.bandwidth = float(s['Q'])
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
+            return
+        self.frequency = s[0] / 4
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.filter_type.value}',
@@ -189,6 +316,19 @@ class Bitcrush(Effect):
     @property
     def effect_index(self) -> FXType:
         return FXType.BITCRUSH
+
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = Bitcrush()
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
+            return
+        self.amount = s[0]
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
@@ -210,6 +350,24 @@ class RetriggerEx(Effect):
     def effect_index(self) -> FXType:
         return FXType.RETRIGGER_EX
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = RetriggerEx()
+        effect.update_period = 4.00
+        if 'rate' in s:
+            effect.amount = parse_length(s['rate'])
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 or 2 parameters (got {len(s)})', ParserWarning)
+            return
+        if len(s) >= 2:
+            self.feedback = s[1] / 100
+        self.wavelength = int(s[0] * self.update_period / 4)
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.wavelength}',
@@ -229,6 +387,21 @@ class PitchShift(Effect):
     def effect_index(self) -> FXType:
         return FXType.PITCH_SHIFT
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        effect = PitchShift()
+        if 'pitch' in s:
+            effect.amount = int(s['pitch'])
+        if 'mix' in s:
+            effect.mix = parse_length(s['mix']) * 100
+        return effect
+
+    def map_params(self, s: Sequence[int]) -> None:
+        if len(s) < 1:
+            warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
+            return
+        self.amount = s[0]
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
@@ -246,6 +419,13 @@ class Tapescratch(Effect):
     @property
     def effect_index(self) -> FXType:
         return FXType.TAPESCRATCH
+
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        return Tapescratch()
+
+    def map_params(self, s: Sequence[int]) -> None:
+        pass
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
@@ -267,6 +447,13 @@ class LowpassFilter(Effect):
     def effect_index(self) -> FXType:
         return FXType.LPF
 
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        return LowpassFilter()
+
+    def map_params(self, s: Sequence[int]) -> None:
+        pass
+
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
@@ -285,6 +472,13 @@ class HighpassFilter(Effect):
     @property
     def effect_index(self) -> FXType:
         return FXType.HPF
+
+    @staticmethod
+    def from_dict(s: Mapping[str, str]):
+        return HighpassFilter()
+
+    def map_params(self, s: Sequence[int]) -> None:
+        pass
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
