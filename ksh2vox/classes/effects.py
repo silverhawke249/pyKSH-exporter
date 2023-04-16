@@ -1,5 +1,5 @@
 from abc import abstractmethod, abstractproperty
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from warnings import warn
@@ -525,3 +525,38 @@ def get_default_effects() -> list[EffectEntry]:
         # Bitcrush
         EffectEntry(Bitcrush()),
     ]
+
+
+def from_definition(definition: MutableMapping[str, str]) -> Effect:
+    effect_class: type[Effect]
+    if definition['type'] in ['Retrigger', 'Echo']:
+        effect_class = Retrigger
+        if 'updatePeriod' in definition:
+            value = parse_length(definition['updatePeriod'])
+            if value == 0:
+                effect_class = RetriggerEx
+    elif definition['type'] == 'Gate':
+        effect_class = Gate
+    elif definition['type'] == 'Flanger':
+        effect_class = Flanger
+    elif definition['type'] == 'PitchShift':
+        effect_class = PitchShift
+    elif definition['type'] == 'BitCrusher':
+        effect_class = Bitcrush
+    elif definition['type'] == 'Phaser':
+        effect_class = Flanger
+        definition['period'] = definition.get('period', '1/2')
+        definition['feedback'] = definition.get('feedback', '35%')
+        definition['stereo_width'] = definition.get('stereoWidth', '0%')
+        definition['hicut_gain'] = definition.get('hiCutGain', '8dB')
+        definition['mix'] = definition.get('mix', '50%')
+    elif definition['type'] == 'Wobble':
+        effect_class = Wobble
+    elif definition['type'] == 'TapeStop':
+        effect_class = Tapestop
+    elif definition['type'] == 'SideChain':
+        effect_class = Sidechain
+    else:
+        warn(f'custom fx not parsed: "{definition}"', ParserWarning)
+        return NullEffect()
+    return effect_class.from_dict(definition)

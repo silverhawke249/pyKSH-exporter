@@ -181,6 +181,8 @@ class ChartInfo:
     # Private data
     _timesig_memo : dict[int, TimeSignature] = field(default_factory=dict, init=False, repr=False)
     _custom_effect: dict[str, Effect]        = field(default_factory=dict, init=False, repr=False)
+    _custom_filter: dict[str, Effect]        = field(default_factory=dict, init=False, repr=False)
+    _filter_param : dict[str, int]           = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self):
         # Default values

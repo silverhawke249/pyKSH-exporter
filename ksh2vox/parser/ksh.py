@@ -28,7 +28,8 @@ from ..classes import (
     effects,
     filters,
 )
-from ..utils import interpolate, parse_decibel, parse_frequency, parse_length
+from ..classes.base import AutoTabInfo
+from ..utils import interpolate
 
 BAR_LINE = '--'
 CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')
@@ -126,8 +127,9 @@ class KSHParser:
     _fx_list: list[str] = dataclasses.field(default_factory=list, init=False, repr=False)
 
     # Stateful data for notechart parsing
-    _cur_timesig: TimeSignature = dataclasses.field(default=TimeSignature(), init=False, repr=False)
-    _cur_filter : FilterIndex   = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
+    _cur_timesig: TimeSignature         = dataclasses.field(default=TimeSignature(), init=False, repr=False)
+    _cur_filter : FilterIndex           = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
+    _cur_easing : dict[str, EasingType] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _filter_changed: bool                    = dataclasses.field(default=False, init=False, repr=False)
     _tilt_segment  : bool                    = dataclasses.field(default=False, init=False, repr=False)
@@ -140,6 +142,9 @@ class KSHParser:
     _set_se: dict[str, int]            = dataclasses.field(default_factory=dict, init=False, repr=False)
     _spins : dict[TimePoint, str]      = dataclasses.field(default_factory=dict, init=False, repr=False)
     _stops : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict, init=False, repr=False)
+
+    _filter_names    : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _filter_to_effect: dict[str, int]       = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _bts : dict[str, dict[TimePoint, BTInfo]]  = dataclasses.field(init=False, repr=False)
     _fxs : dict[str, dict[TimePoint, FXInfo]]  = dataclasses.field(init=False, repr=False)
@@ -239,10 +244,14 @@ class KSHParser:
                 except ValueError as e:
                     raise ValueError(f'ksh file version too old (got {value})') from e
             else:
-                # Ignoring all other metadata
+                # Silently ignoring all other metadata
                 pass
 
     def _initialize_stateful_data(self) -> None:
+        self._cur_easing = {
+            'vol_l': EasingType.NO_EASING,
+            'vol_r': EasingType.NO_EASING,
+        }
         self._cont_segment = {
             'vol_l': False,
             'vol_r': False,
@@ -408,10 +417,10 @@ class KSHParser:
             except ValueError:
                 pass
         elif key == 'filtertype':
+            self._filter_names[cur_time] = value
             if value in FILTER_TYPE_MAP:
                 filter_now = FILTER_TYPE_MAP[value]
             else:
-                # TODO: Handle track auto tab
                 filter_now = FilterIndex.CUSTOM
             if filter_now != self._cur_filter:
                 self._cur_filter = filter_now
@@ -422,20 +431,52 @@ class KSHParser:
             # Technically FX parameters can also be changed here but like no one uses that
             pass
         else:
-            # Ignoring all other metadata
+            # Silently ignoring all other metadata
             pass
 
     def _handle_notechart_custom_commands(self, line: str, cur_time: TimePoint) -> None:
         # Remove initial `//`
         line = line[2:]
-        if '=' in line:
-            # TODO: Define custom commands here
-            pass
+        for chunk in line.split(';'):
+            if '=' in chunk:
+                name, value = chunk.split('=', 1)
+            else:
+                name = chunk
+                value = ''
+            # FX SE
+            if name == 'lightFXL':
+                self._set_se['fx_l'] = int(value)
+            elif name == 'lightFXR':
+                self._set_se['fx_r'] = int(value)
+            elif name == 'lightFXLR':
+                self._set_se['fx_l'] = int(value)
+                self._set_se['fx_r'] = int(value)
+            # Curves/easing
+            elif name == 'curveBeginL':
+                self._cur_easing['vol_l'] = EasingType(int(value))
+            elif name == 'curveBeginR':
+                self._cur_easing['vol_r'] = EasingType(int(value))
+            elif name == 'curveBeginLR':
+                print(chunk)
+                value_l, value_r = value.split(',')
+                self._cur_easing['vol_l'] = EasingType(int(value_l))
+                self._cur_easing['vol_r'] = EasingType(int(value_r))
+            elif name == 'curveEndL':
+                self._cur_easing['vol_l'] = EasingType.NO_EASING
+            elif name == 'curveEndR':
+                self._cur_easing['vol_r'] = EasingType.NO_EASING
+            elif name == 'curveEndLR':
+                self._cur_easing['vol_l'] = EasingType.NO_EASING
+                self._cur_easing['vol_r'] = EasingType.NO_EASING
+            else:
+                # Silently ignoring all other metadata
+                pass
 
     def _handle_notechart_notedata(self, line: str, cur_time: TimePoint, subdivision: Fraction) -> None:
         bts, fxs, vols_and_spin = line.split('|')
         vols = vols_and_spin[:2]
         spin = vols_and_spin[2:]
+        # BTs
         for bt, state in zip(INPUT_BT, bts):
             if state == '0' and bt in self._holds:
                 self._bts[bt][self._holds[bt].start] = BTInfo(self._holds[bt].duration)
@@ -449,6 +490,7 @@ class KSHParser:
                 if bt not in self._holds:
                     self._holds[bt] = _HoldInfo(cur_time)
                 self._holds[bt].duration += subdivision
+        # FXs
         for fx, state in zip(INPUT_FX, fxs):
             if state == '0' and fx in self._holds:
                 fx_effect = self._set_fx.get(fx, None)
@@ -457,7 +499,7 @@ class KSHParser:
                 if not fx_effect:
                     fx_index = NO_EFFECT_INDEX
                 else:
-                    fx_index = self._fx_list.index(fx_effect) + 2
+                    fx_index = self._fx_list.index(fx_effect)
                 self._fxs[fx][self._holds[fx].start] = FXInfo(self._holds[fx].duration, fx_index)
                 del self._holds[fx]
             if state == '1':
@@ -473,6 +515,7 @@ class KSHParser:
             # Clean up -- FX SE only affects the FX chip immediately after
             if fx in self._set_se:
                 del self._set_se[fx]
+        # VOLs
         for vol, state in zip(INPUT_VOL, vols):
             # Delete "last vol point" if laser segment ends, else extend duration
             if state == '-' and vol in self._recent_vol:
@@ -497,22 +540,35 @@ class KSHParser:
                     last_vol_info = self._recent_vol[vol]
                     self._vols[vol][last_vol_info.when] = VolInfo(
                         last_vol_info.prev_vol.start, vol_position,
+                        ease_type=last_vol_info.prev_vol.ease_type,
                         filter_index=self._cur_filter,
                         point_type=last_vol_info.prev_vol.point_type,
                         wide_laser=last_vol_info.prev_vol.wide_laser)
                 else:
+                    # Ignoring midpoints while doing easing...
+                    # This is done here to avoid breaking slams
+                    if vol not in self._cur_easing:
+                        continue
                     self._vols[vol][cur_time] = VolInfo(
                         vol_position, vol_position,
+                        ease_type=self._cur_easing[vol],
+                        filter_index=self._cur_filter,
                         point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
                         wide_laser=self._wide_segment[vol])
+                if vol not in self._cur_easing:
+                    continue
                 self._recent_vol[vol] = _LastVolInfo(
                     cur_time,
                     Fraction(0),
                     VolInfo(
                         vol_position, vol_position,
+                        ease_type=self._cur_easing[vol],
+                        filter_index=self._cur_filter,
                         point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
                         wide_laser=self._wide_segment[vol]))
                 self._cont_segment[vol] = True
+                if self._cur_easing[vol] != EasingType.NO_EASING:
+                    del self._cur_easing[vol]
         if spin:
             self._spins[cur_time] = spin
 
@@ -521,7 +577,7 @@ class KSHParser:
         for cur_time, fxl_info in self._fxs['fx_l'].items():
             if cur_time not in self._fxs['fx_r']:
                 continue
-            # Ignore inequal duration
+            # Don't copy if durations aren't equal
             fxr_info = self._fxs['fx_r'][cur_time]
             if fxl_info.duration != fxr_info.duration:
                 continue
@@ -659,15 +715,16 @@ class KSHParser:
         bottom_end_value = self._chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint]
         self._chart_info.spcontroller_data.zoom_bottom[end_point] = bottom_end_value
 
-        # TODO: Convert detected FX list into effect instances
+        # Convert detected FX list into effect instances
         if len(self._fx_list) > 12:
             warnings.warn(f'found more than 12 distinct effects', ParserWarning)
             while len(self._chart_info.effect_list) < len(self._fx_list):
+                index = len(self._chart_info.effect_list)
                 self._chart_info.effect_list.append(effects.EffectEntry())
                 self._chart_info.autotab_list.append(
                     filters.AutoTabEntry(
-                        filters.AutoTabSetting(len(self._fx_list) - 1),
-                        filters.AutoTabSetting(len(self._fx_list) - 1)))
+                        filters.AutoTabSetting(index),
+                        filters.AutoTabSetting(index)))
         for i, fx_entry in enumerate(self._fx_list):
             if ';' in fx_entry:
                 fx_name, *fx_params_str = fx_entry.split(';')
@@ -678,8 +735,7 @@ class KSHParser:
             except ValueError:
                 warnings.warn(f'cannot convert effect parameters "{fx_entry}" to int', ParserWarning)
                 fx_params = []
-            # Hoo boy
-            effect: effects.Effect = effects.NullEffect()
+            effect: effects.Effect
             if fx_name == 'Retrigger':
                 effect = effects.Retrigger()
             elif fx_name == 'Gate':
@@ -705,8 +761,29 @@ class KSHParser:
             else:  # Custom effect -- check definitions
                 effect = self._chart_info._custom_effect[fx_name].duplicate()
             effect.map_params(fx_params)
-            print(i, fx_entry, effect)
             self._chart_info.effect_list[i] = effects.EffectEntry(effect)
+
+        # Write custom filter as FX
+        # TODO: Try matching with existing effects
+        if len(self._fx_list) + len(self._chart_info._custom_filter) > 12:
+            warnings.warn(f'including custom filters cause more than 12 distinct effects', ParserWarning)
+            for name, filter_effect in self._chart_info._custom_filter.items():
+                index = len(self._chart_info.effect_list)
+                self._chart_info.effect_list.append(effects.EffectEntry(filter_effect))
+                self._chart_info.autotab_list.append(
+                    filters.AutoTabEntry(
+                        filters.AutoTabSetting(index),
+                        filters.AutoTabSetting(index)))
+                self._filter_to_effect[name] = index
+
+        # Write track auto tab info
+        filter_timepts = list(self._filter_names.keys())
+        for time_i, time_f in itertools.pairwise(filter_timepts):
+            filter_i = self._filter_names[time_i]
+            if filter_i in FILTER_TYPE_MAP:
+                continue
+            self._chart_info.autotab_infos[time_i] = AutoTabInfo(
+                self._filter_to_effect[filter_i], self._chart_info.get_distance(time_i, time_f))
 
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
@@ -719,12 +796,15 @@ class KSHParser:
             cur_subdiv  = noteline_count * subdivision
             cur_time    = TimePoint(m_no, cur_subdiv.numerator, cur_subdiv.denominator)
 
-            # 1. Metadata
-            if '=' in line:
+            # 1. Comment
+            if line.startswith('//'):
+                try:
+                    self._handle_notechart_custom_commands(line, cur_time)
+                except ValueError as e:
+                    warnings.warn(str(e), ParserWarning)
+            # 2. Metadata
+            elif '=' in line:
                 self._handle_notechart_metadata(line, cur_time, m_no)
-            # 2. Comment
-            elif line.startswith('//'):
-                self._handle_notechart_custom_commands(line, cur_time)
             # 3. Notedata
             else:
                 self._handle_notechart_notedata(line, cur_time, subdivision)
@@ -741,47 +821,23 @@ class KSHParser:
             params_dict: dict[str, str] = {s[0]: s[1] for s in params_list}
             if 'type' not in params_dict:
                 warnings.warn(
-                    f'ignoring custom fx at line {ln_offset + line_no + 1}, "type" parameter missing: "{line}"',
+                    f'ignoring definition at line {ln_offset + line_no + 1}, "type" parameter missing: "{line}"',
                     ParserWarning)
                 continue
             if line_type == 'define_fx':
-                effect_class: type[effects.Effect]
-                if params_dict['type'] in ['Retrigger', 'Echo']:
-                    effect_class = effects.Retrigger
-                    if 'updatePeriod' in params_dict:
-                        value = parse_length(params_dict['updatePeriod'])
-                        if value == 0:
-                            effect_class = effects.RetriggerEx
-                elif params_dict['type'] == 'Gate':
-                    effect_class = effects.Gate
-                elif params_dict['type'] == 'Flanger':
-                    effect_class = effects.Flanger
-                elif params_dict['type'] == 'PitchShift':
-                    effect_class = effects.PitchShift
-                elif params_dict['type'] == 'BitCrusher':
-                    effect_class = effects.Bitcrush
-                elif params_dict['type'] == 'Phaser':
-                    effect_class = effects.Flanger
-                    params_dict['period'] = params_dict.get('period', '1/2')
-                    params_dict['feedback'] = params_dict.get('feedback', '35%')
-                    params_dict['stereo_width'] = params_dict.get('stereoWidth', '0%')
-                    params_dict['hicut_gain'] = params_dict.get('hiCutGain', '8dB')
-                    params_dict['mix'] = params_dict.get('mix', '50%')
-                elif params_dict['type'] == 'Wobble':
-                    effect_class = effects.Wobble
-                elif params_dict['type'] == 'TapeStop':
-                    effect_class = effects.Tapestop
-                elif params_dict['type'] == 'SideChain':
-                    effect_class = effects.Sidechain
-                else:
-                    warnings.warn(f'custom fx at line {ln_offset + line_no + 1} not parsed: "{line}"', ParserWarning)
-                    continue
-                self._chart_info._custom_effect[name] = effect_class.from_dict(params_dict)
+                self._chart_info._custom_effect[name] = effects.from_definition(params_dict)
             elif line_type == 'define_filter':
                 # TODO: This
-                print(f'{name}: {definition}')
+                for key, val in list(params_dict.items()):
+                    if '-' in val:
+                        val_lo, val_hi = val.split('-', 1)
+                        if val_lo and val_hi:
+                            del params_dict[key]
+                # For now I ignore figuring out which parameter changes
+                self._chart_info._custom_filter[name] = effects.from_definition(params_dict)
             else:
-                warnings.warn(f'unrecognized defn at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
+                warnings.warn(
+                    f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
 
     def write_xml(self, f: TextIO):
         f.write(f'  <music id="{self._song_info.id}">\n'
@@ -822,9 +878,10 @@ class KSHParser:
         f.write('    </difficulty>\n'
                 '  </music>\n')
 
-    def write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
-        # TODO: Handle easing
-        for timept, vol in notedata.items():
+    def _write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
+        for timept, vol in sorted(notedata.items()):
+            if not apply_ease and vol.interpolated:
+                continue
             wide_indicator = 2 if vol.wide_laser else 1
             # Not slam
             if vol.start == vol.end:
@@ -866,11 +923,14 @@ class KSHParser:
                      '0\n',
                 ]))
 
-    def write_fx(self, f: TextIO, notedata: dict[TimePoint, FXInfo]):
+    def _write_fx(self, f: TextIO, notedata: dict[TimePoint, FXInfo]):
         for timept, fx in notedata.items():
-            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+            if fx.duration == 0:
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t{fx.special}\n')
+            else:
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t{fx.special + 2}\n')
 
-    def write_bt(self, f: TextIO, notedata: dict[TimePoint, BTInfo]):
+    def _write_bt(self, f: TextIO, notedata: dict[TimePoint, BTInfo]):
         for timept, bt in notedata.items():
             # What even is the last number for in BT holds?
             f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{bt.duration_as_tick()}\t0\n')
@@ -969,7 +1029,7 @@ class KSHParser:
 
         # Note data (TRACK1~8)
         f.write('#TRACK1\n')
-        self.write_vol(f, self._chart_info.note_data.vol_l, apply_ease=True)
+        self._write_vol(f, self._chart_info.note_data.vol_l, apply_ease=True)
         f.write('#END\n')
         f.write('\n')
 
@@ -977,7 +1037,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK2\n')
-        self.write_fx(f, self._chart_info.note_data.fx_l)
+        self._write_fx(f, self._chart_info.note_data.fx_l)
         f.write('#END\n')
         f.write('\n')
 
@@ -985,7 +1045,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK3\n')
-        self.write_bt(f, self._chart_info.note_data.bt_a)
+        self._write_bt(f, self._chart_info.note_data.bt_a)
         f.write('#END\n')
         f.write('\n')
 
@@ -993,7 +1053,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK4\n')
-        self.write_bt(f, self._chart_info.note_data.bt_b)
+        self._write_bt(f, self._chart_info.note_data.bt_b)
         f.write('#END\n')
         f.write('\n')
 
@@ -1001,7 +1061,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK5\n')
-        self.write_bt(f, self._chart_info.note_data.bt_c)
+        self._write_bt(f, self._chart_info.note_data.bt_c)
         f.write('#END\n')
         f.write('\n')
 
@@ -1009,7 +1069,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK6\n')
-        self.write_bt(f, self._chart_info.note_data.bt_d)
+        self._write_bt(f, self._chart_info.note_data.bt_d)
         f.write('#END\n')
         f.write('\n')
 
@@ -1017,7 +1077,7 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK7\n')
-        self.write_fx(f, self._chart_info.note_data.fx_r)
+        self._write_fx(f, self._chart_info.note_data.fx_r)
         f.write('#END\n')
         f.write('\n')
 
@@ -1025,17 +1085,22 @@ class KSHParser:
                 '\n')
 
         f.write('#TRACK8\n')
-        self.write_vol(f, self._chart_info.note_data.vol_r, apply_ease=True)
+        self._write_vol(f, self._chart_info.note_data.vol_r, apply_ease=True)
         f.write('#END\n')
         f.write('\n')
 
         f.write('//====================================\n'
                 '\n')
 
-        # TODO: Track auto tab (FX on lasers activation)
+        # Track auto tab (FX on lasers activation)
         f.write('#TRACK AUTO TAB\n')
         for timept, autotab_info in self._chart_info.autotab_infos.items():
-            pass
+            tick_amt = round(192 * autotab_info.duration)
+            f.write('\t'.join([
+                f'{self._chart_info.timepoint_to_vox(timept)}',
+                f'{autotab_info.which + 2}',
+                f'{tick_amt}\n',
+            ]))
         f.write('#END\n')
         f.write('\n')
 
@@ -1044,12 +1109,12 @@ class KSHParser:
 
         # Original TRACK1/8
         f.write('#TRACK ORIGINAL L\n')
-        self.write_vol(f, self._chart_info.note_data.vol_l, apply_ease=False)
+        self._write_vol(f, self._chart_info.note_data.vol_l, apply_ease=False)
         f.write('#END\n')
         f.write('\n')
 
         f.write('#TRACK ORIGINAL R\n')
-        self.write_vol(f, self._chart_info.note_data.vol_r, apply_ease=False)
+        self._write_vol(f, self._chart_info.note_data.vol_r, apply_ease=False)
         f.write('#END\n')
         f.write('\n')
 
@@ -1080,7 +1145,7 @@ class KSHParser:
                     f'{zt_i.start:.2f}',
                     f'{zt_i.end:.2f}',
                      '0.00',
-                     '0.00\n'
+                     '0.00\n',
                 ]))
             tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
             f.write('\t'.join([
@@ -1091,7 +1156,7 @@ class KSHParser:
                 f'{zt_i.end:.2f}',
                 f'{zt_f.start:.2f}',
                  '0.00',
-                 '0.00\n'
+                 '0.00\n',
             ]))
 
         # Zoom bottom -> CAM_Radi
@@ -1108,7 +1173,7 @@ class KSHParser:
                     f'{zb_i.start:.2f}',
                     f'{zb_i.end:.2f}',
                      '0.00',
-                     '0.00\n'
+                     '0.00\n',
                 ]))
             tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
             f.write('\t'.join([
@@ -1119,7 +1184,7 @@ class KSHParser:
                 f'{zb_i.end:.2f}',
                 f'{zb_f.start:.2f}',
                  '0.00',
-                 '0.00\n'
+                 '0.00\n',
             ]))
 
         # Tilt info
@@ -1137,7 +1202,7 @@ class KSHParser:
                     f'{tilt_i.start:.2f}',
                     f'{tilt_i.end:.2f}',
                     f'{point_flag:.2f}',
-                     '0.00\n'
+                     '0.00\n',
                 ]))
             # Don't add an entry if tilt_i is the tail end of a segment
             if tilt_i.point_type == SegmentFlag.END:
@@ -1154,7 +1219,7 @@ class KSHParser:
                 f'{tilt_i.end:.2f}',
                 f'{tilt_f.start:.2f}',
                 f'{point_flag:.2f}',
-                 '0.00\n'
+                 '0.00\n',
             ]))
 
         # TODO: Lane split
