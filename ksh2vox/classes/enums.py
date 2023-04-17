@@ -102,6 +102,10 @@ class GameBackground(Enum):
     HEXA_DIVER_IMAKIMINI                = 97
     SPECIAL_YOU_ARE_MY_BEST_RIVAL       = 98
 
+    def __str__(self) -> str:
+        name_parts = [s.capitalize() for s in self.name.split('_')]
+        return ' '.join(name_parts) + f' ({self.value})'
+
 
 class InfVer(Enum):
     INFINITE = 2
@@ -110,6 +114,9 @@ class InfVer(Enum):
     VIVID    = 5
     EXCEED   = 6
 
+    def __str__(self) -> str:
+        return f'{self.name.capitalize()} ({self.value})'
+
 
 class DifficultySlot(Enum):
     NOVICE   = 1
@@ -117,6 +124,9 @@ class DifficultySlot(Enum):
     EXHAUST  = 3
     INFINITE = 4
     MAXIMUM  = 5
+
+    def __str__(self) -> str:
+        return f'{self.name.capitalize()} ({self.value})'
 
 
 class SpinType(Enum):
