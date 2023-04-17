@@ -127,7 +127,16 @@ def main() -> None:
             with dpg.collapsing_header(label='Track auto tab info', show=False, default_open=True) as section_filter_info:
                 UI_ELEMENTS['section_filter_info'] = section_filter_info
 
+    with dpg.theme() as theme:
+        with dpg.theme_component(dpg.mvAll):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
+            dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
+
+    dpg.bind_item_theme(primary_window, theme)
     dpg.set_primary_window(primary_window, True)
+
+    dpg.show_style_editor()
 
     dpg.show_viewport()
     dpg.start_dearpygui()
