@@ -96,6 +96,8 @@ class Retrigger(Effect):
         effect = Retrigger()
         if 'updatePeriod' in s:
             effect.update_period = parse_length(s['updatePeriod'])
+        if 'waveLength' in s:
+            effect.wavelength = int(parse_length(s['waveLength']) * effect.update_period / 4)
         if 'rate' in s:
             effect.amount = parse_length(s['rate'])
         if 'mix' in s:
@@ -133,6 +135,8 @@ class Gate(Effect):
         effect = Gate()
         if 'mix' in s:
             effect.mix = parse_length(s['mix']) * 100
+        if 'waveLength' in s:
+            effect.wavelength = int(parse_length(s['waveLength']) * effect.length / 2)
         return effect
 
     def map_params(self, s: Sequence[int]) -> None:
@@ -320,6 +324,8 @@ class Bitcrush(Effect):
     @staticmethod
     def from_dict(s: Mapping[str, str]):
         effect = Bitcrush()
+        if 'reduction' in s and s['reduction'].endswith('samples'):
+            effect.amount = int(s['reduction'][:-7])
         if 'mix' in s:
             effect.mix = parse_length(s['mix']) * 100
         return effect
@@ -354,6 +360,10 @@ class RetriggerEx(Effect):
     def from_dict(s: Mapping[str, str]):
         effect = RetriggerEx()
         effect.update_period = 4.00
+        if 'waveLength' in s:
+            effect.wavelength = int(parse_length(s['waveLength']))
+        if 'feedbackLevel' in s:
+            effect.feedback = parse_length(s['feedbackLevel'])
         if 'rate' in s:
             effect.amount = parse_length(s['rate'])
         if 'mix' in s:
