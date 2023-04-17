@@ -816,8 +816,9 @@ class KSHParser:
                 # TODO: This
                 for key, val in list(params_dict.items()):
                     if '-' in val:
-                        val_lo, val_hi = val.split('-', 1)
-                        if val_lo and val_hi:
+                        dash_count = val.count('-')
+                        # Remove cases where range is specified
+                        if dash_count > 1 or (dash_count == 1 and not val.startswith('-')):
                             del params_dict[key]
                 # For now I ignore figuring out which parameter changes
                 self._chart_info._custom_filter[name] = effects.from_definition(params_dict)
