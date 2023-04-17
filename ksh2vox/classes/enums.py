@@ -88,7 +88,7 @@ class GameBackground(Enum):
     KAC_9TH_666                         = 83
     HEXA_DIVER_VVELCOME                 = 84
     # UNUSED                            = 85
-    VIVIDWAVE_MOON_NIGHT                = 86
+    VIVIDWAVE_BEACH_NIGHT               = 86
     HEXA_DIVER_MAYHEM                   = 87
     EXCEED_GEAR_TOWER_1                 = 88
     APRIL_FOOLS_EXCEED                  = 89
