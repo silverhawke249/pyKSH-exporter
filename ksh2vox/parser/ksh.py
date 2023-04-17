@@ -634,11 +634,12 @@ class KSHParser:
                     continue
                 # Interpolate lasers (no interpolation done if the first point is an endpoint)
                 if vol_i.ease_type != EasingType.NO_EASING:
-                    div_count = int(self._chart_info.get_distance(time_i, time_f) / INTERPOLATION_DISTANCE)
+                    total_span = self._chart_info.get_distance(time_i, time_f)
+                    div_count = int(total_span / INTERPOLATION_DISTANCE)
                     for i in range(1, div_count):
-                        distance = INTERPOLATION_DISTANCE * i
-                        timept = self._chart_info.add_duration(time_i, distance)
-                        position = interpolate(vol_i.ease_type, i, div_count, vol_i.end, vol_f.start)
+                        cur_span = total_span / div_count * i
+                        timept = self._chart_info.add_duration(time_i, cur_span)
+                        position = interpolate(vol_i.ease_type, cur_span, total_span, vol_i.end, vol_f.start)
                         vol_data[timept] = VolInfo(
                             position, position,
                             spin_type=SpinType.NO_SPIN,
