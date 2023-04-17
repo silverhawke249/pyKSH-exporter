@@ -84,33 +84,6 @@ class _LastVolInfo:
     prev_vol: VolInfo
 
 
-# Song metadata in XML:
-# - ID
-# - Title
-# - Title (yomigana)
-# - Artist
-# - Artist (yomigana)
-# - ASCII label
-# - Max BPM
-# - Min BPM
-# - Release date
-# - Volume
-# - In-game background
-# - Genre (FLOOR/TOUHOU/etc)
-# - is_fixed (?)
-# - Version (1-6)
-# - demo_pri (show this in attract screen?)
-# - inf_ver (INF/GRV/HVN/VVD/XCD)
-# We can only derive title/artist/BPM info from KSH, the rest must be user input
-
-# Chart metadata in XML:
-# - Level
-# - Illustrator
-# - Effector
-# - Price (-1)
-# - Limited (3)
-
-
 def convert_laser_pos(s: str) -> Fraction:
     for laser_str in LASER_POSITION:
         if s in laser_str:
@@ -865,7 +838,7 @@ class KSHParser:
                 f'      <bg_no __type="u16">{self._song_info.background.value}</bg_no>\n'
                  '      <genre __type="u8">32</genre>\n'
                  '      <is_fixed __type="u8">1</is_fixed>\n'
-                 '      <version __type="u8">4</version>\n'
+                 '      <version __type="u8">6</version>\n'
                  '      <demo_pri __type="s8">-2</demo_pri>\n'
                 f'      <inf_ver __type="u8">{self._song_info.inf_ver.value}</inf_ver>\n'
                  '    </info>\n'
