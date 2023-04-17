@@ -95,7 +95,7 @@ class Retrigger(Effect):
     def from_dict(s: Mapping[str, str]):
         effect = Retrigger()
         if 'updatePeriod' in s:
-            effect.update_period = parse_length(s['updatePeriod'])
+            effect.update_period = parse_length(s['updatePeriod']) * 4
         if 'waveLength' in s:
             effect.wavelength = int(parse_length(s['waveLength']) * effect.update_period / 4)
         if 'rate' in s:
@@ -117,7 +117,7 @@ class Retrigger(Effect):
                            f'{self.update_period:.2f}',
                            f'{self.feedback:.2f}',
                            f'{self.amount:.2f}',
-                           f'{self.decay}'])
+                           f'{self.decay:.2f}'])
 
 
 @dataclass
@@ -149,7 +149,7 @@ class Gate(Effect):
         return ',\t'.join([f'{self.effect_index.value}',
                            f'{self.mix:.2f}',
                            f'{self.wavelength}',
-                           f'{self.length}'])
+                           f'{self.length:.2f}'])
 
 
 @dataclass
@@ -202,6 +202,7 @@ class Tapestop(Effect):
     def effect_index(self) -> FXType:
         return FXType.TAPESTOP
 
+    # TODO: Test parameters and figure out conversion rate
     @staticmethod
     def from_dict(s: Mapping[str, str]):
         effect = Tapestop()
@@ -385,7 +386,7 @@ class RetriggerEx(Effect):
                            f'{self.update_period:.2f}',
                            f'{self.feedback:.2f}',
                            f'{self.amount:.2f}',
-                           f'{self.decay}'])
+                           f'{self.decay:.2f}'])
 
 
 @dataclass
