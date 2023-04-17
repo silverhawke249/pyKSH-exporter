@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from time import strftime
 
 from .enums import GameBackground, InfVer
 
@@ -18,3 +19,6 @@ class SongInfo:
     music_volume: int = 100
     background: GameBackground = GameBackground.EXCEED_GEAR_TOWER_1
     inf_ver: InfVer = InfVer.INFINITE
+
+    def __post_init__(self):
+        self.release_date = strftime('%Y%m%d')
