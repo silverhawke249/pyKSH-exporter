@@ -667,8 +667,11 @@ class KSHParser:
                     # Ignore filter changes before the start of the chart
                     if time_i == TimePoint(0, 0, 1):
                         continue
+                    # Ignore filter changes after there's no more lasers
+                    if time_i == time_f:
+                        continue
                     # Ignore filter changes between segments
-                    if vol_data[time_i].point_type == SegmentFlag.END:
+                    if vol_data[time_i].point_type in [SegmentFlag.END, SegmentFlag.POINT]:
                         continue
                     part_dist = self._chart_info.get_distance(time_i, timept)
                     total_dist = self._chart_info.get_distance(time_i, time_f)
