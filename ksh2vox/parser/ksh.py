@@ -440,7 +440,6 @@ class KSHParser:
             elif name == 'curveBeginR':
                 self._cur_easing['vol_r'] = EasingType(int(value))
             elif name == 'curveBeginLR':
-                print(chunk)
                 value_l, value_r = value.split(',')
                 self._cur_easing['vol_l'] = EasingType(int(value_l))
                 self._cur_easing['vol_r'] = EasingType(int(value_r))

@@ -129,8 +129,6 @@ def main() -> None:
 
     dpg.set_primary_window(primary_window, True)
 
-    print(UI_ELEMENTS)
-
     dpg.show_viewport()
     dpg.start_dearpygui()
     dpg.destroy_context()
