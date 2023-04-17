@@ -760,16 +760,20 @@ class KSHParser:
 
         # Write custom filter as FX
         # TODO: Try matching with existing effects
+        # FIXME: Do not write all the filters -- only write the ones that are used
         if len(self._fx_list) + len(self._chart_info._custom_filter) > 12:
             warnings.warn(f'including custom filters causes more than 12 distinct effects', ParserWarning)
-            for name, filter_effect in self._chart_info._custom_filter.items():
+            while len(self._chart_info.effect_list) < len(self._fx_list) + len(self._chart_info._custom_filter):
                 index = len(self._chart_info.effect_list)
-                self._chart_info.effect_list.append(effects.EffectEntry(filter_effect))
+                self._chart_info.effect_list.append(effects.EffectEntry())
                 self._chart_info.autotab_list.append(
                     filters.AutoTabEntry(
                         filters.AutoTabSetting(index),
                         filters.AutoTabSetting(index)))
-                self._filter_to_effect[name] = index
+            for i, name in enumerate(self._chart_info._custom_filter):
+                filter_effect = self._chart_info._custom_filter[name]
+                self._chart_info.effect_list[len(self._fx_list) + i] = effects.EffectEntry(filter_effect)
+                self._filter_to_effect[name] = len(self._fx_list) + i
 
         # Write track auto tab info
         filter_timepts = list(self._filter_names.keys())
