@@ -151,3 +151,4 @@ class SegmentFlag(Enum):
     MIDDLE = 0
     START  = 1
     END    = 2
+    POINT  = 4

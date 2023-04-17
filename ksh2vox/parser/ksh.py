@@ -625,7 +625,10 @@ class KSHParser:
                 vol_i, vol_f = vol_data[time_i], vol_data[time_f]
                 # Mark laser points as end of segment
                 if vol_f.point_type == SegmentFlag.START:
-                    vol_i.point_type = SegmentFlag.END
+                    if vol_i.point_type == SegmentFlag.START:
+                        vol_i.point_type = SegmentFlag.POINT
+                    else:
+                        vol_i.point_type = SegmentFlag.END
                     continue
                 # Interpolate lasers (no interpolation done if the first point is an endpoint)
                 if vol_i.ease_type != EasingType.NO_EASING:
@@ -749,7 +752,7 @@ class KSHParser:
         # Write custom filter as FX
         # TODO: Try matching with existing effects
         if len(self._fx_list) + len(self._chart_info._custom_filter) > 12:
-            warnings.warn(f'including custom filters cause more than 12 distinct effects', ParserWarning)
+            warnings.warn(f'including custom filters causes more than 12 distinct effects', ParserWarning)
             for name, filter_effect in self._chart_info._custom_filter.items():
                 index = len(self._chart_info.effect_list)
                 self._chart_info.effect_list.append(effects.EffectEntry(filter_effect))
@@ -881,8 +884,8 @@ class KSHParser:
                 ]))
             # Slam
             else:
-                vol_flag_start = 1 if vol.point_type == SegmentFlag.START else 0
-                vol_flag_end = 2 if vol.point_type == SegmentFlag.END else 0
+                vol_flag_start = 1 if vol.point_type == SegmentFlag.START or vol.point_type == SegmentFlag.POINT else 0
+                vol_flag_end = 2 if vol.point_type == SegmentFlag.END or vol.point_type == SegmentFlag.POINT else 0
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept)}',
                     f'{float(vol.start):.6f}',
