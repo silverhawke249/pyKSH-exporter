@@ -409,7 +409,7 @@ class KSHParser:
                 self._cur_filter = filter_now
                 self._chart_info.active_filter[cur_time] = filter_now
         elif ':' in key:
-            # TODO: Filter settings
+            # TODO: Filter settings... this might get supported in the future
             # > filter:[filter_name]:[parameter]=[value]
             # Technically FX parameters can also be changed here but like no one uses that
             pass
@@ -898,8 +898,8 @@ class KSHParser:
                 ]))
             # Slam
             else:
-                vol_flag_start = 1 if vol.point_type == SegmentFlag.START or vol.point_type == SegmentFlag.POINT else 0
-                vol_flag_end = 2 if vol.point_type == SegmentFlag.END or vol.point_type == SegmentFlag.POINT else 0
+                vol_flag_start = 1 if vol.point_type in [SegmentFlag.START, SegmentFlag.POINT] else 0
+                vol_flag_end = 2 if vol.point_type in [SegmentFlag.END, SegmentFlag.POINT] else 0
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept)}',
                     f'{float(vol.start):.6f}',
