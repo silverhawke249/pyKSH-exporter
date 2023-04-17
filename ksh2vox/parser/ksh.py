@@ -649,7 +649,10 @@ class KSHParser:
                             point_type=SegmentFlag.MIDDLE,
                             wide_laser=vol_i.wide_laser,
                             interpolated=True)
-            vol_data[time_f].point_type == SegmentFlag.END
+            if vol_data[time_f].point_type == SegmentFlag.START:
+                vol_data[time_f].point_type = SegmentFlag.POINT
+            else:
+                vol_data[time_f].point_type = SegmentFlag.END
 
         # Insert laser midpoints where filter type changes
         for vol_data in self._vols.values():
