@@ -1084,8 +1084,8 @@ class KSHParser:
             tick_amt = round(192 * autotab_info.duration)
             f.write('\t'.join([
                 f'{self._chart_info.timepoint_to_vox(timept)}',
-                f'{autotab_info.which + 2}',
-                f'{tick_amt}\n',
+                f'{tick_amt}',
+                f'{autotab_info.which + 2}\n',
             ]))
         f.write('#END\n')
         f.write('\n')
