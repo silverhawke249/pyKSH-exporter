@@ -72,7 +72,7 @@ def main() -> None:
     dpg.setup_dearpygui()
 
     with dpg.font_registry():
-        with dpg.font('NotoSansJP-Regular.ttf', 20) as font:
+        with dpg.font('resources/NotoSansJP-Regular.ttf', 20) as font:
             dpg.add_font_range_hint(dpg.mvFontRangeHint_Default)
             dpg.add_font_range_hint(dpg.mvFontRangeHint_Japanese)
 
