@@ -1,2 +1,5 @@
 # Cached compiled files
 **/__pycache__/
+
+# VSCode settings
+.vscode/
