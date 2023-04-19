@@ -97,7 +97,7 @@ class Retrigger(Effect):
         if 'updatePeriod' in s:
             effect.update_period = parse_length(s['updatePeriod']) * 4
         if 'waveLength' in s:
-            effect.wavelength = int(parse_length(s['waveLength']) * effect.update_period / 4)
+            effect.wavelength = int(effect.update_period / 4 / parse_length(s['waveLength']))
         if 'rate' in s:
             effect.amount = parse_length(s['rate'])
         if 'mix' in s:
@@ -136,7 +136,7 @@ class Gate(Effect):
         if 'mix' in s:
             effect.mix = parse_length(s['mix']) * 100
         if 'waveLength' in s:
-            effect.wavelength = int(parse_length(s['waveLength']) * effect.length / 2)
+            effect.wavelength = int(effect.length / 2 / parse_length(s['waveLength']))
         return effect
 
     def map_params(self, s: Sequence[int]) -> None:
@@ -159,7 +159,7 @@ class Flanger(Effect):
     period: float = 2.00
     feedback: float = 0.50
     stereo_width: int = 90
-    hicut_gain: float = 1.00
+    hicut_gain: float = 2.00
 
     @property
     def effect_index(self) -> FXType:
@@ -207,8 +207,8 @@ class Tapestop(Effect):
     def from_dict(s: Mapping[str, str]):
         effect = Tapestop()
         if 'speed' in s:
-            effect.speed = parse_length(s['speed']) * 0.1
-            effect.rate = effect.rate * 0.2
+            effect.speed = parse_length(s['speed']) * 0.16
+            effect.rate = effect.speed * 0.32
         if 'mix' in s:
             effect.mix = parse_length(s['mix']) * 100
         return effect
@@ -217,8 +217,8 @@ class Tapestop(Effect):
         if len(s) < 1:
             warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
             return
-        self.speed = s[0] * 0.1
-        self.rate = s[0] * 0.02
+        self.speed = s[0] * 0.16
+        self.rate = s[0] * 0.032
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
@@ -362,7 +362,7 @@ class RetriggerEx(Effect):
         effect = RetriggerEx()
         effect.update_period = 4.00
         if 'waveLength' in s:
-            effect.wavelength = int(parse_length(s['waveLength']))
+            effect.wavelength = int(1 / parse_length(s['waveLength']))
         if 'feedbackLevel' in s:
             effect.feedback = parse_length(s['feedbackLevel'])
         if 'rate' in s:
@@ -402,7 +402,7 @@ class PitchShift(Effect):
     def from_dict(s: Mapping[str, str]):
         effect = PitchShift()
         if 'pitch' in s:
-            effect.amount = int(s['pitch'])
+            effect.amount = int(float(s['pitch']))
         if 'mix' in s:
             effect.mix = parse_length(s['mix']) * 100
         return effect
