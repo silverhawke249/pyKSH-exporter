@@ -59,8 +59,8 @@ class GameBackground(Enum):
     KAC_6TH_ILLNESS_LILIN               = 54
     # UNUSED                            = 55
     # UNUSED                            = 56
-    HEAVENLY_HAVEN_TUNNEL_SLOW          = 57
-    HEAVENLY_HAVEN_TUNNEL_FAST          = 58
+    HEAVENLY_HAVEN_PURPLE_TUNNEL_SLOW   = 57
+    HEAVENLY_HAVEN_PURPLE_TUNNEL_FAST   = 58
     HEAVENLY_HAVEN_RAINBOW_SLOW         = 59
     HEAVENLY_HAVEN_RAINBOW_FAST         = 60
     HEAVENLY_HAVEN_SAKURA               = 61
@@ -87,7 +87,7 @@ class GameBackground(Enum):
     HEXA_DIVER                          = 82
     KAC_9TH_666                         = 83
     HEXA_DIVER_VVELCOME                 = 84
-    # UNUSED                            = 85
+    EXCEED_GEAR_TOWER_BETA              = 85
     VIVIDWAVE_BEACH_NIGHT               = 86
     HEXA_DIVER_MAYHEM                   = 87
     EXCEED_GEAR_TOWER_1                 = 88
