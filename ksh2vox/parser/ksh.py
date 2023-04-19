@@ -335,6 +335,7 @@ class KSHParser:
                         point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START)
                 self._tilt_segment = True
             except InvalidOperation:
+                # FIXME: Do not write new tilt mode if previous tilt mode is the same
                 if value == 'normal':
                     self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
                     self._tilt_segment = False
@@ -636,8 +637,10 @@ class KSHParser:
                 if vol_i.ease_type != EasingType.NO_EASING:
                     total_span = self._chart_info.get_distance(time_i, time_f)
                     div_count = int(total_span / INTERPOLATION_DISTANCE)
+                    if div_count * INTERPOLATION_DISTANCE < total_span:
+                        div_count += 1
                     for i in range(1, div_count):
-                        cur_span = total_span / div_count * i
+                        cur_span = INTERPOLATION_DISTANCE * i
                         timept = self._chart_info.add_duration(time_i, cur_span)
                         position = interpolate(vol_i.ease_type, cur_span, total_span, vol_i.end, vol_f.start)
                         vol_data[timept] = VolInfo(
@@ -770,10 +773,10 @@ class KSHParser:
                     filters.AutoTabEntry(
                         filters.AutoTabSetting(index),
                         filters.AutoTabSetting(index)))
-            for i, name in enumerate(self._chart_info._custom_filter):
-                filter_effect = self._chart_info._custom_filter[name]
-                self._chart_info.effect_list[len(self._fx_list) + i] = effects.EffectEntry(filter_effect)
-                self._filter_to_effect[name] = len(self._fx_list) + i
+        for i, name in enumerate(self._chart_info._custom_filter):
+            filter_effect = self._chart_info._custom_filter[name]
+            self._chart_info.effect_list[len(self._fx_list) + i] = effects.EffectEntry(filter_effect)
+            self._filter_to_effect[name] = len(self._fx_list) + i
 
         # Write track auto tab info
         filter_timepts = list(self._filter_names.keys())
