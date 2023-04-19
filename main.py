@@ -3,7 +3,6 @@ import sys
 import dearpygui.dearpygui as dpg
 import dearpygui.demo as demo
 
-from enum import Enum
 from typing import Any
 
 from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
@@ -31,13 +30,6 @@ CHART_INFO_FIELDS = [
     'illustrator',
 ]
 
-
-class AlignmentType(Enum):
-    HORIZONTAL = 0
-    VERTICAL = 1
-    BOTH = 2
-
-
 def dpg_demo():
     dpg.create_context()
     dpg.create_viewport()
@@ -50,44 +42,19 @@ def dpg_demo():
     dpg.destroy_context()
 
 
-# Taken from my1e5/dpg-examples repo
-def auto_align(item, alignment_type: AlignmentType, x_align: float = 0.5, y_align: float = 0.5):
-    def _center_h(_s, _d, data):
-        parent = dpg.get_item_parent(data[0])
-        parent_width = dpg.get_item_width(parent)
-        width = dpg.get_item_width(data[0])
-        new_x = (parent_width // 2 - width // 2) * data[1] * 2
-        dpg.set_item_pos(data[0], [new_x, dpg.get_item_pos(data[0])[1]])
+def resize_window(sender: ObjectID):
+    dpg.set_viewport_width(605)
+    dpg.set_viewport_height(805)
 
-    def _center_v(_s, _d, data):
-        print(data)
-        parent = dpg.get_item_parent(data[0])
-        # while dpg.get_item_info(parent)['type'] != "mvAppItemType::mvWindowAppItem":
-        #     parent = dpg.get_item_parent(parent)
-        parent_height = dpg.get_item_height(parent)
-        height = dpg.get_item_height(data[0])
-        new_y = (parent_height // 2 - height // 2) * data[1] * 2
-        dpg.set_item_pos(data[0], [dpg.get_item_pos(data[0])[0], new_y])
-
-    with dpg.item_handler_registry() as handler:
-        if alignment_type == AlignmentType.HORIZONTAL:
-            # horizontal only alignment
-            dpg.add_item_visible_handler(callback=_center_h, user_data=[item, x_align])
-        elif alignment_type == AlignmentType.VERTICAL:
-            # vertical only alignment
-            dpg.add_item_visible_handler(callback=_center_v, user_data=[item, y_align])
-        elif alignment_type == AlignmentType.BOTH:
-            # both horizontal and vertical alignment
-            dpg.add_item_visible_handler(callback=_center_h, user_data=[item, x_align])
-            dpg.add_item_visible_handler(callback=_center_v, user_data=[item, y_align])
-
-    dpg.bind_item_handler_registry(item, handler)
+    dpg.set_viewport_width(600)
+    dpg.set_viewport_height(800)
 
 
 class KSH2VOXApp():
     ui: dict[str, ObjectID]
     reverse_ui_map: dict[ObjectID, str]
     parser: KSHParser
+    is_dragging_menu: bool = False
 
     def __init__(self):
         self.ui = {}
@@ -109,7 +76,6 @@ class KSH2VOXApp():
             with dpg.group(horizontal=True):
                 dpg.add_button(label='Open file...', width=150, height=40, callback=self.show_file_dialog)
                 self.ui['loaded_file'] = dpg.add_text('[no file loaded]')
-                auto_align(self.ui['loaded_file'], AlignmentType.VERTICAL)
 
             dpg.add_spacer(height=1)
 
@@ -119,11 +85,13 @@ class KSH2VOXApp():
                 dpg.add_table_column(width_stretch=True)
                 dpg.add_table_column(width_fixed=True)
                 dpg.add_table_column(width_fixed=True)
+                dpg.add_table_column(width_fixed=True)
 
                 with dpg.table_row():
                     dpg.add_spacer()
                     dpg.add_button(label='Save XML...', width=150, height=40)
                     dpg.add_button(label='Save VOX...', width=150, height=40)
+                    dpg.add_button(label='Export assets...', width=150, height=40)
 
             dpg.add_spacer(height=1)
 
@@ -195,7 +163,7 @@ class KSH2VOXApp():
                     label='Filter effect mapping', show=False, default_open=True) as section_filter_info:
                     self.ui['section_filter_info'] = section_filter_info
 
-                    self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                    self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
                 with dpg.collapsing_header(
                     label='Track auto tab settings', show=False, default_open=True) as section_autotab_info:
@@ -217,7 +185,13 @@ class KSH2VOXApp():
             dpg.bind_font(font)
 
         with dpg.handler_registry():
+            dpg.add_mouse_click_handler(button=0, callback=self.menu_bar_click)
             dpg.add_mouse_drag_handler(button=0, threshold=0, callback=self.menu_bar_drag)
+
+        with dpg.item_handler_registry() as window_registry:
+            dpg.add_item_visible_handler(callback=resize_window)
+
+        dpg.bind_item_handler_registry(primary_window, window_registry)
 
         dpg.bind_item_theme(primary_window, theme)
         dpg.set_primary_window(primary_window, True)
@@ -235,12 +209,12 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
-    def menu_bar_drag(self, sender: ObjectID, app_data: Any):
-        if not dpg.is_mouse_button_down(0):
-            return
-
+    def menu_bar_click(self):
         menu_bar_height = dpg.get_item_height(self.ui['menu_bar'])
-        if dpg.get_mouse_pos()[1] > menu_bar_height:
+        self.is_dragging_menu = dpg.get_mouse_pos()[1] <= menu_bar_height
+
+    def menu_bar_drag(self, sender: ObjectID, app_data: Any):
+        if not self.is_dragging_menu:
             return
 
         pos_x, pos_y = dpg.get_viewport_pos()
@@ -275,27 +249,37 @@ class KSH2VOXApp():
         for field in CHART_INFO_FIELDS:
             dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
 
+        # Show effect list
         dpg.delete_item(self.ui['effect_table'], children_only=True)
-        dpg.hide_item(self.ui['effect_table'])
 
         dpg.add_table_column(parent=self.ui['effect_table'], width_fixed=True)
         dpg.add_table_column(parent=self.ui['effect_table'], width_stretch=True, init_width_or_weight=0.0)
 
-        for i, effect_name in enumerate(self.parser._fx_list):
+        # Change to actual effect list
+        for i, effect_entry in enumerate(self.parser._chart_info.effect_list):
             with dpg.table_row(parent=self.ui['effect_table']):
-                with dpg.group(horizontal=True):
-                    effect_name = dpg.add_text(effect_name)
-                    auto_align(effect_name, AlignmentType.VERTICAL)
+                dpg.add_text(i + 1)
 
                 with dpg.group():
-                    dpg.add_text(self.parser._chart_info.effect_list[i].effect1)
-                    dpg.add_text(self.parser._chart_info.effect_list[i].effect2)
+                    dpg.add_text(effect_entry.effect1)
+                    dpg.add_text(effect_entry.effect2)
+
+        # Show custom filter mapping
+        dpg.delete_item(self.ui['filter_mapping'], children_only=True)
+
+        dpg.add_table_column(parent=self.ui['filter_mapping'], width_fixed=True)
+        dpg.add_table_column(parent=self.ui['filter_mapping'], width_stretch=True, init_width_or_weight=0.0)
+
+        for filter_name, effect_index in self.parser._filter_to_effect.items():
+            with dpg.table_row(parent=self.ui['filter_mapping']):
+                dpg.add_text(filter_name)
+                dpg.add_text(f'{effect_index} ({self.parser._chart_info.effect_list[effect_index]})')
 
         dpg.show_item(self.ui['save_group'])
         dpg.show_item(self.ui['section_song_info'])
         dpg.show_item(self.ui['section_chart_info'])
         dpg.show_item(self.ui['section_effect_info'])
-        dpg.show_item(self.ui['effect_table'])
+        dpg.show_item(self.ui['section_filter_info'])
 
     def show_file_dialog(self):
         dpg.show_item(self.ui['file_dialog'])
