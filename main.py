@@ -30,6 +30,7 @@ CHART_INFO_FIELDS = [
     'illustrator',
 ]
 
+
 def dpg_demo():
     dpg.create_context()
     dpg.create_viewport()
@@ -40,14 +41,6 @@ def dpg_demo():
     dpg.show_viewport()
     dpg.start_dearpygui()
     dpg.destroy_context()
-
-
-def resize_window(sender: ObjectID):
-    dpg.set_viewport_width(605)
-    dpg.set_viewport_height(805)
-
-    dpg.set_viewport_width(600)
-    dpg.set_viewport_height(800)
 
 
 class KSH2VOXApp():
@@ -61,37 +54,32 @@ class KSH2VOXApp():
         self.reverse_ui_map = {}
 
         dpg.create_context()
-        dpg.create_viewport(title='ksh-vox converter', width=600, height=800, resizable=False, decorated=False)
+        dpg.create_viewport(title='ksh-vox converter', width=600, height=800, resizable=False)
         dpg.setup_dearpygui()
 
         with dpg.window(label='ksh-vox converter') as primary_window:
             self.ui['primary_window'] = primary_window
 
-            with dpg.menu_bar() as menu_bar:
-                self.ui['menu_bar'] = menu_bar
+            with dpg.group() as main_buttons:
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label='Open file...', callback=self.show_file_dialog)
+                    self.ui['loaded_file'] = dpg.add_text('[no file loaded]')
 
-                with dpg.menu(label='File'):
-                    dpg.add_menu_item(label='Close', callback=dpg.stop_dearpygui)
+                dpg.add_spacer(height=1)
 
-            with dpg.group(horizontal=True):
-                dpg.add_button(label='Open file...', width=150, height=40, callback=self.show_file_dialog)
-                self.ui['loaded_file'] = dpg.add_text('[no file loaded]')
+                with dpg.table(header_row=False, show=False) as save_group:
+                    self.ui['save_group'] = save_group
 
-            dpg.add_spacer(height=1)
+                    dpg.add_table_column(width_stretch=True)
+                    dpg.add_table_column(width_fixed=True)
+                    dpg.add_table_column(width_fixed=True)
+                    dpg.add_table_column(width_fixed=True)
 
-            with dpg.table(header_row=False, show=False) as save_group:
-                self.ui['save_group'] = save_group
-
-                dpg.add_table_column(width_stretch=True)
-                dpg.add_table_column(width_fixed=True)
-                dpg.add_table_column(width_fixed=True)
-                dpg.add_table_column(width_fixed=True)
-
-                with dpg.table_row():
-                    dpg.add_spacer()
-                    dpg.add_button(label='Save XML...', width=150, height=40)
-                    dpg.add_button(label='Save VOX...', width=150, height=40)
-                    dpg.add_button(label='Export assets...', width=150, height=40)
+                    with dpg.table_row():
+                        dpg.add_spacer()
+                        dpg.add_button(label='Save XML...')
+                        dpg.add_button(label='Save VOX...')
+                        dpg.add_button(label='Export assets...')
 
             dpg.add_spacer(height=1)
 
@@ -171,12 +159,6 @@ class KSH2VOXApp():
 
                     self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-        with dpg.theme() as theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
-
         with dpg.font_registry():
             with dpg.font('resources/NotoSansJP-Regular.ttf', 20) as font:
                 dpg.add_font_range_hint(dpg.mvFontRangeHint_Default)
@@ -184,14 +166,17 @@ class KSH2VOXApp():
 
             dpg.bind_font(font)
 
-        with dpg.handler_registry():
-            dpg.add_mouse_click_handler(button=0, callback=self.menu_bar_click)
-            dpg.add_mouse_drag_handler(button=0, threshold=0, callback=self.menu_bar_drag)
+        with dpg.theme() as button_theme:
+            with dpg.theme_component(dpg.mvAll):
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 20, 10)
 
-        with dpg.item_handler_registry() as window_registry:
-            dpg.add_item_visible_handler(callback=resize_window)
+        dpg.bind_item_theme(main_buttons, button_theme)
 
-        dpg.bind_item_handler_registry(primary_window, window_registry)
+        with dpg.theme() as theme:
+            with dpg.theme_component(dpg.mvAll):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
 
         dpg.bind_item_theme(primary_window, theme)
         dpg.set_primary_window(primary_window, True)
@@ -211,6 +196,7 @@ class KSH2VOXApp():
 
     def menu_bar_click(self):
         menu_bar_height = dpg.get_item_height(self.ui['menu_bar'])
+        print(menu_bar_height)
         self.is_dragging_menu = dpg.get_mouse_pos()[1] <= menu_bar_height
 
     def menu_bar_drag(self, sender: ObjectID, app_data: Any):
@@ -218,8 +204,12 @@ class KSH2VOXApp():
             return
 
         pos_x, pos_y = dpg.get_viewport_pos()
+        if pos_x == pos_y == 0:
+            return
         _, delta_x, delta_y = app_data
-        dpg.set_viewport_pos([pos_x + delta_x, pos_y + delta_y])
+        pos_x += int(delta_x)
+        pos_y += int(delta_y)
+        dpg.set_viewport_pos([pos_x, pos_y])
 
     def update_and_validate(self, sender: ObjectID, app_data: Any):
         if sender == self.ui['min_bpm']:
@@ -254,15 +244,22 @@ class KSH2VOXApp():
 
         dpg.add_table_column(parent=self.ui['effect_table'], width_fixed=True)
         dpg.add_table_column(parent=self.ui['effect_table'], width_stretch=True, init_width_or_weight=0.0)
+        dpg.add_table_column(parent=self.ui['effect_table'], width_fixed=True)
 
         # Change to actual effect list
         for i, effect_entry in enumerate(self.parser._chart_info.effect_list):
             with dpg.table_row(parent=self.ui['effect_table']):
-                dpg.add_text(i + 1)
+                with dpg.table_cell():
+                    dpg.add_text(i + 1)
+                    dpg.add_button(label='\u00D7')
 
-                with dpg.group():
+                with dpg.table_cell():
                     dpg.add_text(effect_entry.effect1)
                     dpg.add_text(effect_entry.effect2)
+
+                with dpg.table_cell():
+                    dpg.add_button(label='  Edit  ')
+                    dpg.add_button(label='  Edit  ')
 
         # Show custom filter mapping
         dpg.delete_item(self.ui['filter_mapping'], children_only=True)
@@ -273,7 +270,7 @@ class KSH2VOXApp():
         for filter_name, effect_index in self.parser._filter_to_effect.items():
             with dpg.table_row(parent=self.ui['filter_mapping']):
                 dpg.add_text(filter_name)
-                dpg.add_text(f'{effect_index} ({self.parser._chart_info.effect_list[effect_index]})')
+                dpg.add_input_int(default_value=effect_index + 1, min_value=1, min_clamped=True)
 
         dpg.show_item(self.ui['save_group'])
         dpg.show_item(self.ui['section_song_info'])
