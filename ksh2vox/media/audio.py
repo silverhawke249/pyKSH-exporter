@@ -7,16 +7,15 @@ from pathlib import Path
 
 from pydub import AudioSegment
 
+# MS ADPCM code adapted (heh) off FFmpeg's libavcodec/adpcmenc.c
 ADPCM_ADAPTATION_TABLE = [
     230, 230, 230, 230, 307, 409, 512, 614,
     768, 614, 512, 409, 307, 230, 230, 230,
 ]
-ADPCM_ADAPTATION_COEFF = [256, 512, 0, 192, 240, 460, 392]
-ADPCM_ADAPTATION_COEFF = [0, -256, 0, 64, 0, -208, -232]
 
 
 @dataclass
-class MSADPCMEncoder:
+class MSADPCMChannelStatus:
     predictor : int = 0
     step_index: int = 0
     step      : int = 0
@@ -31,96 +30,9 @@ class MSADPCMEncoder:
     coeff2 : int = 0
     idelta : int = 0
 
-    def compress_sample(self, sample: int) -> int:
-        if not -32_768 <= sample <= 32_767:
-            raise ValueError(f'sample out of range (got {sample})')
-
-        predictor = (((self.sample1) * (self.coeff1)) +
-                     ((self.sample2) * (self.coeff2))) / 64
-        nibble = sample - predictor
-        if (nibble >= 0):
-            bias = self.idelta / 2
-        else:
-            bias = -self.idelta / 2
-
-        nibble = (nibble + bias) / self.idelta
-        if nibble < -8:
-            nibble = -8
-        if nibble > 7:
-            nibble = 7
-        nibble = nibble & 0x0F
-
-        predictor += (nibble - (0x10 if nibble & 0x08 else 0)) * self.idelta
-
-        self.sample2 = self.sample1
-        self.sample1 = (-32_768 if predictor < -32_768 else
-                         32_767 if predictor > 32_767 else predictor)
-
-        self.idelta = (ADPCM_ADAPTATION_TABLE[nibble] * self.idelta) >> 8
-        if self.idelta < 16:
-            self.idelta = 16
-
-        return nibble
-
-    def encode_frame():
-        channels = 2
-        samples = (const int16_t *)frame->data[0];
-        samples_p = (const int16_t *const *)frame->extended_data;
-        st = True
-        pkt_size = 256
-
-        dst = b'';
-
-        for i in range(2) {
-            predictor = 0;
-            *dst++ = predictor;
-            c->status[i].coeff1 = ff_adpcm_AdaptCoeff1[predictor];
-            c->status[i].coeff2 = ff_adpcm_AdaptCoeff2[predictor];
-        }
-        for (int i = 0; i < channels; i++) {
-            if (c->status[i].idelta < 16)
-                c->status[i].idelta = 16;
-            bytestream_put_le16(&dst, c->status[i].idelta);
-        }
-        for (int i = 0; i < channels; i++)
-            c->status[i].sample2= *samples++;
-        for (int i = 0; i < channels; i++) {
-            c->status[i].sample1 = *samples++;
-            bytestream_put_le16(&dst, c->status[i].sample1);
-        }
-        for (int i = 0; i < channels; i++)
-            bytestream_put_le16(&dst, c->status[i].sample2);
-
-        if (avctx->trellis > 0) {
-            const int n  = avctx->block_align - 7 * channels;
-            uint8_t *buf = av_malloc(2 * n);
-            if (!buf)
-                return AVERROR(ENOMEM);
-            if (channels == 1) {
-                adpcm_compress_trellis(avctx, samples, buf, &c->status[0], n,
-                                       channels);
-                for (int i = 0; i < n; i += 2)
-                    *dst++ = (buf[i] << 4) | buf[i + 1];
-            } else {
-                adpcm_compress_trellis(avctx, samples,     buf,
-                                       &c->status[0], n, channels);
-                adpcm_compress_trellis(avctx, samples + 1, buf + n,
-                                       &c->status[1], n, channels);
-                for (int i = 0; i < n; i++)
-                    *dst++ = (buf[i] << 4) | buf[n + i];
-            }
-            av_free(buf);
-        } else {
-            for (int i = 7 * channels; i < avctx->block_align; i++) {
-                int nibble;
-                nibble  = adpcm_ms_compress_sample(&c->status[ 0], *samples++) << 4;
-                nibble |= adpcm_ms_compress_sample(&c->status[st], *samples++);
-                *dst++  = nibble;
-            }
-        }
-
 
 class MSADPCMWave:
+    """ Converts a wave object of the correct specs """
     # For fmt chunk
     wFormat         : int = 2
     nChannels       : int = 2
@@ -129,6 +41,7 @@ class MSADPCMWave:
     nBlockAlign     : int = 256
     wBitsPerSample  : int = 4
     wSamplesPerBlock: int = 244
+    # Adaptation coefficients
     wNumCoef        : int = 7
     aCoef           : list[tuple[int, int]] = [
         (256, 0),
@@ -144,20 +57,92 @@ class MSADPCMWave:
     nFrames         : int = 0
 
     # For data chunk
+    cStatus         : list[MSADPCMChannelStatus]
     waveData        : bytes = b''
 
     # Cached serialized data
     _serialized_self: bytes = b''
 
     def __init__(self, wave_in: wave.Wave_read):
-        self.nFrames = wave_in.getnframes()
+        if wave_in.getframerate() != 44100 and wave_in.getnchannels() != 2 and wave_in.getsampwidth() != 2:
+            raise ValueError('Wave file not in the correct spec (must be 44.1kHz 16-bit stereo)')
 
-        available_frames = self.nFrames
+        self.cStatus = [MSADPCMChannelStatus() for _ in range(self.nChannels)]
+
+        available_frames = wave_in.getnframes()
         while available_frames > 0:
-            # TODO: Implement MS ADPCM encoding
-            one_sec = wave_in.readframes(44100)
+            one_block = wave_in.readframes(self.wSamplesPerBlock)
+            samples = [t[0] for t in struct.iter_unpack('<h', one_block)]
+            while len(samples) < 2 * self.wSamplesPerBlock:
+                samples.append(0)
+            self.encode_frame(samples)
 
-            available_frames -= 44100
+            available_frames -= self.wSamplesPerBlock
+            self.nFrames += self.wSamplesPerBlock
+
+    def compress_sample(self, status: MSADPCMChannelStatus, sample: int) -> int:
+        if not -32_768 <= sample <= 32_767:
+            raise ValueError(f'sample out of range (got {sample})')
+
+        predictor = (((status.sample1) * (status.coeff1)) +
+                     ((status.sample2) * (status.coeff2))) // 256
+
+        nibble = sample - predictor
+        if (nibble >= 0):
+            bias = status.idelta // 2
+        else:
+            bias = -status.idelta // 2
+
+        nibble = (nibble + bias) // status.idelta
+        if nibble < -8:
+            nibble = -8
+        if nibble > 7:
+            nibble = 7
+        nibble = nibble & 0x0F
+
+        predictor += (nibble - (0x10 if nibble & 0x08 else 0)) * status.idelta
+
+        status.sample2 = status.sample1
+        status.sample1 = (-32_768 if predictor < -32_768 else
+                           32_767 if predictor > 32_767 else predictor)
+
+        status.idelta = (ADPCM_ADAPTATION_TABLE[nibble] * status.idelta) >> 8
+        if status.idelta < 16:
+            status.idelta = 16
+
+        return nibble
+
+    def encode_frame(self, samples: list[int]):
+        sample_iter = iter(samples)
+        dst = BytesIO()
+
+        for i in range(self.nChannels):
+            predictor = 0
+            dst.write(struct.pack('<B', predictor))
+            self.cStatus[i].coeff1 = self.aCoef[predictor][0]
+            self.cStatus[i].coeff2 = self.aCoef[predictor][1]
+
+        for i in range(self.nChannels):
+            if self.cStatus[i].idelta < 16:
+                self.cStatus[i].idelta = 16
+            dst.write(struct.pack('<h', self.cStatus[i].idelta))
+
+        for i in range(self.nChannels):
+            self.cStatus[i].sample2 = next(sample_iter)
+        for i in range(self.nChannels):
+            self.cStatus[i].sample1 = next(sample_iter)
+            dst.write(struct.pack('<h', self.cStatus[i].sample1))
+
+        for i in range(self.nChannels):
+            dst.write(struct.pack('<h', self.cStatus[i].sample2))
+
+        for i in range(7 * self.nChannels, self.nBlockAlign):
+            nibble = 0
+            nibble = self.compress_sample(self.cStatus[0], next(sample_iter)) << 4
+            nibble |= self.compress_sample(self.cStatus[1], next(sample_iter))
+            dst.write(struct.pack('<B', nibble))
+
+        self.waveData += dst.getvalue()
 
     def serialize(self) -> bytes:
         if not self._serialized_self:
@@ -180,17 +165,17 @@ class MSADPCMWave:
             blob += struct.pack('<H', self.wSamplesPerBlock)
             blob += struct.pack('<H', self.wNumCoef)
             for coef1, coef2 in self.aCoef:
-                blob += struct.pack('<H', coef1)
-                blob += struct.pack('<H', coef2)
+                blob += struct.pack('<h', coef1)
+                blob += struct.pack('<h', coef2)
 
             # fact chunk
             blob += b'fact'
-            blob += struct.pack('<H', 4)
-            blob += struct.pack('<H', self.nFrames)
+            blob += struct.pack('<L', 4)
+            blob += struct.pack('<L', self.nFrames)
 
             # data chunk
             blob += b'data'
-            blob += struct.pack('<H', len(self.waveData))
+            blob += struct.pack('<L', len(self.waveData))
             blob += self.waveData
 
             self._serialized_self = blob
@@ -260,6 +245,7 @@ def prepare_audio(file_path: Path, preview_start: int) -> tuple[wave.Wave_read, 
     audio = AudioSegment.from_file(str(file_path))
     audio = audio.set_frame_rate(44100)
     audio = audio.set_channels(2)
+    audio = audio.set_sample_width(2)
 
     # 10s preview sample
     preview = audio[preview_start:preview_start + 10_000]
