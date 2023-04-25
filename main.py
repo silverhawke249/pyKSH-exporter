@@ -3,6 +3,7 @@ import sys
 import dearpygui.dearpygui as dpg
 import dearpygui.demo as demo
 
+from tkinter import filedialog
 from typing import Any
 
 from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
@@ -63,7 +64,7 @@ class KSH2VOXApp():
 
             with dpg.group() as main_buttons:
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label='Open file...', callback=self.show_file_dialog)
+                    dpg.add_button(label='Open file...', callback=self.load_file)
                     self.ui['loaded_file'] = dpg.add_text('[no file loaded]')
 
                 dpg.add_spacer(height=1)
@@ -84,13 +85,6 @@ class KSH2VOXApp():
                             dpg.add_button(label='Export jackets...', callback=self.export_jacket)
 
             dpg.add_spacer(height=1)
-
-            with dpg.file_dialog(
-                width=500, height=400, show=False, callback=self.load_file, modal=True
-            ) as open_dialog:
-                self.ui['file_dialog'] = open_dialog
-
-                dpg.add_file_extension('.ksh')
 
             with dpg.file_dialog(
                 width=500, height=400, show=False, callback=self.save_file, modal=True, directory_selector=True
@@ -218,8 +212,13 @@ class KSH2VOXApp():
         elif obj_name in CHART_INFO_FIELDS:
             setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
 
-    def load_file(self, sender: ObjectID, app_data: Any):
-        file_path = app_data['file_path_name']
+    def load_file(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=(
+                ('K-Shoot Mania charts', '*.ksh'),
+                ('All files', '*.*'),
+            )
+        )
         # TODO: check for existence before continuing
 
         dpg.set_value(self.ui['loaded_file'], file_path)
@@ -232,7 +231,7 @@ class KSH2VOXApp():
         for field in CHART_INFO_FIELDS:
             dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
 
-        dpg.configure_item(self.ui['file_dialog'], default_path=str(self.parser._ksh_path.parent))
+        # dpg.configure_item(self.ui['file_dialog'], default_path=str(self.parser._ksh_path.parent))
         dpg.configure_item(self.ui['directory_dialog'], default_path=str(self.parser._ksh_path.parent))
 
         dpg.show_item(self.ui['save_group'])
@@ -241,9 +240,6 @@ class KSH2VOXApp():
         dpg.show_item(self.ui['section_effect_info'])
         dpg.show_item(self.ui['section_filter_info'])
         dpg.show_item(self.ui['section_autotab_info'])
-
-    def show_file_dialog(self):
-        dpg.show_item(self.ui['file_dialog'])
 
     def save_file(self, sender: ObjectID, app_data: Any):
         path = app_data['file_path_name']
