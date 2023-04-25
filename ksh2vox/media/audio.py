@@ -7,6 +7,118 @@ from pathlib import Path
 
 from pydub import AudioSegment
 
+ADPCM_ADAPTATION_TABLE = [
+    230, 230, 230, 230, 307, 409, 512, 614,
+    768, 614, 512, 409, 307, 230, 230, 230,
+]
+ADPCM_ADAPTATION_COEFF = [256, 512, 0, 192, 240, 460, 392]
+ADPCM_ADAPTATION_COEFF = [0, -256, 0, 64, 0, -208, -232]
+
+
+@dataclass
+class MSADPCMEncoder:
+    predictor : int = 0
+    step_index: int = 0
+    step      : int = 0
+
+    # for encoding
+    prev_sample: int = 0
+
+    # MS version
+    sample1: int = 0
+    sample2: int = 0
+    coeff1 : int = 0
+    coeff2 : int = 0
+    idelta : int = 0
+
+    def compress_sample(self, sample: int) -> int:
+        if not -32_768 <= sample <= 32_767:
+            raise ValueError(f'sample out of range (got {sample})')
+
+        predictor = (((self.sample1) * (self.coeff1)) +
+                     ((self.sample2) * (self.coeff2))) / 64
+        nibble = sample - predictor
+        if (nibble >= 0):
+            bias = self.idelta / 2
+        else:
+            bias = -self.idelta / 2
+
+        nibble = (nibble + bias) / self.idelta
+        if nibble < -8:
+            nibble = -8
+        if nibble > 7:
+            nibble = 7
+        nibble = nibble & 0x0F
+
+        predictor += (nibble - (0x10 if nibble & 0x08 else 0)) * self.idelta
+
+        self.sample2 = self.sample1
+        self.sample1 = (-32_768 if predictor < -32_768 else
+                         32_767 if predictor > 32_767 else predictor)
+
+        self.idelta = (ADPCM_ADAPTATION_TABLE[nibble] * self.idelta) >> 8
+        if self.idelta < 16:
+            self.idelta = 16
+
+        return nibble
+
+    def encode_frame():
+        channels = 2
+        samples = (const int16_t *)frame->data[0];
+        samples_p = (const int16_t *const *)frame->extended_data;
+        st = True
+        pkt_size = 256
+
+        dst = b'';
+
+        for i in range(2) {
+            predictor = 0;
+            *dst++ = predictor;
+            c->status[i].coeff1 = ff_adpcm_AdaptCoeff1[predictor];
+            c->status[i].coeff2 = ff_adpcm_AdaptCoeff2[predictor];
+        }
+        for (int i = 0; i < channels; i++) {
+            if (c->status[i].idelta < 16)
+                c->status[i].idelta = 16;
+            bytestream_put_le16(&dst, c->status[i].idelta);
+        }
+        for (int i = 0; i < channels; i++)
+            c->status[i].sample2= *samples++;
+        for (int i = 0; i < channels; i++) {
+            c->status[i].sample1 = *samples++;
+            bytestream_put_le16(&dst, c->status[i].sample1);
+        }
+        for (int i = 0; i < channels; i++)
+            bytestream_put_le16(&dst, c->status[i].sample2);
+
+        if (avctx->trellis > 0) {
+            const int n  = avctx->block_align - 7 * channels;
+            uint8_t *buf = av_malloc(2 * n);
+            if (!buf)
+                return AVERROR(ENOMEM);
+            if (channels == 1) {
+                adpcm_compress_trellis(avctx, samples, buf, &c->status[0], n,
+                                       channels);
+                for (int i = 0; i < n; i += 2)
+                    *dst++ = (buf[i] << 4) | buf[i + 1];
+            } else {
+                adpcm_compress_trellis(avctx, samples,     buf,
+                                       &c->status[0], n, channels);
+                adpcm_compress_trellis(avctx, samples + 1, buf + n,
+                                       &c->status[1], n, channels);
+                for (int i = 0; i < n; i++)
+                    *dst++ = (buf[i] << 4) | buf[n + i];
+            }
+            av_free(buf);
+        } else {
+            for (int i = 7 * channels; i < avctx->block_align; i++) {
+                int nibble;
+                nibble  = adpcm_ms_compress_sample(&c->status[ 0], *samples++) << 4;
+                nibble |= adpcm_ms_compress_sample(&c->status[st], *samples++);
+                *dst++  = nibble;
+            }
+        }
+
 
 class MSADPCMWave:
     # For fmt chunk
