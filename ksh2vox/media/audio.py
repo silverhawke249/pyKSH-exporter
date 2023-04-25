@@ -32,7 +32,7 @@ class MSADPCMChannelStatus:
 
 
 class MSADPCMWave:
-    """ Converts a wave object of the correct specs """
+    """ Converts a wave object of the correct specs to Microsoft ADPCM WAV. """
     # For fmt chunk
     wFormat         : int = 2
     nChannels       : int = 2
@@ -58,7 +58,7 @@ class MSADPCMWave:
 
     # For data chunk
     cStatus         : list[MSADPCMChannelStatus]
-    waveData        : bytes = b''
+    waveData        : BytesIO
 
     # Cached serialized data
     _serialized_self: bytes = b''
@@ -68,6 +68,7 @@ class MSADPCMWave:
             raise ValueError('Wave file not in the correct spec (must be 44.1kHz 16-bit stereo)')
 
         self.cStatus = [MSADPCMChannelStatus() for _ in range(self.nChannels)]
+        self.waveData = BytesIO()
 
         available_frames = wave_in.getnframes()
         while available_frames > 0:
@@ -114,96 +115,98 @@ class MSADPCMWave:
 
     def encode_frame(self, samples: list[int]):
         sample_iter = iter(samples)
-        dst = BytesIO()
 
         for i in range(self.nChannels):
             predictor = 0
-            dst.write(struct.pack('<B', predictor))
+            self.waveData.write(struct.pack('<B', predictor))
             self.cStatus[i].coeff1 = self.aCoef[predictor][0]
             self.cStatus[i].coeff2 = self.aCoef[predictor][1]
 
         for i in range(self.nChannels):
             if self.cStatus[i].idelta < 16:
                 self.cStatus[i].idelta = 16
-            dst.write(struct.pack('<h', self.cStatus[i].idelta))
+            self.waveData.write(struct.pack('<h', self.cStatus[i].idelta))
 
         for i in range(self.nChannels):
             self.cStatus[i].sample2 = next(sample_iter)
         for i in range(self.nChannels):
             self.cStatus[i].sample1 = next(sample_iter)
-            dst.write(struct.pack('<h', self.cStatus[i].sample1))
+            self.waveData.write(struct.pack('<h', self.cStatus[i].sample1))
 
         for i in range(self.nChannels):
-            dst.write(struct.pack('<h', self.cStatus[i].sample2))
+            self.waveData.write(struct.pack('<h', self.cStatus[i].sample2))
 
         for i in range(7 * self.nChannels, self.nBlockAlign):
             nibble = 0
             nibble = self.compress_sample(self.cStatus[0], next(sample_iter)) << 4
             nibble |= self.compress_sample(self.cStatus[1], next(sample_iter))
-            dst.write(struct.pack('<B', nibble))
-
-        self.waveData += dst.getvalue()
+            self.waveData.write(struct.pack('<B', nibble))
 
     def serialize(self) -> bytes:
         if not self._serialized_self:
-            # RIFF container
-            blob: bytes = b'RIFF'
-            blob += struct.pack('<L', 82 + len(self.waveData))
+            blob = BytesIO()
 
-            blob += b'WAVE'
+            # RIFF container
+            blob.write(b'RIFF')
+            blob.write(struct.pack('<L', 82 + len(self.waveData.getbuffer())))
+
+            # WAVE format
+            blob.write(b'WAVE')
 
             # fmt chunk
-            blob += b'fmt '
-            blob += struct.pack('<L', 50)
-            blob += struct.pack('<H', self.wFormat)
-            blob += struct.pack('<H', self.nChannels)
-            blob += struct.pack('<L', self.nSamplesPerSec)
-            blob += struct.pack('<L', self.nAvgBytesPerSec)
-            blob += struct.pack('<H', self.nBlockAlign)
-            blob += struct.pack('<H', self.wBitsPerSample)
-            blob += struct.pack('<H', 32)
-            blob += struct.pack('<H', self.wSamplesPerBlock)
-            blob += struct.pack('<H', self.wNumCoef)
+            blob.write(b'fmt ')
+            blob.write(struct.pack('<L', 50))
+            blob.write(struct.pack('<H', self.wFormat))
+            blob.write(struct.pack('<H', self.nChannels))
+            blob.write(struct.pack('<L', self.nSamplesPerSec))
+            blob.write(struct.pack('<L', self.nAvgBytesPerSec))
+            blob.write(struct.pack('<H', self.nBlockAlign))
+            blob.write(struct.pack('<H', self.wBitsPerSample))
+            blob.write(struct.pack('<H', 32))
+            blob.write(struct.pack('<H', self.wSamplesPerBlock))
+            blob.write(struct.pack('<H', self.wNumCoef))
             for coef1, coef2 in self.aCoef:
-                blob += struct.pack('<h', coef1)
-                blob += struct.pack('<h', coef2)
+                blob.write(struct.pack('<h', coef1))
+                blob.write(struct.pack('<h', coef2))
 
             # fact chunk
-            blob += b'fact'
-            blob += struct.pack('<L', 4)
-            blob += struct.pack('<L', self.nFrames)
+            blob.write(b'fact')
+            blob.write(struct.pack('<L', 4))
+            blob.write(struct.pack('<L', self.nFrames))
 
             # data chunk
-            blob += b'data'
-            blob += struct.pack('<L', len(self.waveData))
-            blob += self.waveData
+            blob.write(b'data')
+            blob.write(struct.pack('<L', len(self.waveData.getbuffer())))
+            blob.write(self.waveData.getvalue())
 
-            self._serialized_self = blob
+            self._serialized_self = blob.getvalue()
 
         return self._serialized_self
 
 
 @dataclass
 class Blob2DX:
-    wav: bytes
+    wave_obj: MSADPCMWave
     _serialized_self: bytes = field(default=b'', init=False)
 
     def __init__(self, wave_obj: MSADPCMWave):
-        self.wav = wave_obj.serialize()
+        self.wave_obj = wave_obj
 
     def serialize(self) -> bytes:
         if not self._serialized_self:
-            blob: bytes = b'2DX9'
-            blob += struct.pack('<L', 24)
-            blob += struct.pack('<L', len(self.wav))
-            blob += b'\x31\x32'
-            blob += struct.pack('<h', -1)
-            blob += struct.pack('<h', 64)
-            blob += struct.pack('<h', 1)
-            blob += struct.pack('<l', 0)
-            blob += self.wav
+            blob = BytesIO()
 
-            self._serialized_self = blob
+            blob.write(b'2DX9')
+            blob.write(struct.pack('<L', 24))
+            blob.write(struct.pack('<L', len(self.wave_obj.serialize())))
+            blob.write(b'\x31\x32')
+            blob.write(struct.pack('<h', -1))
+            blob.write(struct.pack('<h', 64))
+            blob.write(struct.pack('<h', 1))
+            blob.write(struct.pack('<l', 0))
+            blob.write(self.wave_obj.serialize())
+
+            self._serialized_self = blob.getvalue()
 
         return self._serialized_self
 
