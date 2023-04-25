@@ -64,9 +64,9 @@ class GameBackground(Enum):
     HEAVENLY_HAVEN_RAINBOW_SLOW         = 59
     HEAVENLY_HAVEN_RAINBOW_FAST         = 60
     HEAVENLY_HAVEN_SAKURA               = 61
-    # UNUSED                            = 62
+    HEAVENLY_HAVEN_CITY                 = 62
     HEAVENLY_HAVEN_POP                  = 63
-    # UNUSED                            = 64
+    HEAVENLY_HAVEN_ECLIPSE              = 64
     OMEGA_DIMENSION_PHASE_1             = 65
     OMEGA_DIMENSION_WHITEOUT            = 66
     OMEGA_DIMENSION_FIN4LE              = 67
