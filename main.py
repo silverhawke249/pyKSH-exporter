@@ -72,14 +72,15 @@ class KSH2VOXApp():
 
                     dpg.add_table_column(width_stretch=True)
                     dpg.add_table_column(width_fixed=True)
-                    dpg.add_table_column(width_fixed=True)
-                    dpg.add_table_column(width_fixed=True)
 
                     with dpg.table_row():
                         dpg.add_spacer()
-                        dpg.add_button(label='Save XML...')
-                        dpg.add_button(label='Save VOX...')
-                        dpg.add_button(label='Export assets...')
+
+                        with dpg.group(horizontal=True):
+                            dpg.add_button(label='Save VOX...')
+                            dpg.add_button(label='Save XML...')
+                            dpg.add_button(label='Export 2DX...')
+                            dpg.add_button(label='Export jackets...')
 
             dpg.add_spacer(height=1)
 
