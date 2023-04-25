@@ -48,6 +48,7 @@ class KSH2VOXApp():
     reverse_ui_map: dict[ObjectID, str]
     parser: KSHParser
     is_dragging_menu: bool = False
+    save_type: str
 
     def __init__(self):
         self.ui = {}
@@ -77,10 +78,10 @@ class KSH2VOXApp():
                         dpg.add_spacer()
 
                         with dpg.group(horizontal=True):
-                            dpg.add_button(label='Save VOX...')
-                            dpg.add_button(label='Save XML...')
-                            dpg.add_button(label='Export 2DX...')
-                            dpg.add_button(label='Export jackets...')
+                            dpg.add_button(label='Save VOX...', callback=self.export_vox)
+                            dpg.add_button(label='Save XML...', callback=self.export_xml)
+                            dpg.add_button(label='Export 2DX...', callback=self.export_2dx)
+                            dpg.add_button(label='Export jackets...', callback=self.export_jacket)
 
             dpg.add_spacer(height=1)
 
@@ -90,6 +91,11 @@ class KSH2VOXApp():
                 self.ui['file_dialog'] = open_dialog
 
                 dpg.add_file_extension('.ksh')
+
+            with dpg.file_dialog(
+                width=500, height=400, show=False, callback=self.save_file, modal=True, directory_selector=True
+            ) as directory_dialog:
+                self.ui['directory_dialog'] = directory_dialog
 
             with dpg.group() as info_group:
                 self.ui['info_group'] = info_group
@@ -143,22 +149,25 @@ class KSH2VOXApp():
                         label='Illustrator', callback=self.update_and_validate)
 
                 with dpg.collapsing_header(
-                    label='Effect settings', show=False, default_open=True) as section_effect_info:
+                    label='Effect settings', show=False) as section_effect_info:
                     self.ui['section_effect_info'] = section_effect_info
 
-                    self.ui['effect_table'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                    dpg.add_text('Coming soon!')
+                    # self.ui['effect_table'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
                 with dpg.collapsing_header(
-                    label='Filter effect mapping', show=False, default_open=True) as section_filter_info:
+                    label='Filter effect mapping', show=False) as section_filter_info:
                     self.ui['section_filter_info'] = section_filter_info
 
-                    self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                    dpg.add_text('Coming soon!')
+                    # self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
                 with dpg.collapsing_header(
-                    label='Track auto tab settings', show=False, default_open=True) as section_autotab_info:
+                    label='Track auto tab settings', show=False) as section_autotab_info:
                     self.ui['section_autotab_info'] = section_autotab_info
 
-                    self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                    dpg.add_text('Coming soon!')
+                    # self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
         with dpg.font_registry():
             with dpg.font('resources/NotoSansJP-Regular.ttf', 20) as font:
@@ -195,23 +204,6 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
-    def menu_bar_click(self):
-        menu_bar_height = dpg.get_item_height(self.ui['menu_bar'])
-        print(menu_bar_height)
-        self.is_dragging_menu = dpg.get_mouse_pos()[1] <= menu_bar_height
-
-    def menu_bar_drag(self, sender: ObjectID, app_data: Any):
-        if not self.is_dragging_menu:
-            return
-
-        pos_x, pos_y = dpg.get_viewport_pos()
-        if pos_x == pos_y == 0:
-            return
-        _, delta_x, delta_y = app_data
-        pos_x += int(delta_x)
-        pos_y += int(delta_y)
-        dpg.set_viewport_pos([pos_x, pos_y])
-
     def update_and_validate(self, sender: ObjectID, app_data: Any):
         if sender == self.ui['min_bpm']:
             if app_data > (value := dpg.get_value(self.ui['max_bpm'])):
@@ -226,10 +218,10 @@ class KSH2VOXApp():
         elif obj_name in CHART_INFO_FIELDS:
             setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
 
-        print(self.parser._song_info)
-
     def load_file(self, sender: ObjectID, app_data: Any):
         file_path = app_data['file_path_name']
+        # TODO: check for existence before continuing
+
         dpg.set_value(self.ui['loaded_file'], file_path)
 
         with open(file_path, 'r', encoding='utf-8-sig') as f:
@@ -240,47 +232,39 @@ class KSH2VOXApp():
         for field in CHART_INFO_FIELDS:
             dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
 
-        # Show effect list
-        dpg.delete_item(self.ui['effect_table'], children_only=True)
-
-        dpg.add_table_column(parent=self.ui['effect_table'], width_fixed=True)
-        dpg.add_table_column(parent=self.ui['effect_table'], width_stretch=True, init_width_or_weight=0.0)
-        dpg.add_table_column(parent=self.ui['effect_table'], width_fixed=True)
-
-        # Change to actual effect list
-        for i, effect_entry in enumerate(self.parser._chart_info.effect_list):
-            with dpg.table_row(parent=self.ui['effect_table']):
-                with dpg.table_cell():
-                    dpg.add_text(i + 1)
-                    dpg.add_button(label='\u00D7')
-
-                with dpg.table_cell():
-                    dpg.add_text(effect_entry.effect1)
-                    dpg.add_text(effect_entry.effect2)
-
-                with dpg.table_cell():
-                    dpg.add_button(label='  Edit  ')
-                    dpg.add_button(label='  Edit  ')
-
-        # Show custom filter mapping
-        dpg.delete_item(self.ui['filter_mapping'], children_only=True)
-
-        dpg.add_table_column(parent=self.ui['filter_mapping'], width_fixed=True)
-        dpg.add_table_column(parent=self.ui['filter_mapping'], width_stretch=True, init_width_or_weight=0.0)
-
-        for filter_name, effect_index in self.parser._filter_to_effect.items():
-            with dpg.table_row(parent=self.ui['filter_mapping']):
-                dpg.add_text(filter_name)
-                dpg.add_input_int(default_value=effect_index + 1, min_value=1, min_clamped=True)
+        dpg.configure_item(self.ui['file_dialog'], default_path=str(self.parser._ksh_path.parent))
+        dpg.configure_item(self.ui['directory_dialog'], default_path=str(self.parser._ksh_path.parent))
 
         dpg.show_item(self.ui['save_group'])
         dpg.show_item(self.ui['section_song_info'])
         dpg.show_item(self.ui['section_chart_info'])
         dpg.show_item(self.ui['section_effect_info'])
         dpg.show_item(self.ui['section_filter_info'])
+        dpg.show_item(self.ui['section_autotab_info'])
 
     def show_file_dialog(self):
         dpg.show_item(self.ui['file_dialog'])
+
+    def save_file(self, sender: ObjectID, app_data: Any):
+        path = app_data['file_path_name']
+
+        print(path)
+
+    def export_vox(self):
+        self.save_type = 'vox'
+        dpg.show_item(self.ui['directory_dialog'])
+
+    def export_xml(self):
+        self.save_type = 'xml'
+        dpg.show_item(self.ui['directory_dialog'])
+
+    def export_2dx(self):
+        self.save_type = '2dx'
+        dpg.show_item(self.ui['directory_dialog'])
+
+    def export_jacket(self):
+        self.save_type = 'png'
+        dpg.show_item(self.ui['directory_dialog'])
 
 
 if __name__ == '__main__':
