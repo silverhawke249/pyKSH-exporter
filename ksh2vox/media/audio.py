@@ -68,18 +68,22 @@ class MSADPCMWave:
         if wave_in.getframerate() != 44100 and wave_in.getnchannels() != 2 and wave_in.getsampwidth() != 2:
             raise ValueError('Wave file not in the correct spec (must be 44.1kHz 16-bit stereo)')
 
+        self.nFrames = wave_in.getnframes()
         self.cStatus = [MSADPCMChannelStatus() for _ in range(self.nChannels)]
         self.waveData = BytesIO()
 
-        available_frames = wave_in.getnframes()
+        available_frames = self.nFrames
         while available_frames > 0:
             one_block = wave_in.readframes(self.wSamplesPerBlock)
-            if len(one_block) < (bytes_per_block := self.wSamplesPerBlock * self.nChannels * wave_in.getsampwidth()):
-                one_block += b'\x00' * (bytes_per_block - len(one_block))
+            frames_read = len(one_block) // self.nChannels // wave_in.getsampwidth()
+            # Align to a full block
+            if frames_read < self.wSamplesPerBlock:
+                one_block += b'\x00' * ((self.wSamplesPerBlock - frames_read) * self.nChannels * wave_in.getsampwidth())
             self.encode_frame(t[0] for t in struct.iter_unpack('<h', one_block))
 
-            available_frames -= self.wSamplesPerBlock
-            self.nFrames += self.wSamplesPerBlock
+            available_frames -= frames_read
+
+        wave_in.close()
 
     def compress_sample(self, status: MSADPCMChannelStatus, sample: int) -> int:
         if not -32_768 <= sample <= 32_767:
