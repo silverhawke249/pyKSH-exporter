@@ -1,4 +1,6 @@
 import sys
+import time
+import warnings
 
 import dearpygui.dearpygui as dpg
 import dearpygui.demo as demo
@@ -54,6 +56,9 @@ class KSH2VOXApp():
     def __init__(self):
         self.ui = {}
         self.reverse_ui_map = {}
+
+        warnings.simplefilter('always')
+        warnings.showwarning = self.log_warning
 
         dpg.create_context()
         dpg.create_viewport(title='ksh-vox converter', width=600, height=800, resizable=False)
@@ -189,6 +194,17 @@ class KSH2VOXApp():
         dpg.start_dearpygui()
 
         dpg.destroy_context()
+
+    def log_warning(self, message, category, filename, lineno, file=None, line=None):
+        self.log(f'Warning: {message}')
+
+    def log(self, message):
+        dpg.add_text(
+            f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}',
+            parent=self.ui['log'])
+
+        y_max = dpg.get_y_scroll_max(self.ui['log'])
+        dpg.set_y_scroll(self.ui['log'], y_max)
 
     def get_obj_name(self, uuid: ObjectID):
         if uuid not in self.reverse_ui_map:
