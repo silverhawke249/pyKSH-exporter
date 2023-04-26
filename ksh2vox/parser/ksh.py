@@ -207,7 +207,9 @@ class KSHParser:
                 self._chart_info.timesigs[TimePoint(1, 0, 1)] = TimeSignature(upper, lower)
                 self._cur_timesig = TimeSignature(upper, lower)
             elif key == 'm':
-                self._chart_info.music_path = value
+                self._chart_info.music_path, *music_path_ex = value.split(';')
+                if music_path_ex:
+                    warnings.warn('multiple song files are not supported yet')
             elif key == 'mvol':
                 self._song_info.music_volume = int(value)
             elif key == 'o':
