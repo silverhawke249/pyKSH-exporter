@@ -10,6 +10,8 @@ from tkinter import filedialog
 from typing import Any
 
 from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
+from ksh2vox.media.audio import get_2dxs
+from ksh2vox.media.images import get_jacket_images
 from ksh2vox.parser.ksh import KSHParser
 
 ObjectID = int | str
@@ -280,13 +282,6 @@ class KSH2VOXApp():
         self.popup_result = user_data
         dpg.hide_item(self.ui['popup_window'])
 
-    def change_button_state(self, /, is_enabled: bool):
-        dpg.configure_item(self.ui['open_button'], enabled=is_enabled)
-        dpg.configure_item(self.ui['vox_button'], enabled=is_enabled)
-        dpg.configure_item(self.ui['xml_button'], enabled=is_enabled)
-        dpg.configure_item(self.ui['2dx_button'], enabled=is_enabled)
-        dpg.configure_item(self.ui['jackets_button'], enabled=is_enabled)
-
     def update_and_validate(self, sender: ObjectID, app_data: Any):
         if sender == self.ui['min_bpm']:
             if app_data > (value := dpg.get_value(self.ui['max_bpm'])):
@@ -301,72 +296,213 @@ class KSH2VOXApp():
         elif obj_name in CHART_INFO_FIELDS:
             setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
 
-    def load_file(self):
-        self.change_button_state(is_enabled=False)
-
-        file_path = filedialog.askopenfilename(
-            filetypes=(
-                ('K-Shoot Mania charts', '*.ksh'),
-                ('All files', '*.*'),
-            ),
-            initialdir=self.current_path
-        )
-        if not file_path:
-            self.change_button_state(is_enabled=True)
-            return
-
-        dpg.set_value(self.ui['loaded_file'], file_path)
-        self.log(f'Reading "{file_path}"')
-
-        with open(file_path, 'r', encoding='utf-8-sig') as f:
-            self.parser = KSHParser(f)
-
-        self.current_path = self.parser._ksh_path.parent
-        self.log(f'Chart loaded: {self.parser._song_info.title} / {self.parser._song_info.artist} '
-                 f'({SLOT_MAPPING[self.parser._chart_info.difficulty]} {self.parser._chart_info.level})')
-
-        for field in SONG_INFO_FIELDS:
-            dpg.set_value(self.ui[field], getattr(self.parser._song_info, field))
-        for field in CHART_INFO_FIELDS:
-            dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
-
-        self.change_button_state(is_enabled=True)
-
-    def save_file(self, sender: ObjectID, app_data: Any):
-        path = app_data['file_path_name']
-
-        print(path)
-
-    def get_dir_path(self) -> Path | None:
-        file_path = filedialog.askdirectory(
-            initialdir=self.current_path,
-            mustexist=True,
-        )
-        if not file_path:
-            return None
-
-        self.current_path = Path(file_path)
-        return self.current_path
-
-    def export_vox(self):
-        self.change_button_state(is_enabled=False)
-
-        file_path = self.get_dir_path()
-        if file_path is None:
-            self.change_button_state(is_enabled=True)
-            return
-
-        file_name = (f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}_'
-                     f'{self.parser._chart_info.difficulty.to_shorthand()}.vox')
-        file_path /= file_name
-        if file_path.exists():
-            self.show_popup(f'"{file_name}"', 'already exists in the target directory. Overwrite?')
-            if not self.popup_result:
-                self.change_button_state(is_enabled=True)
+    def load_ksh(self):
+        with disable_buttons(self):
+            file_path = filedialog.askopenfilename(
+                filetypes=(
+                    ('K-Shoot Mania charts', '*.ksh'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                title='Open KSH file',
+            )
+            if not file_path:
                 return
 
-        with file_path.open('w') as f:
-            self.parser.write_vox(f)
+            dpg.set_value(self.ui['loaded_file'], file_path)
+            self.log(f'Reading from "{file_path}"...')
+
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
+                self.parser = KSHParser(f)
+
+            self.current_path = self.parser._ksh_path.parent
+            self.log(f'Chart loaded: {self.parser._song_info.title} / {self.parser._song_info.artist} '
+                    f'({SLOT_MAPPING[self.parser._chart_info.difficulty]} {self.parser._chart_info.level})')
+
+            for field in SONG_INFO_FIELDS:
+                dpg.set_value(self.ui[field], getattr(self.parser._song_info, field))
+            for field in CHART_INFO_FIELDS:
+                dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
+
+        dpg.configure_item(self.ui['vox_button'], enabled=True)
+        dpg.configure_item(self.ui['xml_button'], enabled=True)
+        dpg.configure_item(self.ui['2dx_button'], enabled=True)
+        dpg.configure_item(self.ui['jackets_button'], enabled=True)
+
+    def export_vox(self):
+        with disable_buttons(self):
+            file_name = (f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}_'
+                         f'{self.parser._chart_info.difficulty.to_shorthand()}.vox')
+            file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='vox',
+                filetypes=(
+                    ('VOX files', '*.vox'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=file_name,
+                title='Export VOX file',
+            )
+            if not file_path:
+                return None
+
+            self.log(f'Writing to "{file_path}"...')
+            self.current_path = Path(file_path).parent
+            with open(file_path, 'w') as f:
+                self.parser.write_vox(f)
+
+            self.log(f'File saved: {file_name}')
+
+    def export_xml(self):
+        with disable_buttons(self):
+            file_name = (f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}_'
+                         f'{self.parser._chart_info.difficulty.to_shorthand()}.xml')
+            file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='xml',
+                filetypes=(
+                    ('XML files', '*.xml'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=file_name,
+                title='Export XML file',
+            )
+            if not file_path:
+                return None
+
+            self.log(f'Writing to "{file_path}"...')
+            self.current_path = Path(file_path).parent
+            with open(file_path, 'w') as f:
+                self.parser.write_xml(f)
+
+            self.log(f'File saved: {file_name}')
+
+    def export_2dx(self):
+        with disable_buttons(self):
+            audio_path = (self.parser._ksh_path.parent / self.parser._chart_info.music_path).resolve()
+            if not audio_path.exists():
+                self.log(f'Cannot open "{audio_path}".')
+                self.show_popup(f'Cannot open "{audio_path}".')
+                return
+
+            song_label = f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}'
+            song_file_name = f'{song_label}.2dx'
+            song_file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='2dx',
+                filetypes=(
+                    ('2DX files', '*.2dx'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=song_file_name,
+                title='Save song 2DX file',
+            )
+            if not song_file_path:
+                return None
+
+            preview_file_name = f'{song_label}_pre.2dx'
+            preview_file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='2dx',
+                filetypes=(
+                    ('2DX files', '*.2dx'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=preview_file_name,
+                title='Save preview 2DX file',
+            )
+            if not preview_file_path:
+                return None
+
+            self.log('Converting audio to 2DX format...')
+            song_bytes, preview_bytes = get_2dxs(audio_path, song_label, self.parser._chart_info.preview_start)
+
+            self.log(f'Writing to "{song_file_path}"...')
+            with open(song_file_path, 'wb') as f:
+                f.write(song_bytes)
+            self.log(f'File saved: {song_file_name}')
+
+            self.log(f'Writing to "{preview_file_path}"...')
+            with open(preview_file_path, 'wb') as f:
+                f.write(preview_bytes)
+            self.log(f'File saved: {preview_file_name}')
+
+    def export_jacket(self):
+        with disable_buttons(self):
+            jacket_path = (self.parser._ksh_path.parent / self.parser._chart_info.jacket_path).resolve()
+            if not jacket_path.exists():
+                self.log(f'Cannot open "{jacket_path}".')
+                self.show_popup(f'Cannot open "{jacket_path}".')
+                return
+
+            jacket_r_file_name = f'jk_{self.parser._song_info.id}_1.png'
+            jacket_b_file_name = f'jk_{self.parser._song_info.id}_1_b.png'
+            jacket_s_file_name = f'jk_{self.parser._song_info.id}_1_s.png'
+
+            jacket_r_file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='2dx',
+                filetypes=(
+                    ('2DX files', '*.2dx'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=jacket_r_file_name,
+                title='Save regular jacket image',
+            )
+            if not jacket_r_file_path:
+                return None
+
+            jacket_b_file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='2dx',
+                filetypes=(
+                    ('2DX files', '*.2dx'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=jacket_b_file_name,
+                title='Save regular jacket image',
+            )
+            if not jacket_b_file_path:
+                return None
+
+            jacket_s_file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension='2dx',
+                filetypes=(
+                    ('2DX files', '*.2dx'),
+                    ('All files', '*'),
+                ),
+                initialdir=self.current_path,
+                initialfile=jacket_s_file_name,
+                title='Save regular jacket image',
+            )
+            if not jacket_s_file_path:
+                return None
+
+            self.log('Resizing jacket image...')
+            jk_r_bytes, jk_b_bytes, jk_s_bytes = get_jacket_images(jacket_path)
+
+            self.log(f'Writing to "{jacket_r_file_path}"...')
+            with open(jacket_r_file_path, 'wb') as f:
+                f.write(jk_r_bytes)
+            self.log(f'File saved: {jacket_r_file_name}')
+
+            self.log(f'Writing to "{jacket_b_file_path}"...')
+            with open(jacket_b_file_path, 'wb') as f:
+                f.write(jk_b_bytes)
+            self.log(f'File saved: {jacket_b_file_name}')
+
+            self.log(f'Writing to "{jacket_s_file_path}"...')
+            with open(jacket_s_file_path, 'wb') as f:
+                f.write(jk_s_bytes)
+            self.log(f'File saved: {jacket_s_file_name}')
+
 
 class disable_buttons():
     app: KSH2VOXApp
