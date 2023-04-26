@@ -337,7 +337,6 @@ class KSHParser:
                         point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START)
                 self._tilt_segment = True
             except InvalidOperation:
-                # FIXME: Do not write new tilt mode if previous tilt mode is the same
                 if value == 'normal':
                     self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
                     self._tilt_segment = False
@@ -585,8 +584,10 @@ class KSHParser:
         for cur_time, state in self._spins.items():
             spin_matched = False
             spin_type, spin_length_str = state[:2], state[2:]
-            # Rounding down to avoid spins distracting gameplay
-            spin_length = int(Fraction(spin_length_str) * SPIN_CONVERSION_RATE)
+            # Rounding to closest integer for accuracy, but avoid zero length
+            spin_length = round(Fraction(spin_length_str) * SPIN_CONVERSION_RATE)
+            if spin_length == 0:
+                spin_length = 1
             for vol_data in self._vols.values():
                 if cur_time not in vol_data:
                     continue
@@ -763,9 +764,13 @@ class KSHParser:
             effect.map_params(fx_params)
             self._chart_info.effect_list[i] = effects.EffectEntry(effect)
 
+        # Remove filters that are unused
+        for filter_name in list(self._chart_info._custom_filter):
+            if filter_name not in self._chart_info.active_filter.values():
+                del self._chart_info._custom_filter[filter_name]
+
         # Write custom filter as FX
         # TODO: Try matching with existing effects
-        # FIXME: Do not write all the filters -- only write the ones that are used
         if len(self._fx_list) + len(self._chart_info._custom_filter) > 12:
             warnings.warn(f'including custom filters causes more than 12 distinct effects', ParserWarning)
             while len(self._chart_info.effect_list) < len(self._fx_list) + len(self._chart_info._custom_filter):
@@ -982,8 +987,11 @@ class KSHParser:
 
         # Tilt modes
         f.write('#TILT MODE INFO\n')
+        prev_tilt_type: TiltType | None = None
         for timept, tilt_type in self._chart_info.tilt_type.items():
-            f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{tilt_type.value}\n')
+            if tilt_type != prev_tilt_type:
+                f.write(f'{self._chart_info.timepoint_to_vox(timept)}\t{tilt_type.value}\n')
+            prev_tilt_type = tilt_type
         f.write('#END\n')
         f.write('\n')
 
