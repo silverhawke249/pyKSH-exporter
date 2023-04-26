@@ -5,7 +5,7 @@ from PIL import Image
 
 
 def get_jacket_images(file_path: Path) -> tuple[bytes, bytes, bytes]:
-    """ Return jacket images as PNG blobs at regular, big, small sizes in order. """
+    """ Return jacket images as PNG blobs at regular, big, small sizes, in that order. """
     image = Image.open(str(file_path))
 
     image_r = image.resize((300, 300), Image.Resampling.BICUBIC)

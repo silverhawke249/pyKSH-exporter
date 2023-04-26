@@ -268,6 +268,7 @@ def prepare_audio(file_path: Path, preview_start: int) -> tuple[wave.Wave_read, 
 
 
 def get_2dxs(file_path: Path, song_label: str, preview_start: int) -> tuple[bytes, bytes]:
+    """ Return song files as 2DX blobs at full length and preview length, in that order. """
     song_wave, preview_wave = prepare_audio(file_path, preview_start)
 
     song_container = Container2DX(f'{song_label}.2dx')
