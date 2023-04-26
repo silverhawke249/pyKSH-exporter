@@ -128,6 +128,9 @@ class DifficultySlot(Enum):
     def __str__(self) -> str:
         return f'{self.name.capitalize()} ({self.value})'
 
+    def to_shorthand(self) -> str:
+        return f'{self.value}{self.name.lower()[0]}'
+
 
 class SpinType(Enum):
     NO_SPIN = 0
