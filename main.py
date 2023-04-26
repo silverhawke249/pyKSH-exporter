@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 import warnings
@@ -42,6 +43,7 @@ CHART_INFO_FIELDS = [
     'effector',
     'illustrator',
 ]
+ENUM_REGEX = re.compile(r'\((\d+)\)')
 
 
 def dpg_demo():
@@ -290,6 +292,11 @@ class KSH2VOXApp():
             if app_data < (value := dpg.get_value(self.ui['min_bpm'])):
                 dpg.set_value(sender, value)
 
+        if sender in [self.ui['background'], self.ui['inf_ver'], self.ui['difficulty']]:
+            regex_match = ENUM_REGEX.search(app_data)
+            if regex_match is not None:
+                app_data = int(regex_match.group(1))
+
         obj_name = self.get_obj_name(sender)
         if obj_name in SONG_INFO_FIELDS:
             setattr(self.parser._song_info, obj_name, self.parser._song_info.__annotations__[obj_name](app_data))
@@ -445,9 +452,9 @@ class KSH2VOXApp():
 
             jacket_r_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
-                defaultextension='2dx',
+                defaultextension='png',
                 filetypes=(
-                    ('2DX files', '*.2dx'),
+                    ('PNG images', '*.png'),
                     ('All files', '*'),
                 ),
                 initialdir=self.current_path,
@@ -459,28 +466,28 @@ class KSH2VOXApp():
 
             jacket_b_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
-                defaultextension='2dx',
+                defaultextension='png',
                 filetypes=(
-                    ('2DX files', '*.2dx'),
+                    ('PNG images', '*.png'),
                     ('All files', '*'),
                 ),
                 initialdir=self.current_path,
                 initialfile=jacket_b_file_name,
-                title='Save regular jacket image',
+                title='Save large jacket image',
             )
             if not jacket_b_file_path:
                 return None
 
             jacket_s_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
-                defaultextension='2dx',
+                defaultextension='png',
                 filetypes=(
-                    ('2DX files', '*.2dx'),
+                    ('PNG images', '*.png'),
                     ('All files', '*'),
                 ),
                 initialdir=self.current_path,
                 initialfile=jacket_s_file_name,
-                title='Save regular jacket image',
+                title='Save small jacket image',
             )
             if not jacket_s_file_path:
                 return None
