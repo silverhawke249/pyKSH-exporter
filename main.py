@@ -71,7 +71,7 @@ class KSH2VOXApp():
         warnings.showwarning = self.log_warning
 
         dpg.create_context()
-        dpg.create_viewport(title='ksh-vox converter', width=600, height=800, resizable=False)
+        dpg.create_viewport(title='ksh-vox converter', width=650, height=850, resizable=False)
         dpg.setup_dearpygui()
 
         with dpg.window(label='ksh-vox converter') as primary_window:
@@ -79,7 +79,7 @@ class KSH2VOXApp():
 
             with dpg.group() as main_buttons:
                 with dpg.group(horizontal=True):
-                    self.ui['open_button'] = dpg.add_button(label='Open file...', callback=self.load_file)
+                    self.ui['open_button'] = dpg.add_button(label='Open file...', callback=self.load_ksh)
                     self.ui['loaded_file'] = dpg.add_text('[no file loaded]')
 
                 dpg.add_spacer(height=1)
@@ -94,7 +94,7 @@ class KSH2VOXApp():
 
             dpg.add_spacer(height=1)
 
-            with dpg.child_window(height=533, border=False, autosize_x=True) as info_container:
+            with dpg.child_window(height=510, width=-1, border=False) as info_container:
                 self.ui['info_container'] = info_container
                 with dpg.tab_bar():
                     with dpg.tab(label='Song info') as section_song_info:
@@ -163,33 +163,14 @@ class KSH2VOXApp():
                         dpg.add_text('Coming soon!')
                         # self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-            # Width is viewport width - 2 * mvStyleVar_WindowPadding[0]
-            # x-position is mvStyleVar_WindowPadding[1]
-            # y-position is viewport height - mvStyleVar_WindowPadding[1] - self height
-            with dpg.child_window(label='Logs', width=584, height=150, pos=(8, 642), horizontal_scrollbar=True) as log_window:
+            with dpg.child_window(label='Logs', width=-1, height=-1, horizontal_scrollbar=True) as log_window:
                 self.ui['log'] = log_window
 
-        with dpg.window(show=False, autosize=True, no_move=True, no_close=True, modal=True) as popup_window:
+        with dpg.window(
+            label='Error', show=False, autosize=True, no_move=True, no_close=True, modal=True
+        ) as popup_window:
             self.ui['popup_window'] = popup_window
-            with dpg.table(header_row=False, height=10):
-                dpg.add_table_column(width_stretch=True)
-                dpg.add_table_column(width_fixed=True)
-                dpg.add_table_column(width_stretch=True)
-
-                with dpg.table_row():
-                    dpg.add_spacer()
-                    self.ui['popup_text1'] = dpg.add_text()
-                    dpg.add_spacer()
-
-            with dpg.table(header_row=False, height=10):
-                dpg.add_table_column(width_stretch=True)
-                dpg.add_table_column(width_fixed=True)
-                dpg.add_table_column(width_stretch=True)
-
-                with dpg.table_row():
-                    dpg.add_spacer()
-                    self.ui['popup_text2'] = dpg.add_text()
-                    dpg.add_spacer()
+            self.ui['popup_text'] = dpg.add_text()
 
             with dpg.table(header_row=False):
                 dpg.add_table_column(width_stretch=True)
@@ -201,7 +182,6 @@ class KSH2VOXApp():
 
                     with dpg.group(horizontal=True):
                         dpg.add_button(label='OK', user_data=True, callback=self.hide_popup)
-                        dpg.add_button(label='Cancel', user_data=False, callback=self.hide_popup)
 
                     dpg.add_spacer()
 
@@ -230,21 +210,37 @@ class KSH2VOXApp():
 
         dpg.bind_item_theme(log_window, log_theme)
 
-        with dpg.theme() as global_theme:
+        with dpg.theme() as primary_window_theme:
             with dpg.theme_component(dpg.mvAll):
                 dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
+                dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
-            with dpg.theme_component(dpg.mvAll, enabled_state=True):
+            with dpg.theme_component(dpg.mvButton, enabled_state=True):
                 dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
 
-            with dpg.theme_component(dpg.mvAll, enabled_state=False):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 180, 180), category=dpg.mvThemeCat_Core)
+            with dpg.theme_component(dpg.mvButton, enabled_state=False):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (100, 100, 100), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 180, 180), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (100, 100, 100), category=dpg.mvThemeCat_Core)
 
-        dpg.bind_item_theme(primary_window, global_theme)
-        dpg.bind_item_theme(popup_window, global_theme)
+        with dpg.theme() as sub_window_theme:
+            with dpg.theme_component(dpg.mvAll):
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
+                dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 5, category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Border, (15, 86, 135), category=dpg.mvThemeCat_Core)
+
+            with dpg.theme_component(dpg.mvButton, enabled_state=True):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
+
+            with dpg.theme_component(dpg.mvButton, enabled_state=False):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (100, 100, 100), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (100, 100, 100), category=dpg.mvThemeCat_Core)
+
+        dpg.bind_item_theme(primary_window, primary_window_theme)
+        dpg.bind_item_theme(popup_window, sub_window_theme)
         dpg.set_primary_window(primary_window, True)
 
         dpg.show_viewport()
@@ -271,9 +267,8 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
-    def show_popup(self, message1, message2):
-        dpg.set_value(self.ui['popup_text1'], message1)
-        dpg.set_value(self.ui['popup_text2'], message2)
+    def show_popup(self, message):
+        dpg.set_value(self.ui['popup_text'], message)
         dpg.show_item(self.ui['popup_window'])
 
     def reposition_popup(self):
