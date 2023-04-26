@@ -69,104 +69,101 @@ class KSH2VOXApp():
 
             with dpg.group() as main_buttons:
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label='Open file...', callback=self.load_file)
+                    self.ui['open_button'] = dpg.add_button(label='Open file...', callback=self.load_file)
                     self.ui['loaded_file'] = dpg.add_text('[no file loaded]')
 
                 dpg.add_spacer(height=1)
 
-                with dpg.table(header_row=False, show=False) as save_group:
+                with dpg.group(horizontal=True) as save_group:
                     self.ui['save_group'] = save_group
 
-                    dpg.add_table_column(width_stretch=True)
-                    dpg.add_table_column(width_fixed=True)
-
-                    with dpg.table_row():
-                        dpg.add_spacer()
-
-                        with dpg.group(horizontal=True):
-                            dpg.add_button(label='Save VOX...', callback=self.export_vox)
-                            dpg.add_button(label='Save XML...', callback=self.export_xml)
-                            dpg.add_button(label='Export 2DX...', callback=self.export_2dx)
-                            dpg.add_button(label='Export jackets...', callback=self.export_jacket)
+                    self.ui['vox_button'] = dpg.add_button(label='Save VOX...', callback=self.export_vox, enabled=False)
+                    self.ui['xml_button'] = dpg.add_button(label='Save XML...', callback=self.export_xml, enabled=False)
+                    self.ui['2dx_button'] = dpg.add_button(label='Export 2DX...', callback=self.export_2dx, enabled=False)
+                    self.ui['jackets_button'] = dpg.add_button(label='Export jackets...', callback=self.export_jacket, enabled=False)
 
             dpg.add_spacer(height=1)
 
-            with dpg.file_dialog(
-                width=500, height=400, show=False, callback=self.save_file, modal=True, directory_selector=True
-            ) as directory_dialog:
-                self.ui['directory_dialog'] = directory_dialog
+            with dpg.child_window(height=533, border=False, autosize_x=True) as info_container:
+                self.ui['info_container'] = info_container
+                with dpg.tab_bar():
+                    with dpg.tab(label='Song info') as section_song_info:
+                        self.ui['section_song_info'] = section_song_info
 
-            with dpg.group() as info_group:
-                self.ui['info_group'] = info_group
+                        self.ui['id']              = dpg.add_input_int(
+                            label='Song ID', min_clamped=True, callback=self.update_and_validate)
+                        self.ui['title']           = dpg.add_input_text(
+                            label='Song title', callback=self.update_and_validate)
+                        self.ui['title_yomigana']  = dpg.add_input_text(
+                            label='Song title (yomigana)', hint='Song title in half-width katakana',
+                            callback=self.update_and_validate)
+                        self.ui['artist']          = dpg.add_input_text(
+                            label='Song artist', callback=self.update_and_validate)
+                        self.ui['artist_yomigana'] = dpg.add_input_text(
+                            label='Song artist (yomigana)', hint='Song artist in half-width katakana',
+                            callback=self.update_and_validate)
+                        self.ui['ascii_label']     = dpg.add_input_text(
+                            label='Song label', hint='Song identifier in filesystem (ASCII only)',
+                            callback=self.update_and_validate)
+                        self.ui['min_bpm']         = dpg.add_input_float(
+                            label='Minimum BPM', min_value=0, max_value=1000, min_clamped=True, max_clamped=True,
+                            format='%.2f', callback=self.update_and_validate)
+                        self.ui['max_bpm']         = dpg.add_input_float(
+                            label='Maximum BPM', min_value=0, max_value=1000, min_clamped=True, max_clamped=True,
+                            format='%.2f', callback=self.update_and_validate)
+                        self.ui['release_date']    = dpg.add_input_text(
+                            label='Release date', decimal=True, callback=self.update_and_validate)
+                        self.ui['music_volume']    = dpg.add_slider_int(
+                            label='Music volume', clamped=True, min_value=0, max_value=100,
+                            callback=self.update_and_validate)
+                        self.ui['background']      = dpg.add_combo(
+                            list(GameBackground), label='Game background', callback=self.update_and_validate)
+                        self.ui['inf_ver']         = dpg.add_combo(
+                            list(InfVer), label='Infinite version', callback=self.update_and_validate)
 
-                with dpg.collapsing_header(label='Song info', show=False, default_open=True) as section_song_info:
-                    self.ui['section_song_info'] = section_song_info
+                        # TODO: Background preview
 
-                    self.ui['id']              = dpg.add_input_int(
-                        label='Song ID', min_clamped=True, callback=self.update_and_validate)
-                    self.ui['title']           = dpg.add_input_text(
-                        label='Song title', callback=self.update_and_validate)
-                    self.ui['title_yomigana']  = dpg.add_input_text(
-                        label='Song title (yomigana)', hint='Song title in half-width katakana',
-                        callback=self.update_and_validate)
-                    self.ui['artist']          = dpg.add_input_text(
-                        label='Song artist', callback=self.update_and_validate)
-                    self.ui['artist_yomigana'] = dpg.add_input_text(
-                        label='Song artist (yomigana)', hint='Song artist in half-width katakana',
-                        callback=self.update_and_validate)
-                    self.ui['ascii_label']     = dpg.add_input_text(
-                        label='Song label', hint='Song identifier in filesystem (ASCII only)',
-                        callback=self.update_and_validate)
-                    self.ui['min_bpm']         = dpg.add_input_float(
-                        label='Minimum BPM', min_value=0, max_value=1000, min_clamped=True, max_clamped=True,
-                        format='%.2f', callback=self.update_and_validate)
-                    self.ui['max_bpm']         = dpg.add_input_float(
-                        label='Maximum BPM', min_value=0, max_value=1000, min_clamped=True, max_clamped=True,
-                        format='%.2f', callback=self.update_and_validate)
-                    self.ui['release_date']    = dpg.add_input_text(
-                        label='Release date', decimal=True, callback=self.update_and_validate)
-                    self.ui['music_volume']    = dpg.add_slider_int(
-                        label='Music volume', clamped=True, min_value=0, max_value=100,
-                        callback=self.update_and_validate)
-                    self.ui['background']      = dpg.add_combo(
-                        list(GameBackground), label='Game background', callback=self.update_and_validate)
-                    self.ui['inf_ver']         = dpg.add_combo(
-                        list(InfVer), label='Infinite version', callback=self.update_and_validate)
+                    with dpg.tab(label='Chart info') as section_chart_info:
+                        self.ui['section_chart_info'] = section_chart_info
 
-                    # TODO: Background preview
+                        self.ui['level'] = dpg.add_slider_int(
+                            label='Level', clamped=True, min_value=1, max_value=20, callback=self.update_and_validate)
+                        self.ui['difficulty'] = dpg.add_combo(
+                            list(DifficultySlot), label='Difficulty', callback=self.update_and_validate)
+                        self.ui['effector'] = dpg.add_input_text(
+                            label='Effector', callback=self.update_and_validate)
+                        self.ui['illustrator'] = dpg.add_input_text(
+                            label='Illustrator', callback=self.update_and_validate)
 
-                with dpg.collapsing_header(label='Chart info', show=False, default_open=True) as section_chart_info:
-                    self.ui['section_chart_info'] = section_chart_info
+                    with dpg.tab(label='Effects') as section_effect_info:
+                        self.ui['section_effect_info'] = section_effect_info
 
-                    self.ui['level'] = dpg.add_slider_int(
-                        label='Level', clamped=True, min_value=1, max_value=20, callback=self.update_and_validate)
-                    self.ui['difficulty'] = dpg.add_combo(
-                        list(DifficultySlot), label='Difficulty', callback=self.update_and_validate)
-                    self.ui['effector'] = dpg.add_input_text(
-                        label='Effector', callback=self.update_and_validate)
-                    self.ui['illustrator'] = dpg.add_input_text(
-                        label='Illustrator', callback=self.update_and_validate)
+                        dpg.add_text('Coming soon!')
+                        # self.ui['effect_table'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-                with dpg.collapsing_header(
-                    label='Effect settings', show=False) as section_effect_info:
-                    self.ui['section_effect_info'] = section_effect_info
+                    with dpg.tab(label='Filter mapping') as section_filter_info:
+                        self.ui['section_filter_info'] = section_filter_info
 
-                    dpg.add_text('Coming soon!')
-                    # self.ui['effect_table'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                        dpg.add_text('Coming soon!')
+                        # self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-                with dpg.collapsing_header(
-                    label='Filter effect mapping', show=False) as section_filter_info:
-                    self.ui['section_filter_info'] = section_filter_info
+                    with dpg.tab(label='Track autotab') as section_autotab_info:
+                        self.ui['section_autotab_info'] = section_autotab_info
 
-                    dpg.add_text('Coming soon!')
-                    # self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                        dpg.add_text('Coming soon!')
+                        # self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-                with dpg.collapsing_header(
-                    label='Track auto tab settings', show=False) as section_autotab_info:
-                    self.ui['section_autotab_info'] = section_autotab_info
+            # Width is viewport width - 2 * mvStyleVar_WindowPadding[0]
+            # x-position is mvStyleVar_WindowPadding[1]
+            # y-position is viewport height - mvStyleVar_WindowPadding[1] - self height
+            with dpg.child_window(label='Logs', width=584, height=150, pos=(8, 642), horizontal_scrollbar=True) as log_window:
+                self.ui['log'] = log_window
 
-                    dpg.add_text('Coming soon!')
-                    # self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+        with dpg.window(show=False, modal=True) as popup_window:
+            self.ui['popup_window'] = popup_window
+
+            self.ui['popup_text'] = dpg.add_text()
+            dpg.add_button(label='OK', callback=lambda _: dpg.hide_item(popup_window))
 
         with dpg.font_registry():
             with dpg.font('resources/NotoSansJP-Regular.ttf', 20) as font:
@@ -177,17 +174,24 @@ class KSH2VOXApp():
 
         with dpg.theme() as button_theme:
             with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 20, 10)
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 20, 8, category=dpg.mvThemeCat_Core)
 
         dpg.bind_item_theme(main_buttons, button_theme)
 
-        with dpg.theme() as theme:
+        with dpg.theme() as log_theme:
+            with dpg.theme_component(dpg.mvText):
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 0, category=dpg.mvThemeCat_Core)
+                dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 0, category=dpg.mvThemeCat_Core)
+
+        dpg.bind_item_theme(log_window, log_theme)
+
+        with dpg.theme() as global_theme:
             with dpg.theme_component(dpg.mvAll):
                 dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
 
-        dpg.bind_item_theme(primary_window, theme)
+        dpg.bind_item_theme(primary_window, global_theme)
         dpg.set_primary_window(primary_window, True)
 
         dpg.show_viewport()
