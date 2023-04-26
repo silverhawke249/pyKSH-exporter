@@ -60,9 +60,8 @@ class KSH2VOXApp():
 
     parser: KSHParser
 
-    save_type: str
-
     current_path: Path | None = None
+    popup_result: bool = False
 
     def __init__(self):
         self.ui = {}
@@ -170,11 +169,46 @@ class KSH2VOXApp():
             with dpg.child_window(label='Logs', width=584, height=150, pos=(8, 642), horizontal_scrollbar=True) as log_window:
                 self.ui['log'] = log_window
 
-        with dpg.window(show=False, modal=True) as popup_window:
+        with dpg.window(show=False, autosize=True, no_move=True, no_close=True, modal=True) as popup_window:
             self.ui['popup_window'] = popup_window
+            with dpg.table(header_row=False, height=10):
+                dpg.add_table_column(width_stretch=True)
+                dpg.add_table_column(width_fixed=True)
+                dpg.add_table_column(width_stretch=True)
 
-            self.ui['popup_text'] = dpg.add_text()
-            dpg.add_button(label='OK', callback=lambda _: dpg.hide_item(popup_window))
+                with dpg.table_row():
+                    dpg.add_spacer()
+                    self.ui['popup_text1'] = dpg.add_text()
+                    dpg.add_spacer()
+
+            with dpg.table(header_row=False, height=10):
+                dpg.add_table_column(width_stretch=True)
+                dpg.add_table_column(width_fixed=True)
+                dpg.add_table_column(width_stretch=True)
+
+                with dpg.table_row():
+                    dpg.add_spacer()
+                    self.ui['popup_text2'] = dpg.add_text()
+                    dpg.add_spacer()
+
+            with dpg.table(header_row=False):
+                dpg.add_table_column(width_stretch=True)
+                dpg.add_table_column(width_fixed=True)
+                dpg.add_table_column(width_stretch=True)
+
+                with dpg.table_row():
+                    dpg.add_spacer()
+
+                    with dpg.group(horizontal=True):
+                        dpg.add_button(label='OK', user_data=True, callback=self.hide_popup)
+                        dpg.add_button(label='Cancel', user_data=False, callback=self.hide_popup)
+
+                    dpg.add_spacer()
+
+        with dpg.item_handler_registry() as popup_handler:
+            dpg.add_item_resize_handler(callback=self.reposition_popup)
+
+        dpg.bind_item_handler_registry(popup_window, popup_handler)
 
         with dpg.font_registry():
             with dpg.font('resources/NotoSansJP-Regular.ttf', 20) as font:
@@ -198,11 +232,19 @@ class KSH2VOXApp():
 
         with dpg.theme() as global_theme:
             with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
 
+            with dpg.theme_component(dpg.mvAll, enabled_state=True):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
+
+            with dpg.theme_component(dpg.mvAll, enabled_state=False):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 180, 180), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 180, 180), category=dpg.mvThemeCat_Core)
+
         dpg.bind_item_theme(primary_window, global_theme)
+        dpg.bind_item_theme(popup_window, global_theme)
         dpg.set_primary_window(primary_window, True)
 
         dpg.show_viewport()
@@ -229,16 +271,26 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
-    def popup(self, message):
-        dpg.set_value(self.ui['popup_text'], message)
+    def show_popup(self, message1, message2):
+        dpg.set_value(self.ui['popup_text1'], message1)
+        dpg.set_value(self.ui['popup_text2'], message2)
         dpg.show_item(self.ui['popup_window'])
 
-    def change_button_state(self, /, enabled: bool):
-        dpg.configure_item(self.ui['open_button'], enabled=enabled)
-        dpg.configure_item(self.ui['vox_button'], enabled=enabled)
-        dpg.configure_item(self.ui['xml_button'], enabled=enabled)
-        dpg.configure_item(self.ui['2dx_button'], enabled=enabled)
-        dpg.configure_item(self.ui['jackets_button'], enabled=enabled)
+    def reposition_popup(self):
+        ww, wh = dpg.get_item_rect_size(self.ui['popup_window'])
+        vw, vh = dpg.get_viewport_width(), dpg.get_viewport_height()
+        dpg.set_item_pos(self.ui['popup_window'], [(vw - ww) // 2, (vh - wh) // 2])
+
+    def hide_popup(self, sender: ObjectID, app_data, user_data: bool):
+        self.popup_result = user_data
+        dpg.hide_item(self.ui['popup_window'])
+
+    def change_button_state(self, /, is_enabled: bool):
+        dpg.configure_item(self.ui['open_button'], enabled=is_enabled)
+        dpg.configure_item(self.ui['vox_button'], enabled=is_enabled)
+        dpg.configure_item(self.ui['xml_button'], enabled=is_enabled)
+        dpg.configure_item(self.ui['2dx_button'], enabled=is_enabled)
+        dpg.configure_item(self.ui['jackets_button'], enabled=is_enabled)
 
     def update_and_validate(self, sender: ObjectID, app_data: Any):
         if sender == self.ui['min_bpm']:
@@ -255,7 +307,7 @@ class KSH2VOXApp():
             setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
 
     def load_file(self):
-        self.change_button_state(enabled=False)
+        self.change_button_state(is_enabled=False)
 
         file_path = filedialog.askopenfilename(
             filetypes=(
@@ -265,7 +317,7 @@ class KSH2VOXApp():
             initialdir=self.current_path
         )
         if not file_path:
-            self.change_button_state(enabled=True)
+            self.change_button_state(is_enabled=True)
             return
 
         dpg.set_value(self.ui['loaded_file'], file_path)
@@ -283,27 +335,53 @@ class KSH2VOXApp():
         for field in CHART_INFO_FIELDS:
             dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
 
-        self.change_button_state(enabled=True)
+        self.change_button_state(is_enabled=True)
 
     def save_file(self, sender: ObjectID, app_data: Any):
         path = app_data['file_path_name']
 
         print(path)
 
+    def get_dir_path(self) -> Path | None:
+        file_path = filedialog.askdirectory(
+            initialdir=self.current_path,
+            mustexist=True,
+        )
+        if not file_path:
+            return None
+
+        self.current_path = Path(file_path)
+        return self.current_path
+
     def export_vox(self):
-        self.save_type = 'vox'
-        dpg.show_item(self.ui['directory_dialog'])
+        self.change_button_state(is_enabled=False)
+
+        file_path = self.get_dir_path()
+        if file_path is None:
+            self.change_button_state(is_enabled=True)
+            return
+
+        file_name = (f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}_'
+                     f'{self.parser._chart_info.difficulty.to_shorthand()}.vox')
+        file_path /= file_name
+        if file_path.exists():
+            self.show_popup(f'"{file_name}"', 'already exists in the target directory. Overwrite?')
+            if not self.popup_result:
+                self.change_button_state(is_enabled=True)
+                return
+
+        with file_path.open('w') as f:
+            self.parser.write_vox(f)
+
+        self.change_button_state(is_enabled=True)
 
     def export_xml(self):
-        self.save_type = 'xml'
         dpg.show_item(self.ui['directory_dialog'])
 
     def export_2dx(self):
-        self.save_type = '2dx'
         dpg.show_item(self.ui['directory_dialog'])
 
     def export_jacket(self):
-        self.save_type = 'png'
         dpg.show_item(self.ui['directory_dialog'])
 
 
