@@ -5,6 +5,7 @@ import warnings
 import dearpygui.dearpygui as dpg
 import dearpygui.demo as demo
 
+from pathlib import Path
 from tkinter import filedialog
 from typing import Any
 
@@ -12,6 +13,13 @@ from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
 from ksh2vox.parser.ksh import KSHParser
 
 ObjectID = int | str
+SLOT_MAPPING = {
+    DifficultySlot.NOVICE  : 'LI',
+    DifficultySlot.ADVANCED: 'CH',
+    DifficultySlot.EXHAUST : 'EX',
+    DifficultySlot.INFINITE: 'IN',
+    DifficultySlot.MAXIMUM : 'IN',
+}
 SONG_INFO_FIELDS = [
     'id',
     'title',
@@ -49,9 +57,12 @@ def dpg_demo():
 class KSH2VOXApp():
     ui: dict[str, ObjectID]
     reverse_ui_map: dict[ObjectID, str]
+
     parser: KSHParser
-    is_dragging_menu: bool = False
+
     save_type: str
+
+    current_path: Path | None = None
 
     def __init__(self):
         self.ui = {}
@@ -218,6 +229,17 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
+    def popup(self, message):
+        dpg.set_value(self.ui['popup_text'], message)
+        dpg.show_item(self.ui['popup_window'])
+
+    def change_button_state(self, /, enabled: bool):
+        dpg.configure_item(self.ui['open_button'], enabled=enabled)
+        dpg.configure_item(self.ui['vox_button'], enabled=enabled)
+        dpg.configure_item(self.ui['xml_button'], enabled=enabled)
+        dpg.configure_item(self.ui['2dx_button'], enabled=enabled)
+        dpg.configure_item(self.ui['jackets_button'], enabled=enabled)
+
     def update_and_validate(self, sender: ObjectID, app_data: Any):
         if sender == self.ui['min_bpm']:
             if app_data > (value := dpg.get_value(self.ui['max_bpm'])):
@@ -233,33 +255,35 @@ class KSH2VOXApp():
             setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
 
     def load_file(self):
+        self.change_button_state(enabled=False)
+
         file_path = filedialog.askopenfilename(
             filetypes=(
                 ('K-Shoot Mania charts', '*.ksh'),
                 ('All files', '*.*'),
-            )
+            ),
+            initialdir=self.current_path
         )
-        # TODO: check for existence before continuing
+        if not file_path:
+            self.change_button_state(enabled=True)
+            return
 
         dpg.set_value(self.ui['loaded_file'], file_path)
+        self.log(f'Reading "{file_path}"')
 
         with open(file_path, 'r', encoding='utf-8-sig') as f:
             self.parser = KSHParser(f)
+
+        self.current_path = self.parser._ksh_path.parent
+        self.log(f'Chart loaded: {self.parser._song_info.title} / {self.parser._song_info.artist} '
+                 f'({SLOT_MAPPING[self.parser._chart_info.difficulty]} {self.parser._chart_info.level})')
 
         for field in SONG_INFO_FIELDS:
             dpg.set_value(self.ui[field], getattr(self.parser._song_info, field))
         for field in CHART_INFO_FIELDS:
             dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
 
-        # dpg.configure_item(self.ui['file_dialog'], default_path=str(self.parser._ksh_path.parent))
-        dpg.configure_item(self.ui['directory_dialog'], default_path=str(self.parser._ksh_path.parent))
-
-        dpg.show_item(self.ui['save_group'])
-        dpg.show_item(self.ui['section_song_info'])
-        dpg.show_item(self.ui['section_chart_info'])
-        dpg.show_item(self.ui['section_effect_info'])
-        dpg.show_item(self.ui['section_filter_info'])
-        dpg.show_item(self.ui['section_autotab_info'])
+        self.change_button_state(enabled=True)
 
     def save_file(self, sender: ObjectID, app_data: Any):
         path = app_data['file_path_name']
