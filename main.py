@@ -373,16 +373,24 @@ class KSH2VOXApp():
         with file_path.open('w') as f:
             self.parser.write_vox(f)
 
-        self.change_button_state(is_enabled=True)
+class disable_buttons():
+    app: KSH2VOXApp
+    buttons: list[str]
+    button_state: dict[str, bool]
 
-    def export_xml(self):
-        dpg.show_item(self.ui['directory_dialog'])
+    def __init__(self, app):
+        self.app = app
+        self.buttons = ['open_button', 'vox_button', 'xml_button', '2dx_button', 'jackets_button']
+        self.button_state = {}
 
-    def export_2dx(self):
-        dpg.show_item(self.ui['directory_dialog'])
+    def __enter__(self):
+        for button in self.buttons:
+            self.button_state[button] = dpg.get_item_configuration(self.app.ui[button])['enabled']
+            dpg.configure_item(self.app.ui[button], enabled=False)
 
-    def export_jacket(self):
-        dpg.show_item(self.ui['directory_dialog'])
+    def __exit__(self, *args, **kwargs):
+        for button, state in self.button_state.items():
+            dpg.configure_item(self.app.ui[button], enabled=state)
 
 
 if __name__ == '__main__':
