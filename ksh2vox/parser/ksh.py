@@ -179,6 +179,7 @@ class KSHParser:
         self._chart_info = ChartInfo()
 
         for line_no, line in enumerate(self._raw_metadata):
+            # TODO: Wrap this in a try block and warn errors
             if '=' not in line:
                 warnings.warn(f'unrecognized line at line {line_no + 1}: "{line}"')
             key, value = line.split('=', 1)
@@ -278,7 +279,7 @@ class KSHParser:
         self._initialize_stateful_data()
 
         # Measure data
-        ln_offset   : int       = len(self._raw_metadata) + 1
+        ln_offset        : int       = len(self._raw_metadata) + 1
         measure_data     : list[str] = []
         measure_number   : int       = 1
         subdivision_count: int       = 0
@@ -319,6 +320,7 @@ class KSHParser:
             setattr(self._chart_info.note_data, k, v3)
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
+        # TODO: Wrap this in a try block and warn errors
         key, value = line.split('=', 1)
         if key == 't':
             self._chart_info.bpms[cur_time] = Decimal(value)
@@ -432,6 +434,7 @@ class KSHParser:
             pass
 
     def _handle_notechart_custom_commands(self, line: str, cur_time: TimePoint) -> None:
+        # TODO: Wrap this in a try block and warn errors
         # Remove initial `//`
         line = line[2:]
         for chunk in line.split(';'):
@@ -808,6 +811,7 @@ class KSHParser:
                 noteline_count += 1
 
     def _parse_definitions(self) -> None:
+        # TODO: Handle possible exceptions
         ln_offset: int = len(self._raw_metadata) + len(self._raw_notedata) + 1
         for line_no, line in enumerate(self._raw_definitions):
             if not line.startswith('#'):
