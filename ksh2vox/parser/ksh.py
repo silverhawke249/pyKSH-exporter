@@ -57,6 +57,18 @@ FILTER_TYPE_MAP = {
     'hpf1': FilterIndex.HPF,
     'bitc': FilterIndex.BITCRUSH,
 }
+KSH_EFFECT_MAP: dict[str, effects.Effect] = {
+    'Retrigger' : effects.Retrigger(),
+    'Gate'      : effects.Gate(),
+    'Flanger'   : effects.Flanger(),
+    'PitchShift': effects.PitchShift(),
+    'BitCrusher': effects.Bitcrush(),
+    'Phaser'    : effects.Flanger(mix=50, period=2, feedback=0.35, stereo_width=0, hicut_gain=8),
+    'Wobble'    : effects.Wobble(),
+    'TapeStop'  : effects.Tapestop(),
+    'Echo'      : effects.RetriggerEx(mix=100, wavelength=4, update_period=4, feedback=0.6, amount=1, decay=0.8),
+    'SideChain' : effects.Sidechain(),
+}
 NO_EFFECT_INDEX             = 0
 KSH_SLAM_DISTANCE           = Fraction(1, 32)
 INTERPOLATION_DISTANCE      = Fraction(1, 64)
@@ -696,18 +708,13 @@ class KSHParser:
             vol_data.update(new_points)
 
         # Mark tilt and lane split points as end of segment
-        tilt_timepts = list(self._chart_info.spcontroller_data.tilt.keys())
-        if tilt_timepts:
-            for time_i, time_f in itertools.pairwise(tilt_timepts):
-                if self._chart_info.spcontroller_data.tilt[time_f].point_type == SegmentFlag.START:
-                    self._chart_info.spcontroller_data.tilt[time_i].point_type = SegmentFlag.END
-            self._chart_info.spcontroller_data.tilt[time_f].point_type = SegmentFlag.END
-        lane_split_timepts = list(self._chart_info.spcontroller_data.lane_split.keys())
-        if lane_split_timepts:
-            for time_i, time_f in itertools.pairwise(lane_split_timepts):
-                if self._chart_info.spcontroller_data.lane_split[time_f].point_type == SegmentFlag.START:
-                    self._chart_info.spcontroller_data.lane_split[time_i].point_type = SegmentFlag.END
-            self._chart_info.spcontroller_data.lane_split[time_f].point_type = SegmentFlag.END
+        for data_dict in [self._chart_info.spcontroller_data.tilt, self._chart_info.spcontroller_data.lane_split]:
+            timepts = list(data_dict.keys())
+            if timepts:
+                for time_i, time_f in itertools.pairwise(timepts):
+                    if data_dict[time_f].point_type == SegmentFlag.START:
+                        data_dict[time_i].point_type = SegmentFlag.END
+                data_dict[time_f].point_type = SegmentFlag.END
 
         # Add final point for zooms
         end_point = TimePoint(self._chart_info.total_measures, 0, 1)
@@ -737,29 +744,10 @@ class KSHParser:
                 warnings.warn(f'cannot convert effect parameters "{fx_entry}" to int', ParserWarning)
                 fx_params = []
             effect: effects.Effect
-            if fx_name == 'Retrigger':
-                effect = effects.Retrigger()
-            elif fx_name == 'Gate':
-                effect = effects.Gate()
-            elif fx_name == 'Flanger':
-                effect = effects.Flanger()
-            elif fx_name == 'PitchShift':
-                effect = effects.PitchShift()
-            elif fx_name == 'BitCrusher':
-                effect = effects.Bitcrush()
-            elif fx_name == 'Phaser':
-                effect = effects.Flanger(
-                    mix=50, period=2, feedback=0.35, stereo_width=0, hicut_gain=8)
-            elif fx_name == 'Wobble':
-                effect = effects.Wobble()
-            elif fx_name == 'TapeStop':
-                effect = effects.Tapestop()
-            elif fx_name == 'Echo':
-                effect = effects.RetriggerEx(
-                    mix=100, wavelength=4, update_period=4, feedback=0.6, amount=1, decay=0.8)
-            elif fx_name == 'SideChain':
-                effect = effects.Sidechain()
-            else:  # Custom effect -- check definitions
+            if fx_name in KSH_EFFECT_MAP:
+                effect = KSH_EFFECT_MAP[fx_name].duplicate()
+            # Custom effect -- check definitions
+            else:
                 effect = self._chart_info._custom_effect[fx_name].duplicate()
             effect.map_params(fx_params)
             self._chart_info.effect_list[i] = effects.EffectEntry(effect)
