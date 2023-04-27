@@ -338,7 +338,7 @@ class KSH2VOXApp():
 
     def export_vox(self):
         with disable_buttons(self):
-            file_name = (f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}_'
+            file_name = (f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}_'
                          f'{self.parser._chart_info.difficulty.to_shorthand()}.vox')
             file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -363,7 +363,7 @@ class KSH2VOXApp():
 
     def export_xml(self):
         with disable_buttons(self):
-            file_name = (f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}_'
+            file_name = (f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}_'
                          f'{self.parser._chart_info.difficulty.to_shorthand()}.xml')
             file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -394,7 +394,7 @@ class KSH2VOXApp():
                 self.show_popup(f'Cannot open "{audio_path}".')
                 return
 
-            song_label = f'{self.parser._song_info.id}_{self.parser._song_info.ascii_label}'
+            song_label = f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}'
             song_file_name = f'{song_label}.2dx'
             song_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -446,9 +446,9 @@ class KSH2VOXApp():
                 self.show_popup(f'Cannot open "{jacket_path}".')
                 return
 
-            jacket_r_file_name = f'jk_{self.parser._song_info.id}_1.png'
-            jacket_b_file_name = f'jk_{self.parser._song_info.id}_1_b.png'
-            jacket_s_file_name = f'jk_{self.parser._song_info.id}_1_s.png'
+            jacket_r_file_name = f'jk_{self.parser._song_info.id:04}_1.png'
+            jacket_b_file_name = f'jk_{self.parser._song_info.id:04}_1_b.png'
+            jacket_s_file_name = f'jk_{self.parser._song_info.id:04}_1_s.png'
 
             jacket_r_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,

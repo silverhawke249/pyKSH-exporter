@@ -4,7 +4,7 @@ Convert your KSH files into VOX format, export supporting assets, all in one pla
 
 ## Usage
 
-Simply run `main.py`. Things are pretty self-explanatory.
+Simply run `main.pyw`. Things are pretty self-explanatory.
 
 ## Requirements
 
@@ -27,12 +27,12 @@ Older versions of Python 3.10 is untested, but this certainly does not run on Py
 
 ## Advanced usage
 
-### Curves
-
 The following chart comments are treated as commands:
 - `curveBeginL`, `curveBeginR`, `curveBeginLR`
 - `curveEndL`, `curveEndR`, `curveEndLR`
 - `lightFXL`, `lightFXR`, `lightFXLR`
+
+### Curves
 
 For the `curveBegin` commands, it must be followed by `=` and a number `2`, `4`, or `5`:
 - `curveBeginL=4` indicates that the left volume track will have an ease-out curve.
