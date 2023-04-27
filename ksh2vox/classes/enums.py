@@ -1,6 +1,7 @@
-from enum import Enum
+from enum import Enum, unique
 
 
+@unique
 class GameBackground(Enum):
     BOOTH_BRIDGE                        = 0
     BOOTH_LIME_TUNNEL_SLOW              = 1
@@ -93,6 +94,7 @@ class GameBackground(Enum):
     EXCEED_GEAR_TOWER_1                 = 88
     APRIL_FOOLS_EXCEED                  = 89
     SPECIAL_REMINISCENCE                = 90
+    # 2021121400 END
     HEXA_DIVER_PHASE_5                  = 91
     KAC_10TH_XHRONOXAPSULE              = 92
     KAC_10TH_MIXXION                    = 93
@@ -101,6 +103,8 @@ class GameBackground(Enum):
     SPECIAL_UNDERTALE_DELTARUNE         = 96
     HEXA_DIVER_IMAKIMINI                = 97
     SPECIAL_YOU_ARE_MY_BEST_RIVAL       = 98
+    SPECIAL_SUDDENDEATH                 = 99
+    EXCEED_GEAR_BEMANI_PRO_LEAGUE       = 100
 
     def __str__(self) -> str:
         name_parts = [s.capitalize() for s in self.name.split('_')]
