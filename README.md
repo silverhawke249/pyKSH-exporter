@@ -18,12 +18,12 @@ Older versions of Python 3.10 is untested, but this certainly does not run on Py
 
 ## Features
 
-- Convert modern KSH format (minimum version 1.60) to version 12 VOX files
-- Detect used effects, custom effect definitions and filter definitions and converts them accordingly
-- Handle manually set tilt values
-- Apply smooth curves described via chart comments
-- Handle FX sound samples automatically, either via file name or via comments
-- Prepare assets in the correct formats, all in one spot
+- Convert modern KSH format (minimum version 1.60) to version 12 VOX files.
+- Detect used effects, custom effect definitions, and filter definitions, and convert them accordingly.
+- Handle manually set tilt values.
+- Apply smooth curves described via chart comments.
+- Handle FX sound samples automatically, either via file name or via comments.
+- Prepare assets in the correct formats, all in one app.
 
 ## Advanced usage
 
@@ -51,13 +51,18 @@ If multiple commands need to be issued at the same time point, they can be separ
 
 FX chip sound sample can be autodetected by using the appropriate file name (`1.wav`, etc.) or by specifying it using the `lightFX` command -- e.g. `lightFXLR=7`.
 
+## Version history
+
+- v1.0 (2023/04/27)
+  - Initial release.
+
 ## Future additions?
 
 The following are features/improvements that are being considered for implementation -- some more important than others:
-- Convert lane splits
-- Handle custom filters with a changing parameter
-- Attempt to match custom filters with existing effects
-- Handle charts with pre-effected audio file
-- Make MS ADPCM encoding faster (currently it takes ~15 seconds for typical audio files about ~2:30 in length)
-- Show a preview of the selected background
-- Release a standalone binary, possibly compiled with Nuitka
+- Convert lane splits.
+- Handle custom filters with a changing parameter.
+- Attempt to match custom filters with existing effects.
+- Handle charts with pre-effected audio file.
+- Make MS ADPCM encoding faster (currently it takes ~15 seconds for typical audio files about ~2:30 in length).
+- Show a preview of the selected background.
+- Release a standalone binary, possibly compiled with Nuitka.
