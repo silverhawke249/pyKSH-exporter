@@ -11,6 +11,7 @@ Simply run `main.pyw`. Things are pretty self-explanatory.
 - Python >= 3.10.10
 - DearPyGui >= 1.9.0
 - Tcl/Tk >= 8.6
+- construct >= 2.10
 - pydub >= 0.25.1
 - PIL >= 9.1.0
 

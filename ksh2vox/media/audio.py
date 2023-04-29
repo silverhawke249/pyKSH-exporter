@@ -1,10 +1,13 @@
 import struct
 import wave
 
+import construct as cs
+
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from pydub import AudioSegment
 
@@ -13,6 +16,70 @@ ADPCM_ADAPTATION_TABLE = [
     230, 230, 230, 230, 307, 409, 512, 614,
     768, 614, 512, 409, 307, 230, 230, 230,
 ]
+
+MSADPCMWaveStruct = cs.Struct(
+    # RIFF container
+    cs.Const(b'RIFF'),
+
+    'wave' / cs.Prefixed(cs.Int32ul, cs.Struct(
+        # WAVE format
+        cs.Const(b'WAVE'),
+
+        # fmt chunk
+        cs.Const(b'fmt '),
+        cs.Const(50, cs.Int32ul) * 'Chunk size',
+        'wFormat' / cs.Int16ul,
+        'nChannels' / cs.Int16ul,
+        'nSamplesPerSec' / cs.Int32ul,
+        'nAvgBytesPerSec' / cs.Int32ul,
+        'nBlockAlign' / cs.Int16ul,
+        'wBitsPerSample' / cs.Int16ul,
+        cs.Const(32, cs.Int16ul) * 'Extra data size',
+        'wSamplesPerBlock' / cs.Int16ul,
+        'wNumCoef' / cs.Int16ul,
+        'aCoef' / cs.Array(cs.this.wNumCoef, cs.Int16sl[2]),
+
+        # fact chunk
+        cs.Const(b'fact'),
+        cs.Const(4, cs.Int32ul) * 'Chunk size',
+        'nFrames' / cs.Int32ul,
+
+        # data chunk
+        cs.Const(b'data'),
+        'waveBlobLength' / cs.Rebuild(cs.Int32ul, cs.len_(cs.this.waveBlob)),
+        'waveBlob' / cs.Bytes(cs.this.waveBlobLength)
+    ))
+)
+
+def getOffsets(this) -> list[int]:
+    offsets = []
+    for i in range(this.fileCount):
+        if i == 0:
+            offsets.append(this.headerSize)
+        else:
+            offsets.append(offsets[-1] + len(this._.files.blob[i]))
+    return offsets
+
+TwoDXFileStruct = cs.Struct(
+    'header' / cs.Struct(
+        'fileName' / cs.Bytes(16),
+        'headerSize' / cs.Rebuild(cs.Int32ul, 72 + 4 * cs.len_(cs.this._.files)),
+        'fileCount' / cs.Rebuild(cs.Int32ul, cs.len_(cs.this._.files)),
+        cs.Padding(48),
+        'offsets' / cs.Rebuild(cs.Int32ul[cs.this.fileCount], getOffsets)
+    ),
+    'files' / cs.Struct(
+        cs.Const(b'2DX9'),
+        cs.Const(24, cs.Int32ul),
+        'size' / cs.Rebuild(cs.Int32ul, cs.len_(cs.this.blob)),
+        cs.Const(b'\x31\x32'),
+        cs.Const(-1, cs.Int16sl),
+        cs.Const(64, cs.Int16sl),
+        cs.Const(1, cs.Int16sl),
+        cs.Const(0, cs.Int32sl),
+        'blob' / cs.Bytes(cs.this.size)
+    )[cs.this.header.fileCount]
+)
 
 
 @dataclass
@@ -32,6 +99,7 @@ class MSADPCMChannelStatus:
     idelta : int = 0
 
 
+@dataclass
 class MSADPCMWave:
     """ Converts a wave object of the correct specs to Microsoft ADPCM WAV. """
     # For fmt chunk
@@ -44,30 +112,31 @@ class MSADPCMWave:
     wSamplesPerBlock: int = 244
     # Adaptation coefficients
     wNumCoef        : int = 7
-    aCoef           : list[tuple[int, int]] = [
-        (256, 0),
-        (512, -256),
-        (0, 0),
-        (192, 64),
-        (240, 0),
-        (460, -208),
-        (392, -232),
-    ]
+    aCoef           : list[tuple[int, int]] = field(default_factory=list)
 
     # For fact chunk
     nFrames         : int = 0
 
     # For data chunk
-    cStatus         : list[MSADPCMChannelStatus]
-    waveData        : BytesIO
+    cStatus         : list[MSADPCMChannelStatus] = field(default_factory=list)
+    waveData        : BytesIO = field(default_factory=BytesIO)
+    waveBlob        : bytes = field(default=b'')
 
-    # Cached serialized data
-    _serialized_self: bytes = b''
+    _serialized_self: bytes = field(default=b'')
 
     def __init__(self, wave_in: wave.Wave_read):
         if wave_in.getframerate() != 44100 and wave_in.getnchannels() != 2 and wave_in.getsampwidth() != 2:
             raise ValueError('Wave file not in the correct spec (must be 44.1kHz 16-bit stereo)')
 
+        self.aCoef = [
+            (256, 0),
+            (512, -256),
+            (0, 0),
+            (192, 64),
+            (240, 0),
+            (460, -208),
+            (392, -232),
+        ]
         self.nFrames = wave_in.getnframes()
         self.cStatus = [MSADPCMChannelStatus() for _ in range(self.nChannels)]
         self.waveData = BytesIO()
@@ -83,6 +152,7 @@ class MSADPCMWave:
 
             available_frames -= frames_read
 
+        self.waveBlob = self.waveData.getvalue()
         wave_in.close()
 
     def compress_sample(self, status: MSADPCMChannelStatus, sample: int) -> int:
@@ -146,69 +216,7 @@ class MSADPCMWave:
 
     def serialize(self) -> bytes:
         if not self._serialized_self:
-            blob = BytesIO()
-
-            # RIFF container
-            blob.write(b'RIFF')
-            blob.write(struct.pack('<L', 82 + len(self.waveData.getbuffer())))
-
-            # WAVE format
-            blob.write(b'WAVE')
-
-            # fmt chunk
-            blob.write(b'fmt ')
-            blob.write(struct.pack('<L', 50))
-            blob.write(struct.pack('<H', self.wFormat))
-            blob.write(struct.pack('<H', self.nChannels))
-            blob.write(struct.pack('<L', self.nSamplesPerSec))
-            blob.write(struct.pack('<L', self.nAvgBytesPerSec))
-            blob.write(struct.pack('<H', self.nBlockAlign))
-            blob.write(struct.pack('<H', self.wBitsPerSample))
-            blob.write(struct.pack('<H', 32))
-            blob.write(struct.pack('<H', self.wSamplesPerBlock))
-            blob.write(struct.pack('<H', self.wNumCoef))
-            for coef1, coef2 in self.aCoef:
-                blob.write(struct.pack('<h', coef1))
-                blob.write(struct.pack('<h', coef2))
-
-            # fact chunk
-            blob.write(b'fact')
-            blob.write(struct.pack('<L', 4))
-            blob.write(struct.pack('<L', self.nFrames))
-
-            # data chunk
-            blob.write(b'data')
-            blob.write(struct.pack('<L', len(self.waveData.getbuffer())))
-            blob.write(self.waveData.getvalue())
-
-            self._serialized_self = blob.getvalue()
-
-        return self._serialized_self
-
-
-@dataclass
-class Blob2DX:
-    wave_obj: MSADPCMWave
-    _serialized_self: bytes = field(default=b'', init=False)
-
-    def __init__(self, wave_obj: MSADPCMWave):
-        self.wave_obj = wave_obj
-
-    def serialize(self) -> bytes:
-        if not self._serialized_self:
-            blob = BytesIO()
-
-            blob.write(b'2DX9')
-            blob.write(struct.pack('<L', 24))
-            blob.write(struct.pack('<L', len(self.wave_obj.serialize())))
-            blob.write(b'\x31\x32')
-            blob.write(struct.pack('<h', -1))
-            blob.write(struct.pack('<h', 64))
-            blob.write(struct.pack('<h', 1))
-            blob.write(struct.pack('<l', 0))
-            blob.write(self.wave_obj.serialize())
-
-            self._serialized_self = blob.getvalue()
+            self._serialized_self = MSADPCMWaveStruct.build({'wave': asdict(self)})
 
         return self._serialized_self
 
@@ -216,33 +224,20 @@ class Blob2DX:
 @dataclass
 class Container2DX:
     filename: str
-    blobs: list[Blob2DX] = field(default_factory=list, init=False)
+    waves: list[MSADPCMWave] = field(default_factory=list, init=False)
+    _serialized_self: bytes = field(default=b'', init=False)
 
     def serialize(self) -> bytes:
-        blob: bytes = b''
+        if not self._serialized_self:
+            filename_bytes = self.filename.encode()[:16]
+            if len(filename_bytes) < 16:
+                filename_bytes += b'\x00' * (16 - len(filename_bytes))
+            self._serialized_self = TwoDXFileStruct.build({
+                'header': {'fileName': filename_bytes},
+                'files': [{'blob': wave.serialize()} for wave in self.waves],
+            })
 
-        encoded_fn = self.filename.encode()
-        blob += encoded_fn[:16]
-        if len(encoded_fn) < 16:
-            blob += b'\x00' * (16 - len(encoded_fn))
-
-        blob += struct.pack('<L', 72 + 4 * len(self.blobs))
-        blob += struct.pack('<L', len(self.blobs))
-        blob += b'\x00' * 48
-
-        wav_offset = len(blob) + 4 * len(self.blobs)
-
-        prev_blob: bytes = b''
-        for wav_blob in self.blobs:
-            blob += struct.pack('<L', wav_offset)
-            if prev_blob:
-                wav_offset += len(prev_blob)
-            prev_blob = wav_blob.serialize()
-
-        for wav_blob in self.blobs:
-            blob += wav_blob.serialize()
-
-        return blob
+        return self._serialized_self
 
 
 # Preview start must be in ms
@@ -274,7 +269,7 @@ def get_2dxs(file_path: Path, song_label: str, preview_start: int) -> tuple[byte
     song_container = Container2DX(f'{song_label}.2dx')
     preview_container = Container2DX(f'{song_label}_pre.2dx')
 
-    song_container.blobs.append(Blob2DX(MSADPCMWave(song_wave)))
-    preview_container.blobs.append(Blob2DX(MSADPCMWave(preview_wave)))
+    song_container.waves.append(MSADPCMWave(song_wave))
+    preview_container.waves.append(MSADPCMWave(preview_wave))
 
     return song_container.serialize(), preview_container.serialize()
