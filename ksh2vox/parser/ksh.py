@@ -38,6 +38,7 @@ from ..classes.song import (
     SongInfo,
 )
 from ..utils import (
+    clamp,
     interpolate,
 )
 
@@ -467,11 +468,35 @@ class KSHParser:
                 self._cur_easing['vol_r'] = EasingType(int(value))
             elif name == 'curveBeginLR':
                 if ',' in value:
-                    value_l, value_r = value.split(',')
+                    value_l, value_r = value.split(',')[:2]
                 else:
                     value_l, value_r = value, value
                 self._cur_easing['vol_l'] = EasingType(int(value_l))
                 self._cur_easing['vol_r'] = EasingType(int(value_r))
+            elif name == 'curveBeginSpL':
+                values = value.split(',')
+                if len(values) != 3:
+                    raise ValueError('incorrect number of args supplied to curveBeginSpL')
+                ease, init_str, final_str = value.split(',')
+                init, final = float(init_str), float(final_str)
+                if init > final:
+                    init, final = final, init
+                init = clamp(init, 0.0, 1.0)
+                final = clamp(final, 0.0, 1.0)
+                self._cur_easing['vol_l'] = EasingType(int(ease))
+                self._ease_ranges[cur_time] = init, final
+            elif name == 'curveBeginSpR':
+                values = value.split(',')
+                if len(values) != 3:
+                    raise ValueError('incorrect number of args supplied to curveBeginSpR')
+                ease, init_str, final_str = value.split(',')
+                init, final = float(init_str), float(final_str)
+                if init > final:
+                    init, final = final, init
+                init = clamp(init, 0.0, 1.0)
+                final = clamp(final, 0.0, 1.0)
+                self._cur_easing['vol_r'] = EasingType(int(ease))
+                self._ease_ranges[cur_time] = init, final
             elif name == 'curveEndL':
                 self._cur_easing['vol_l'] = EasingType.NO_EASING
             elif name == 'curveEndR':
@@ -479,6 +504,18 @@ class KSHParser:
             elif name == 'curveEndLR':
                 self._cur_easing['vol_l'] = EasingType.NO_EASING
                 self._cur_easing['vol_r'] = EasingType.NO_EASING
+            # TODO: Overlay filter on custom filters
+            # This would require separating handling custom filters from regular filters
+            elif name == 'applyFilter':
+                if value == 'lpf':
+                    self._filter_override = FilterIndex.LPF.value
+                elif value == 'hpf':
+                    self._filter_override = FilterIndex.HPF.value
+                elif value == 'bitc':
+                    self._filter_override = FilterIndex.BITCRUSH.value
+                else:
+                    intval = int(value)
+                    self._filter_override = intval if 1 <= intval <= 5 else 6
             else:
                 # Silently ignoring all other metadata
                 pass
@@ -662,6 +699,7 @@ class KSHParser:
                     continue
                 # Interpolate lasers (no interpolation done if the first point is an endpoint)
                 if vol_i.ease_type != EasingType.NO_EASING:
+                    limit_bot, limit_top = self._ease_ranges.get(time_i, (0.0, 1.0))
                     total_span = self._chart_info.get_distance(time_i, time_f)
                     div_count = int(total_span / INTERPOLATION_DISTANCE)
                     if div_count * INTERPOLATION_DISTANCE < total_span:
@@ -669,7 +707,8 @@ class KSHParser:
                     for i in range(1, div_count):
                         cur_span = INTERPOLATION_DISTANCE * i
                         timept = self._chart_info.add_duration(time_i, cur_span)
-                        position = interpolate(vol_i.ease_type, cur_span, total_span, vol_i.end, vol_f.start)
+                        position = interpolate(
+                            vol_i.ease_type, cur_span, total_span, vol_i.end, vol_f.start, limit_bot, limit_top)
                         vol_data[timept] = VolInfo(
                             position, position,
                             spin_type=SpinType.NO_SPIN,
