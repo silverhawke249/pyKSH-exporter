@@ -13,7 +13,7 @@ from typing import Any
 
 from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
 from ksh2vox.media.audio import get_2dxs
-from ksh2vox.media.images import get_jacket_images
+from ksh2vox.media.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
 from ksh2vox.parser.ksh import KSHParser
 
 ObjectID = int | str
@@ -60,17 +60,23 @@ def dpg_demo():
 
 
 class KSH2VOXApp():
-    ui: dict[str, ObjectID]
-    reverse_ui_map: dict[ObjectID, str]
+    ui            : dict[str, ObjectID] = dict()
+    reverse_ui_map: dict[ObjectID, str] = dict()
 
-    parser: KSHParser
+    parser   : KSHParser
+    gmbg_data: GMBGHandler
 
-    current_path: Path | None = None
-    popup_result: bool = False
+    current_path      : Path | None = None
+    background_id     : int = 0
+    gmbg_available    : bool = True
+    gmbg_visible      : bool = False
+    gmbg_visible_time : float = 0
+    gmbg_images       : list[list[float]] = list()
+    gmbg_image_index  : int = 0
+    popup_result      : bool = False
 
     def __init__(self):
-        self.ui = {}
-        self.reverse_ui_map = {}
+        self.gmbg_data = get_game_backgrounds()
 
         warnings.simplefilter('always')
         warnings.showwarning = self.log_warning
@@ -78,6 +84,18 @@ class KSH2VOXApp():
         dpg.create_context()
         dpg.create_viewport(title='ksh-vox converter', width=650, height=850, resizable=False)
         dpg.setup_dearpygui()
+
+        #==================#
+        # TEXTURE REGISTRY #
+        #==================#
+
+        with dpg.texture_registry():
+            self.ui['gmbg_texture'] = dpg.add_dynamic_texture(
+                width=BG_WIDTH, height=BG_HEIGHT, default_value=[0.0, 0.0, 0.0, 1.0] * (BG_WIDTH * BG_HEIGHT))
+
+        #===================#
+        # WINDOW/APP LAYOUT #
+        #===================#
 
         with dpg.window(label='ksh-vox converter') as primary_window:
             self.ui['primary_window'] = primary_window
@@ -131,12 +149,18 @@ class KSH2VOXApp():
                         self.ui['release_date']    = dpg.add_input_text(
                             label='Release date', decimal=True, callback=self.update_and_validate)
                         self.ui['music_volume']    = dpg.add_slider_int(
-                            label='Music volume', clamped=True, min_value=0, max_value=100,
+                            label='Music volume', default_value=100, clamped=True, min_value=0, max_value=100,
                             callback=self.update_and_validate)
                         self.ui['background']      = dpg.add_combo(
-                            list(GameBackground), label='Game background', callback=self.update_and_validate)
+                            list(GameBackground), label='Game background', default_value=GameBackground.BOOTH_BRIDGE,
+                            callback=self.update_and_validate)
                         self.ui['inf_ver']         = dpg.add_combo(
-                            list(InfVer), label='Infinite version', callback=self.update_and_validate)
+                            list(InfVer), label='Infinite version', default_value=InfVer.INFINITE,
+                            callback=self.update_and_validate)
+
+                        with dpg.tooltip(self.ui['background']) as bg_tooltip:
+                            self.ui['bg_tooltip'] = bg_tooltip
+                            self.ui['bg_preview'] = dpg.add_image(self.ui['gmbg_texture'])
 
                         # TODO: Background preview
 
@@ -192,10 +216,18 @@ class KSH2VOXApp():
 
                     dpg.add_spacer()
 
-        with dpg.item_handler_registry() as popup_handler:
-            dpg.add_item_resize_handler(callback=self.reposition_popup)
+        #================#
+        # EVENT HANDLERS #
+        #================#
 
-        dpg.bind_item_handler_registry(popup_window, popup_handler)
+        with dpg.item_handler_registry() as background_handler:
+            dpg.add_item_visible_handler(callback=self.switch_image_texture)
+
+        dpg.bind_item_handler_registry(self.ui['background'], background_handler)
+
+        #===============#
+        # FONT REGISTRY #
+        #===============#
 
         with dpg.font_registry():
             with dpg.font('resources/NotoSansJP-Regular.ttf', 20) as font:
@@ -203,6 +235,10 @@ class KSH2VOXApp():
                 dpg.add_font_range_hint(dpg.mvFontRangeHint_Japanese)
 
             dpg.bind_font(font)
+
+        #================#
+        # THEME REGISTRY #
+        #================#
 
         with dpg.theme() as button_theme:
             with dpg.theme_component(dpg.mvAll):
@@ -248,23 +284,15 @@ class KSH2VOXApp():
 
         dpg.bind_item_theme(primary_window, primary_window_theme)
         dpg.bind_item_theme(popup_window, sub_window_theme)
+
+        #================================
+
         dpg.set_primary_window(primary_window, True)
 
         dpg.show_viewport()
         dpg.start_dearpygui()
 
         dpg.destroy_context()
-
-    def log_warning(self, message, category, filename, lineno, file=None, line=None):
-        self.log(f'Warning: {message}')
-
-    def log(self, message):
-        dpg.add_text(
-            f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}',
-            parent=self.ui['log'])
-
-        y_max = dpg.get_y_scroll_max(self.ui['log'])
-        dpg.set_y_scroll(self.ui['log'], y_max)
 
     def get_obj_name(self, uuid: ObjectID):
         if uuid not in self.reverse_ui_map:
@@ -274,20 +302,51 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
+    def log_warning(self, message, category, filename, lineno, file=None, line=None):
+        self.log(f'Warning: {message}')
+
+    def log(self, message):
+        dpg.add_text(f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}', parent=self.ui['log'])
+
+    # Figure out where are we attaching this to
+    def scroll_log(self):
+        y_max = dpg.get_y_scroll_max(self.ui['log'])
+        dpg.set_y_scroll(self.ui['log'], y_max)
+
     def show_popup(self, message):
         dpg.set_value(self.ui['popup_text'], message)
         dpg.show_item(self.ui['popup_window'])
-
-    def reposition_popup(self):
-        ww, wh = dpg.get_item_rect_size(self.ui['popup_window'])
-        vw, vh = dpg.get_viewport_width(), dpg.get_viewport_height()
-        dpg.set_item_pos(self.ui['popup_window'], [(vw - ww) // 2, (vh - wh) // 2])
 
     def hide_popup(self, sender: ObjectID, app_data, user_data: bool):
         self.popup_result = user_data
         dpg.hide_item(self.ui['popup_window'])
 
+    def switch_image_texture(self):
+        if self.gmbg_available and not dpg.get_item_configuration(self.ui['bg_tooltip'])['show']:
+            dpg.show_item(self.ui['bg_tooltip'])
+        elif not self.gmbg_available and dpg.get_item_configuration(self.ui['bg_tooltip'])['show']:
+            dpg.hide_item(self.ui['bg_tooltip'])
+
+        if dpg.is_item_hovered(self.ui['background']) and dpg.is_item_visible(self.ui['bg_preview']):
+            if not self.gmbg_visible:
+                self.gmbg_image_index = 0
+                self.gmbg_images = self.gmbg_data.get_images(self.background_id)
+                self.gmbg_visible = True
+                self.gmbg_visible_time = time.time()
+                dpg.set_value(self.ui['gmbg_texture'], self.gmbg_images[self.gmbg_image_index])
+                return
+
+            now_index = int(time.time() - self.gmbg_visible_time) % len(self.gmbg_images)
+            if now_index == self.gmbg_image_index:
+                return
+
+            self.gmbg_image_index = now_index
+            dpg.set_value(self.ui['gmbg_texture'], self.gmbg_images[self.gmbg_image_index])
+        else:
+            self.gmbg_visible = False
+
     def update_and_validate(self, sender: ObjectID, app_data: Any):
+        # Validation
         if sender == self.ui['min_bpm']:
             if app_data > (value := dpg.get_value(self.ui['max_bpm'])):
                 dpg.set_value(sender, value)
@@ -295,16 +354,26 @@ class KSH2VOXApp():
             if app_data < (value := dpg.get_value(self.ui['min_bpm'])):
                 dpg.set_value(sender, value)
 
+        # Convert value back to enum
         if sender in [self.ui['background'], self.ui['inf_ver'], self.ui['difficulty']]:
             regex_match = ENUM_REGEX.search(app_data)
             if regex_match is not None:
                 app_data = int(regex_match.group(1))
 
-        obj_name = self.get_obj_name(sender)
-        if obj_name in SONG_INFO_FIELDS:
-            setattr(self.parser._song_info, obj_name, self.parser._song_info.__annotations__[obj_name](app_data))
-        elif obj_name in CHART_INFO_FIELDS:
-            setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
+        # Update background preview
+        if sender == self.ui['background']:
+            self.background_id = app_data
+            self.gmbg_available = self.gmbg_data.has_image(self.background_id)
+
+        # Update parser state
+        try:
+            obj_name = self.get_obj_name(sender)
+            if obj_name in SONG_INFO_FIELDS:
+                setattr(self.parser._song_info, obj_name, self.parser._song_info.__annotations__[obj_name](app_data))
+            elif obj_name in CHART_INFO_FIELDS:
+                setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
+        except AttributeError:
+            pass
 
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
@@ -333,6 +402,9 @@ class KSH2VOXApp():
                 dpg.set_value(self.ui[field], getattr(self.parser._song_info, field))
             for field in CHART_INFO_FIELDS:
                 dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
+
+            self.background_id = self.parser._song_info.background.value
+            self.gmbg_available = self.gmbg_data.has_image(self.background_id)
 
         dpg.configure_item(self.ui['vox_button'], enabled=True)
         dpg.configure_item(self.ui['xml_button'], enabled=True)
