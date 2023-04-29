@@ -139,6 +139,8 @@ class KSHParser:
     _spins : dict[TimePoint, str]      = dataclasses.field(default_factory=dict, init=False, repr=False)
     _stops : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
+    _ease_ranges: dict[TimePoint, tuple[float, float]] = dataclasses.field(default_factory=dict, init=False, repr=False)
+
     _filter_names    : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _filter_to_effect: dict[str, int]       = dataclasses.field(default_factory=dict, init=False, repr=False)
 
@@ -180,72 +182,74 @@ class KSHParser:
         self._chart_info = ChartInfo()
 
         for line_no, line in enumerate(self._raw_metadata):
-            # TODO: Wrap this in a try block and warn errors
-            if '=' not in line:
-                warnings.warn(f'unrecognized line at line {line_no + 1}: "{line}"')
-            key, value = line.split('=', 1)
-            if key == 'title':
-                self._song_info.title = value
-                self._song_info.ascii_label = ''.join(TITLE_REGEX.split(value)).lower()
-            elif key == 'artist':
-                self._song_info.artist = value
-            elif key == 'effect':
-                self._chart_info.effector = value
-            elif key == 'jacket':
-                self._chart_info.jacket_path = value
-            elif key == 'illustrator':
-                self._chart_info.illustrator = value
-            elif key == 'difficulty':
-                if value == 'light':
-                    self._chart_info.difficulty = DifficultySlot.NOVICE
-                elif value == 'challenge':
-                    self._chart_info.difficulty = DifficultySlot.ADVANCED
-                elif value == 'extended':
-                    self._chart_info.difficulty = DifficultySlot.EXHAUST
+            try:
+                if '=' not in line:
+                    warnings.warn(f'unrecognized line at line {line_no + 1}: "{line}"')
+                key, value = line.split('=', 1)
+                if key == 'title':
+                    self._song_info.title = value
+                    self._song_info.ascii_label = ''.join(TITLE_REGEX.split(value)).lower()
+                elif key == 'artist':
+                    self._song_info.artist = value
+                elif key == 'effect':
+                    self._chart_info.effector = value
+                elif key == 'jacket':
+                    self._chart_info.jacket_path = value
+                elif key == 'illustrator':
+                    self._chart_info.illustrator = value
+                elif key == 'difficulty':
+                    if value == 'light':
+                        self._chart_info.difficulty = DifficultySlot.NOVICE
+                    elif value == 'challenge':
+                        self._chart_info.difficulty = DifficultySlot.ADVANCED
+                    elif value == 'extended':
+                        self._chart_info.difficulty = DifficultySlot.EXHAUST
+                    else:
+                        self._chart_info.difficulty = DifficultySlot.MAXIMUM
+                elif key == 'level':
+                    self._chart_info.level = int(value)
+                elif key == 't':
+                    if '-' in value:
+                        min_bpm_str, max_bpm_str = value.split('-')
+                        self._song_info.min_bpm = Decimal(min_bpm_str)
+                        self._song_info.max_bpm = Decimal(max_bpm_str)
+                    else:
+                        bpm = Decimal(value)
+                        self._song_info.min_bpm = bpm
+                        self._song_info.max_bpm = bpm
+                        self._chart_info.bpms[TimePoint(1, 0, 1)] = bpm
+                elif key == 'beat':
+                    upper_str, lower_str = value.split('/')
+                    upper, lower = int(upper_str), int(lower_str)
+                    self._chart_info.timesigs[TimePoint(1, 0, 1)] = TimeSignature(upper, lower)
+                    self._cur_timesig = TimeSignature(upper, lower)
+                elif key == 'm':
+                    self._chart_info.music_path, *music_path_ex = value.split(';')
+                    if music_path_ex:
+                        warnings.warn('multiple song files are not supported yet')
+                elif key == 'mvol':
+                    self._song_info.music_volume = int(value)
+                elif key == 'o':
+                    self._chart_info.music_offset = int(value)
+                elif key == 'po':
+                    self._chart_info.preview_start = int(value)
+                elif key == 'filtertype':
+                    if value in FILTER_TYPE_MAP:
+                        self._chart_info.active_filter[TimePoint(1, 0, 1)] = FILTER_TYPE_MAP[value]
+                elif key == 'ver':
+                    # You know, I should probably differentiate handling top/bottom zooms depending if
+                    # the version is >= 167 or not, but I'm most likely not going to fucking bother
+                    try:
+                        version = int(value)
+                        if version < 160:
+                            raise NotImplementedError(f'ksh file version too old (got {value})')
+                    except ValueError as e:
+                        raise NotImplementedError(f'ksh file version too old (got {value})') from e
                 else:
-                    self._chart_info.difficulty = DifficultySlot.MAXIMUM
-            elif key == 'level':
-                self._chart_info.level = int(value)
-            elif key == 't':
-                if '-' in value:
-                    min_bpm_str, max_bpm_str = value.split('-')
-                    self._song_info.min_bpm = Decimal(min_bpm_str)
-                    self._song_info.max_bpm = Decimal(max_bpm_str)
-                else:
-                    bpm = Decimal(value)
-                    self._song_info.min_bpm = bpm
-                    self._song_info.max_bpm = bpm
-                    self._chart_info.bpms[TimePoint(1, 0, 1)] = bpm
-            elif key == 'beat':
-                upper_str, lower_str = value.split('/')
-                upper, lower = int(upper_str), int(lower_str)
-                self._chart_info.timesigs[TimePoint(1, 0, 1)] = TimeSignature(upper, lower)
-                self._cur_timesig = TimeSignature(upper, lower)
-            elif key == 'm':
-                self._chart_info.music_path, *music_path_ex = value.split(';')
-                if music_path_ex:
-                    warnings.warn('multiple song files are not supported yet')
-            elif key == 'mvol':
-                self._song_info.music_volume = int(value)
-            elif key == 'o':
-                self._chart_info.music_offset = int(value)
-            elif key == 'po':
-                self._chart_info.preview_start = int(value)
-            elif key == 'filtertype':
-                if value in FILTER_TYPE_MAP:
-                    self._chart_info.active_filter[TimePoint(1, 0, 1)] = FILTER_TYPE_MAP[value]
-            elif key == 'ver':
-                # You know, I should probably differentiate handling top/bottom zooms depending if
-                # the version is >= 167 or not, but I'm most likely not going to fucking bother
-                try:
-                    version = int(value)
-                    if version < 160:
-                        raise ValueError(f'ksh file version too old (got {value})')
-                except ValueError as e:
-                    raise ValueError(f'ksh file version too old (got {value})') from e
-            else:
-                # Silently ignoring all other metadata
-                pass
+                    # Silently ignoring all other metadata
+                    pass
+            except ValueError as e:
+                warnings.warn(str(e), ParserWarning)
 
     def _initialize_stateful_data(self) -> None:
         self._cur_easing = {
@@ -322,121 +326,124 @@ class KSHParser:
             setattr(self._chart_info.note_data, k, v3)
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
-        # TODO: Wrap this in a try block and warn errors
         key, value = line.split('=', 1)
-        if key == 't':
-            self._chart_info.bpms[cur_time] = Decimal(value)
-        elif key == 'beat':
-            upper_str, lower_str = value.split('/')
-            upper, lower = int(upper_str), int(lower_str)
-            # Time signature changes should be at the start of the measure
-            # Otherwise, it takes effect on the next measure
-            if cur_time.position != 0:
-                self._chart_info.timesigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
-            else:
-                self._chart_info.timesigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
-                self._cur_timesig = TimeSignature(upper, lower)
-        elif key == 'stop':
-            self._stops[cur_time] = int(value) * STOP_CONVERSION_RATE
-        elif key == 'tilt':
-            try:
-                if value == 'zero':
-                    tilt_val = Decimal()
+        try:
+            if key == 't':
+                self._chart_info.bpms[cur_time] = Decimal(value)
+            elif key == 'beat':
+                if '/' not in value:
+                    warnings.warn(f'invalid time signature (got {value})')
+                upper_str, lower_str = value.split('/')
+                upper, lower = int(upper_str), int(lower_str)
+                # Time signature changes should be at the start of the measure
+                # Otherwise, it takes effect on the next measure
+                if cur_time.position != 0:
+                    self._chart_info.timesigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
                 else:
-                    tilt_val = (Decimal(value) * TILT_CONVERSION_RATE).normalize() + 0
-                # Modify existing tilt value if it exists
-                if cur_time in self._chart_info.spcontroller_data.tilt:
-                    self._chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
+                    self._chart_info.timesigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
+                    self._cur_timesig = TimeSignature(upper, lower)
+            elif key == 'stop':
+                self._stops[cur_time] = int(value) * STOP_CONVERSION_RATE
+            elif key == 'tilt':
+                try:
+                    if value == 'zero':
+                        tilt_val = Decimal()
+                    else:
+                        tilt_val = (Decimal(value) * TILT_CONVERSION_RATE).normalize() + 0
+                    # Modify existing tilt value if it exists
+                    if cur_time in self._chart_info.spcontroller_data.tilt:
+                        self._chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
+                    else:
+                        self._chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
+                            tilt_val, tilt_val,
+                            point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START)
+                    self._tilt_segment = True
+                except InvalidOperation:
+                    if value == 'normal':
+                        self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
+                        self._tilt_segment = False
+                    elif value in ['bigger', 'biggest']:
+                        self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
+                        self._tilt_segment = False
+                        if value == 'biggest':
+                            warnings.warn(f'downgrading tilt "{value}" at m{m_no} to "bigger"', ParserWarning)
+                    elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
+                        self._chart_info.tilt_type[cur_time] = TiltType.KEEP
+                        self._tilt_segment = False
+                    else:
+                        warnings.warn(f'unrecognized tilt mode "{value}" at m{m_no}', ParserWarning)
+            elif key == 'zoom_top':
+                zoom_val = (int(value) * ZOOM_TOP_CONVERSION_RATE).normalize() + 0
+                if cur_time in self._chart_info.spcontroller_data.zoom_top:
+                    self._chart_info.spcontroller_data.zoom_top[cur_time].end = zoom_val
                 else:
-                    self._chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
-                        tilt_val, tilt_val,
-                        point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START)
-                self._tilt_segment = True
-            except InvalidOperation:
-                if value == 'normal':
-                    self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
-                    self._tilt_segment = False
-                elif value in ['bigger', 'biggest']:
-                    self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
-                    self._tilt_segment = False
-                    if value == 'biggest':
-                        warnings.warn(f'downgrading tilt "{value}" at m{m_no} to "bigger"', ParserWarning)
-                elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
-                    self._chart_info.tilt_type[cur_time] = TiltType.KEEP
-                    self._tilt_segment = False
+                    self._chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
+                        zoom_val, zoom_val,
+                        point_type=SegmentFlag.MIDDLE)
+                self._final_zoom_top_timepoint = cur_time
+            elif key == 'zoom_bottom':
+                zoom_val = (int(value) * ZOOM_BOTTOM_CONVERSION_RATE).normalize() + 0
+                if cur_time in self._chart_info.spcontroller_data.zoom_bottom:
+                    self._chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
                 else:
-                    warnings.warn(f'unrecognized tilt mode "{value}" at m{m_no}', ParserWarning)
-        elif key == 'zoom_top':
-            zoom_val = (int(value) * ZOOM_TOP_CONVERSION_RATE).normalize() + 0
-            if cur_time in self._chart_info.spcontroller_data.zoom_top:
-                self._chart_info.spcontroller_data.zoom_top[cur_time].end = zoom_val
-            else:
-                self._chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
-                    zoom_val, zoom_val,
+                    self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(zoom_val, zoom_val,
                     point_type=SegmentFlag.MIDDLE)
-            self._final_zoom_top_timepoint = cur_time
-        elif key == 'zoom_bottom':
-            zoom_val = (int(value) * ZOOM_BOTTOM_CONVERSION_RATE).normalize() + 0
-            if cur_time in self._chart_info.spcontroller_data.zoom_bottom:
-                self._chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
-            else:
-                self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(zoom_val, zoom_val,
-                point_type=SegmentFlag.MIDDLE)
-            self._final_zoom_bottom_timepoint = cur_time
-        elif key == 'center_split':
-            split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
-            if cur_time in self._chart_info.spcontroller_data.lane_split:
-                self._chart_info.spcontroller_data.lane_split[cur_time].end = split_val
-            else:
-                self._chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(split_val, split_val)
-        elif key in ['laserrange_l', 'laserrange_r']:
-            key = f'vol_{key[-1]}'
-            if not self._cont_segment[key]:
-                self._wide_segment[key] = True
-        elif key in ['fx-l', 'fx-r']:
-            key = key.replace('-', '_')
-            if value and value not in self._fx_list:
-                self._fx_list.append(value)
-            if key in self._set_fx:
-                # Send warning only if:
-                # - effect is not null
-                # - currently stored effect is not the null effect
-                # - currently stored effect is different from incoming effect
-                if value and self._set_fx[key] and self._set_fx[key] != value:
-                    warnings.warn(f'ignoring effect "{value}" assigned to {key} that already has an assigned '
-                                    f'effect "{self._set_fx[key]}" at m{m_no}', ParserWarning)
-                return
-            self._set_fx[key] = value
-        elif key in ['fx-l_se', 'fx-r_se']:
-            key = key[:4]
-            key = key.replace('-', '_')
-            value = value.split(';')[0]
-            if value.endswith('.wav'):
-                value = value[:-4]
-            try:
-                self._set_se[key] = int(value)
-            except ValueError:
+                self._final_zoom_bottom_timepoint = cur_time
+            elif key == 'center_split':
+                split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
+                if cur_time in self._chart_info.spcontroller_data.lane_split:
+                    self._chart_info.spcontroller_data.lane_split[cur_time].end = split_val
+                else:
+                    self._chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(split_val, split_val)
+            elif key in ['laserrange_l', 'laserrange_r']:
+                key = f'vol_{key[-1]}'
+                if not self._cont_segment[key]:
+                    self._wide_segment[key] = True
+            elif key in ['fx-l', 'fx-r']:
+                key = key.replace('-', '_')
+                if value and value not in self._fx_list:
+                    self._fx_list.append(value)
+                if key in self._set_fx:
+                    # Send warning only if:
+                    # - effect is not null
+                    # - currently stored effect is not the null effect
+                    # - currently stored effect is different from incoming effect
+                    if value and self._set_fx[key] and self._set_fx[key] != value:
+                        warnings.warn(f'ignoring effect "{value}" assigned to {key} that already has an assigned '
+                                        f'effect "{self._set_fx[key]}" at m{m_no}', ParserWarning)
+                    return
+                self._set_fx[key] = value
+            elif key in ['fx-l_se', 'fx-r_se']:
+                key = key[:4]
+                key = key.replace('-', '_')
+                value = value.split(';')[0]
+                if value.endswith('.wav'):
+                    value = value[:-4]
+                try:
+                    self._set_se[key] = int(value)
+                except ValueError:
+                    pass
+            elif key == 'filtertype':
+                self._filter_names[cur_time] = value
+                if value in FILTER_TYPE_MAP:
+                    filter_now = FILTER_TYPE_MAP[value]
+                else:
+                    filter_now = FilterIndex.CUSTOM
+                if filter_now != self._cur_filter:
+                    self._cur_filter = filter_now
+                    self._chart_info.active_filter[cur_time] = filter_now
+            elif ':' in key:
+                # TODO: Filter settings... this might get supported in the future
+                # > filter:[filter_name]:[parameter]=[value]
+                # Technically FX parameters can also be changed here but like no one uses that
                 pass
-        elif key == 'filtertype':
-            self._filter_names[cur_time] = value
-            if value in FILTER_TYPE_MAP:
-                filter_now = FILTER_TYPE_MAP[value]
             else:
-                filter_now = FilterIndex.CUSTOM
-            if filter_now != self._cur_filter:
-                self._cur_filter = filter_now
-                self._chart_info.active_filter[cur_time] = filter_now
-        elif ':' in key:
-            # TODO: Filter settings... this might get supported in the future
-            # > filter:[filter_name]:[parameter]=[value]
-            # Technically FX parameters can also be changed here but like no one uses that
-            pass
-        else:
-            # Silently ignoring all other metadata
-            pass
+                # Silently ignoring all other metadata
+                pass
+        except ValueError as e:
+            warnings.warn(str(e), ParserWarning)
 
     def _handle_notechart_custom_commands(self, line: str, cur_time: TimePoint) -> None:
-        # TODO: Wrap this in a try block and warn errors
         # Remove initial `//`
         line = line[2:]
         for chunk in line.split(';'):
@@ -806,14 +813,16 @@ class KSHParser:
                     warnings.warn(str(e), ParserWarning)
             # 2. Metadata
             elif '=' in line:
-                self._handle_notechart_metadata(line, cur_time, m_no)
+                try:
+                    self._handle_notechart_metadata(line, cur_time, m_no)
+                except ValueError as e:
+                    warnings.warn(str(e), ParserWarning)
             # 3. Notedata
             else:
                 self._handle_notechart_notedata(line, cur_time, subdivision)
                 noteline_count += 1
 
     def _parse_definitions(self) -> None:
-        # TODO: Handle possible exceptions
         ln_offset: int = len(self._raw_metadata) + len(self._raw_notedata) + 1
         for line_no, line in enumerate(self._raw_definitions):
             if not line.startswith('#'):
@@ -824,24 +833,29 @@ class KSHParser:
             params_dict: dict[str, str] = {s[0]: s[1] for s in params_list}
             if 'type' not in params_dict:
                 warnings.warn(
-                    f'ignoring definition at line {ln_offset + line_no + 1}, "type" parameter missing: "{line}"',
+                    f'ignoring definition at line {ln_offset + line_no + 1}; "type" parameter missing: "{line}"',
                     ParserWarning)
                 continue
-            if line_type == 'define_fx':
-                self._chart_info._custom_effect[name] = effects.from_definition(params_dict)
-            elif line_type == 'define_filter':
-                # TODO: This
-                for key, val in list(params_dict.items()):
-                    if '-' in val:
-                        dash_count = val.count('-')
-                        # Remove cases where range is specified
-                        if dash_count > 1 or (dash_count == 1 and not val.startswith('-')):
-                            del params_dict[key]
-                # For now I ignore figuring out which parameter changes
-                self._chart_info._custom_filter[name] = effects.from_definition(params_dict)
-            else:
+            try:
+                if line_type == 'define_fx':
+                    self._chart_info._custom_effect[name] = effects.from_definition(params_dict)
+                elif line_type == 'define_filter':
+                    # TODO: This
+                    for key, val in list(params_dict.items()):
+                        if '-' in val:
+                            dash_count = val.count('-')
+                            # Remove cases where range is specified
+                            if dash_count > 1 or (dash_count == 1 and not val.startswith('-')):
+                                del params_dict[key]
+                    # For now I ignore figuring out which parameter changes
+                    self._chart_info._custom_filter[name] = effects.from_definition(params_dict)
+                else:
+                    warnings.warn(
+                        f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
+            except ValueError as e:
                 warnings.warn(
-                    f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
+                    f'ignoring definition at line {ln_offset + line_no + 1}; unable to parse definition: "{line}"',
+                    ParserWarning)
 
     def write_xml(self, f: TextIO):
         f.write(f'  <music id="{self._song_info.id}">\n'
