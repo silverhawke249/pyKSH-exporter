@@ -449,9 +449,9 @@ class KSH2VOXApp():
                 self.show_popup(f'Cannot open "{jacket_path}".')
                 return
 
-            jacket_r_file_name = f'jk_{self.parser._song_info.id:04}_1.png'
-            jacket_b_file_name = f'jk_{self.parser._song_info.id:04}_1_b.png'
-            jacket_s_file_name = f'jk_{self.parser._song_info.id:04}_1_s.png'
+            jacket_r_file_name = f'jk_{self.parser._song_info.id:04}_{self.parser._chart_info.difficulty.value}.png'
+            jacket_b_file_name = f'jk_{self.parser._song_info.id:04}_{self.parser._chart_info.difficulty.value}_b.png'
+            jacket_s_file_name = f'jk_{self.parser._song_info.id:04}_{self.parser._chart_info.difficulty.value}_s.png'
 
             jacket_r_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
