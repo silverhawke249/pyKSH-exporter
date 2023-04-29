@@ -43,6 +43,7 @@ from ..utils import (
 
 BAR_LINE = '--'
 CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')
+TITLE_REGEX = re.compile(r'[^a-zA-Z0-9]+')
 LASER_POSITION = [
     '05AFKPUZejo',
     '0257ACFHKMPSUXZbehjmo',
@@ -185,6 +186,7 @@ class KSHParser:
             key, value = line.split('=', 1)
             if key == 'title':
                 self._song_info.title = value
+                self._song_info.ascii_label = ''.join(TITLE_REGEX.split(value)).lower()
             elif key == 'artist':
                 self._song_info.artist = value
             elif key == 'effect':
