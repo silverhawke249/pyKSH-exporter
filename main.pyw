@@ -333,7 +333,7 @@ class KSH2VOXApp():
                 dpg.set_value(self.ui['gmbg_texture'], self.gmbg_images[self.gmbg_image_index])
                 return
 
-            now_index = int(time.time() - self.gmbg_visible_time) % len(self.gmbg_images)
+            now_index = int((time.time() - self.gmbg_visible_time) / 1.5) % len(self.gmbg_images)
             if now_index == self.gmbg_image_index:
                 return
 
