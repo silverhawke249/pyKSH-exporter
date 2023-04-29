@@ -162,8 +162,6 @@ class KSH2VOXApp():
                             self.ui['bg_tooltip'] = bg_tooltip
                             self.ui['bg_preview'] = dpg.add_image(self.ui['gmbg_texture'])
 
-                        # TODO: Background preview
-
                     with dpg.tab(label='Chart info') as section_chart_info:
                         self.ui['section_chart_info'] = section_chart_info
 
@@ -258,29 +256,28 @@ class KSH2VOXApp():
                 dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
                 dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 0, category=dpg.mvThemeCat_Core)
 
+            with dpg.theme_component(dpg.mvTab):
+                dpg.add_theme_color(dpg.mvThemeCol_TabActive, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_TabHovered, (53, 174, 255, 255), category=dpg.mvThemeCat_Core)
+
             with dpg.theme_component(dpg.mvButton, enabled_state=True):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (53, 174, 255, 255), category=dpg.mvThemeCat_Core)
 
             with dpg.theme_component(dpg.mvButton, enabled_state=False):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (100, 100, 100), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (100, 100, 100), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Text, (100, 100, 100, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (65, 65, 65, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (65, 65, 65, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (65, 65, 65, 255), category=dpg.mvThemeCat_Core)
 
         with dpg.theme() as sub_window_theme:
             with dpg.theme_component(dpg.mvAll):
                 dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
                 dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 5, category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_Border, (15, 86, 135), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Border, (15, 86, 135, 255), category=dpg.mvThemeCat_Core)
 
             with dpg.theme_component(dpg.mvButton, enabled_state=True):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (23, 60, 95), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_Header, (23, 60, 95), category=dpg.mvThemeCat_Core)
-
-            with dpg.theme_component(dpg.mvButton, enabled_state=False):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (100, 100, 100), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100), category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (100, 100, 100), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
 
         dpg.bind_item_theme(primary_window, primary_window_theme)
         dpg.bind_item_theme(popup_window, sub_window_theme)
