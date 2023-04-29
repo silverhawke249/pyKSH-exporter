@@ -82,6 +82,8 @@ class KSH2VOXApp():
         with dpg.window(label='ksh-vox converter') as primary_window:
             self.ui['primary_window'] = primary_window
 
+            self.ui['throbber'] = dpg.add_loading_indicator(show=False, pos=(550, 20), style=1, radius=4, color=(15, 86, 135))
+
             with dpg.group() as main_buttons:
                 with dpg.group(horizontal=True):
                     self.ui['open_button'] = dpg.add_button(label='Open file...', callback=self.load_ksh)
@@ -305,7 +307,7 @@ class KSH2VOXApp():
             setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
 
     def load_ksh(self):
-        with disable_buttons(self):
+        with disable_buttons(self), show_throbber(self):
             file_path = filedialog.askopenfilename(
                 filetypes=(
                     ('K-Shoot Mania charts', '*.ksh'),
@@ -338,7 +340,7 @@ class KSH2VOXApp():
         dpg.configure_item(self.ui['jackets_button'], enabled=True)
 
     def export_vox(self):
-        with disable_buttons(self):
+        with disable_buttons(self), show_throbber(self):
             file_name = (f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}_'
                          f'{self.parser._chart_info.difficulty.to_shorthand()}.vox')
             file_path = filedialog.asksaveasfilename(
@@ -363,7 +365,7 @@ class KSH2VOXApp():
             self.log(f'File saved: {file_name}')
 
     def export_xml(self):
-        with disable_buttons(self):
+        with disable_buttons(self), show_throbber(self):
             file_name = (f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}_'
                          f'{self.parser._chart_info.difficulty.to_shorthand()}.xml')
             file_path = filedialog.asksaveasfilename(
@@ -388,7 +390,7 @@ class KSH2VOXApp():
             self.log(f'File saved: {file_name}')
 
     def export_2dx(self):
-        with disable_buttons(self):
+        with disable_buttons(self), show_throbber(self):
             audio_path = (self.parser._ksh_path.parent / self.parser._chart_info.music_path).resolve()
             if not audio_path.exists():
                 self.log(f'Cannot open "{audio_path}".')
@@ -440,7 +442,7 @@ class KSH2VOXApp():
             self.log(f'File saved: {preview_file_name}')
 
     def export_jacket(self):
-        with disable_buttons(self):
+        with disable_buttons(self), show_throbber(self):
             jacket_path = (self.parser._ksh_path.parent / self.parser._chart_info.jacket_path).resolve()
             if not jacket_path.exists():
                 self.log(f'Cannot open "{jacket_path}".')
@@ -517,7 +519,7 @@ class disable_buttons():
     buttons: list[str]
     button_state: dict[str, bool]
 
-    def __init__(self, app):
+    def __init__(self, app: KSH2VOXApp):
         self.app = app
         self.buttons = ['open_button', 'vox_button', 'xml_button', '2dx_button', 'jackets_button']
         self.button_state = {}
@@ -530,6 +532,19 @@ class disable_buttons():
     def __exit__(self, *args, **kwargs):
         for button, state in self.button_state.items():
             dpg.configure_item(self.app.ui[button], enabled=state)
+
+
+class show_throbber():
+    app: KSH2VOXApp
+
+    def __init__(self, app: KSH2VOXApp):
+        self.app = app
+
+    def __enter__(self):
+        dpg.show_item(self.app.ui['throbber'])
+
+    def __exit__(self, *args, **kwargs):
+        dpg.hide_item(self.app.ui['throbber'])
 
 
 if __name__ == '__main__':
