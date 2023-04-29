@@ -158,7 +158,9 @@ class TiltType(Enum):
 
 class FilterIndex(Enum):
     PEAK     = 0
+    LPF_ALT  = 1
     LPF      = 2
+    HPF_ALT  = 3
     HPF      = 4
     BITCRUSH = 5
     CUSTOM   = 6
