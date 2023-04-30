@@ -876,17 +876,19 @@ class KSHParser:
                     ParserWarning)
                 continue
             try:
+                # TODO: Better handling of custom filter and effects
+                for key, val in list(params_dict.items()):
+                    if '>' in val:
+                        params_dict[key] = val.split('>')[1]
+                    # For now I ignore figuring out which parameter changes
+                    if '-' in val:
+                        dash_count = val.count('-')
+                        # Remove cases where range is specified
+                        if dash_count > 1 or (dash_count == 1 and not val.startswith('-')):
+                            del params_dict[key]
                 if line_type == 'define_fx':
                     self._chart_info._custom_effect[name] = effects.from_definition(params_dict)
                 elif line_type == 'define_filter':
-                    # TODO: This
-                    for key, val in list(params_dict.items()):
-                        if '-' in val:
-                            dash_count = val.count('-')
-                            # Remove cases where range is specified
-                            if dash_count > 1 or (dash_count == 1 and not val.startswith('-')):
-                                del params_dict[key]
-                    # For now I ignore figuring out which parameter changes
                     self._chart_info._custom_filter[name] = effects.from_definition(params_dict)
                 else:
                     warnings.warn(
@@ -895,6 +897,7 @@ class KSHParser:
                 warnings.warn(
                     f'ignoring definition at line {ln_offset + line_no + 1}; unable to parse definition: "{line}"',
                     ParserWarning)
+                warnings.warn(f'this is caused by: {e}', ParserWarning)
 
     def write_xml(self, f: TextIO):
         f.write(f'  <music id="{self._song_info.id}">\n'
