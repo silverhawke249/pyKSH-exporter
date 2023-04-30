@@ -823,7 +823,7 @@ class KSHParser:
 
         # Remove filters that are unused
         for filter_name in list(self._chart_info._custom_filter):
-            if filter_name not in self._chart_info.active_filter.values():
+            if filter_name not in self._filter_names.values():
                 del self._chart_info._custom_filter[filter_name]
 
         # Write custom filter as FX
