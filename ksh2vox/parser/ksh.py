@@ -140,6 +140,7 @@ class KSHParser:
     _spins : dict[TimePoint, str]      = dataclasses.field(default_factory=dict, init=False, repr=False)
     _stops : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
+    _ease_start : dict[str, TimePoint]                 = dataclasses.field(default_factory=dict, init=False, repr=False)
     _ease_ranges: dict[TimePoint, tuple[float, float]] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _filter_names    : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
@@ -463,15 +464,20 @@ class KSHParser:
                 self._set_se['fx_r'] = int(value)
             # Curves/easing
             elif name == 'curveBeginL':
+                self._ease_start['vol_l'] = cur_time
                 self._cur_easing['vol_l'] = EasingType(int(value))
             elif name == 'curveBeginR':
+                self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType(int(value))
             elif name == 'curveBeginLR':
+                self._ease_start['vol_l'] = cur_time
                 if ',' in value:
                     value_l, value_r = value.split(',')[:2]
                 else:
                     value_l, value_r = value, value
+                self._ease_start['vol_l'] = cur_time
                 self._cur_easing['vol_l'] = EasingType(int(value_l))
+                self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType(int(value_r))
             elif name == 'curveBeginSpL':
                 values = value.split(',')
@@ -483,6 +489,7 @@ class KSHParser:
                     init, final = final, init
                 init = clamp(init, 0.0, 1.0)
                 final = clamp(final, 0.0, 1.0)
+                self._ease_start['vol_l'] = cur_time
                 self._cur_easing['vol_l'] = EasingType(int(ease))
                 self._ease_ranges[cur_time] = init, final
             elif name == 'curveBeginSpR':
@@ -495,27 +502,32 @@ class KSHParser:
                     init, final = final, init
                 init = clamp(init, 0.0, 1.0)
                 final = clamp(final, 0.0, 1.0)
+                self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType(int(ease))
                 self._ease_ranges[cur_time] = init, final
             elif name == 'curveEndL':
+                self._ease_start['vol_l'] = cur_time
                 self._cur_easing['vol_l'] = EasingType.NO_EASING
             elif name == 'curveEndR':
+                self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType.NO_EASING
             elif name == 'curveEndLR':
+                self._ease_start['vol_l'] = cur_time
                 self._cur_easing['vol_l'] = EasingType.NO_EASING
+                self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType.NO_EASING
             # TODO: Overlay filter on custom filters
             # This would require separating handling custom filters from regular filters
             elif name == 'applyFilter':
                 if value == 'lpf':
-                    self._filter_override = FilterIndex.LPF.value
+                    self._filter_override = FilterIndex.LPF
                 elif value == 'hpf':
-                    self._filter_override = FilterIndex.HPF.value
+                    self._filter_override = FilterIndex.HPF
                 elif value == 'bitc':
-                    self._filter_override = FilterIndex.BITCRUSH.value
+                    self._filter_override = FilterIndex.BITCRUSH
                 else:
                     intval = int(value)
-                    self._filter_override = intval if 1 <= intval <= 5 else 6
+                    self._filter_override = FilterIndex(intval if 1 <= intval <= 5 else 6)
             else:
                 # Silently ignoring all other metadata
                 pass
@@ -580,6 +592,12 @@ class KSHParser:
             elif state == ':':
                 pass
             else:
+                if vol in self._ease_start:
+                    if self._ease_start[vol] != cur_time:
+                        warnings.warn(
+                            f'curve command at {self._ease_start[vol]} for {vol} was not placed on a laser point',
+                            ParserWarning)
+                    del self._ease_start[vol]
                 vol_position = convert_laser_pos(state)
                 # This handles the case of short laser segment being treated as a slam
                 if (vol in self._recent_vol and
