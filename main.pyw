@@ -82,7 +82,9 @@ class KSH2VOXApp():
         warnings.showwarning = self.log_warning
 
         dpg.create_context()
-        dpg.create_viewport(title='ksh-vox converter', width=650, height=850, resizable=False)
+        dpg.create_viewport(title='KSH Exporter', width=650, height=850, resizable=False)
+        dpg.set_viewport_small_icon('resources/icon.ico')
+        dpg.set_viewport_large_icon('resources/icon.ico')
         dpg.setup_dearpygui()
 
         #==================#
@@ -97,7 +99,7 @@ class KSH2VOXApp():
         # WINDOW/APP LAYOUT #
         #===================#
 
-        with dpg.window(label='ksh-vox converter') as primary_window:
+        with dpg.window(label='KSH Exporter') as primary_window:
             self.ui['primary_window'] = primary_window
 
             self.ui['throbber'] = dpg.add_loading_indicator(show=False, pos=(550, 20), style=1, radius=4, color=(15, 86, 135))
@@ -477,7 +479,7 @@ class KSH2VOXApp():
                 ),
                 initialdir=self.current_path,
                 initialfile=song_file_name,
-                title='Save song 2DX file',
+                title='Save song\'s 2DX file',
             )
             if not song_file_path:
                 return None
@@ -492,7 +494,7 @@ class KSH2VOXApp():
                 ),
                 initialdir=self.current_path,
                 initialfile=preview_file_name,
-                title='Save preview 2DX file',
+                title='Save preview\'s 2DX file',
             )
             if not preview_file_path:
                 return None
