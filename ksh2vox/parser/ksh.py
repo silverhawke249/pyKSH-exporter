@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from pathlib import Path
 from typing import TextIO
+from xml.sax.saxutils import escape
 
 from ..classes import (
     effects,
@@ -921,9 +922,9 @@ class KSHParser:
         f.write(f'  <music id="{self._song_info.id}">\n'
                  '    <info>\n'
                 f'      <label>{self._song_info.id}</label>\n'
-                f'      <title_name>{self._song_info.title}</title_name>\n'
+                f'      <title_name>{escape(self._song_info.title)}</title_name>\n'
                 f'      <title_yomigana>{self._song_info.title_yomigana}</title_yomigana>\n'
-                f'      <artist_name>{self._song_info.artist}</artist_name>\n'
+                f'      <artist_name>{escape(self._song_info.artist)}</artist_name>\n'
                 f'      <artist_yomigana>{self._song_info.artist_yomigana}</artist_yomigana>\n'
                 f'      <ascii>{self._song_info.ascii_label}</ascii>\n'
                 f'      <bpm_max __type="u32">{self._song_info.max_bpm * 100:.0f}</bpm_max>\n'
@@ -943,8 +944,8 @@ class KSHParser:
             f.write(f'      <{diff.name.lower()}>\n')
             if self._chart_info.difficulty == diff:
                 f.write(f'        <difnum __type="u8">{self._chart_info.level}</difnum>\n'
-                        f'        <illustrator>{self._chart_info.illustrator}</illustrator>\n'
-                        f'        <effected_by>{self._chart_info.effector}</effected_by>\n')
+                        f'        <illustrator>{escape(self._chart_info.illustrator)}</illustrator>\n'
+                        f'        <effected_by>{escape(self._chart_info.effector)}</effected_by>\n')
             else:
                 f.write('        <difnum __type="u8">0</difnum>\n'
                         '        <illustrator>dummy</illustrator>\n'
