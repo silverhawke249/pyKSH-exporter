@@ -129,11 +129,12 @@ class KSHParser:
     _cur_filter : FilterIndex           = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
     _cur_easing : dict[str, EasingType] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
-    _filter_changed: bool                    = dataclasses.field(default=False, init=False, repr=False)
-    _tilt_segment  : bool                    = dataclasses.field(default=False, init=False, repr=False)
-    _recent_vol    : dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _cont_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
-    _wide_segment  : dict[str, bool]         = dataclasses.field(init=False, repr=False)
+    _filter_changed : bool                    = dataclasses.field(default=False, init=False, repr=False)
+    _tilt_segment   : bool                    = dataclasses.field(default=False, init=False, repr=False)
+    _filter_override: FilterIndex             = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
+    _recent_vol     : dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _cont_segment   : dict[str, bool]         = dataclasses.field(init=False, repr=False)
+    _wide_segment   : dict[str, bool]         = dataclasses.field(init=False, repr=False)
 
     _holds : dict[str, _HoldInfo]      = dataclasses.field(default_factory=dict, init=False, repr=False)
     _set_fx: dict[str, str]            = dataclasses.field(default_factory=dict, init=False, repr=False)
@@ -428,7 +429,10 @@ class KSHParser:
                     pass
             elif key == 'filtertype':
                 self._filter_names[cur_time] = value
-                if value in FILTER_TYPE_MAP:
+                if self._filter_override != FilterIndex.PEAK:
+                    filter_now = self._filter_override
+                    self._filter_override = FilterIndex.PEAK
+                elif value in FILTER_TYPE_MAP:
                     filter_now = FILTER_TYPE_MAP[value]
                 else:
                     filter_now = FilterIndex.CUSTOM
@@ -517,18 +521,22 @@ class KSHParser:
                 self._cur_easing['vol_l'] = EasingType.NO_EASING
                 self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType.NO_EASING
-            # TODO: Overlay filter on custom filters
-            # This would require separating handling custom filters from regular filters
             elif name == 'applyFilter':
                 if value == 'lpf':
-                    self._filter_override = FilterIndex.LPF
+                    filter_now = FilterIndex.LPF
                 elif value == 'hpf':
-                    self._filter_override = FilterIndex.HPF
+                    filter_now = FilterIndex.HPF
                 elif value == 'bitc':
-                    self._filter_override = FilterIndex.BITCRUSH
+                    filter_now = FilterIndex.BITCRUSH
                 else:
                     intval = int(value)
-                    self._filter_override = FilterIndex(intval if 1 <= intval <= 5 else 6)
+                    filter_now = FilterIndex(intval if 1 <= intval <= 5 else 0)
+                if filter_now == FilterIndex.PEAK:
+                    return
+                self._filter_override = filter_now
+                self._cur_filter = filter_now
+                if cur_time in self._chart_info.active_filter:
+                    self._chart_info.active_filter[cur_time] = filter_now
             else:
                 # Silently ignoring all other metadata
                 pass
