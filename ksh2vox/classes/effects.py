@@ -207,7 +207,6 @@ class Tapestop(Effect):
         effect = Tapestop()
         if 'speed' in s:
             effect.speed = parse_length(s['speed']) * 0.16
-            effect.rate = effect.speed * 0.05
         if 'mix' in s:
             effect.mix = parse_length(s['mix']) * 100
         return effect
@@ -217,7 +216,6 @@ class Tapestop(Effect):
             warn(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})', ParserWarning)
             return
         self.speed = s[0] * 0.16
-        self.rate = s[0] * 0.008
 
     def to_vox_string(self) -> str:
         return ',\t'.join([f'{self.effect_index.value}',
