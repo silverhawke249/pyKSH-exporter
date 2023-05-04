@@ -132,6 +132,12 @@ class SPControllerInfo:
     end       : Decimal
     point_type: SegmentFlag = SegmentFlag.START
 
+    def is_snap(self):
+        return self.start != self.end
+
+    def duplicate(self):
+        return SPControllerInfo(self.start, self.end, self.point_type)
+
 
 @dataclass
 class SPControllerData:

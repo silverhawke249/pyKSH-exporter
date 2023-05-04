@@ -154,6 +154,8 @@ class KSHParser:
 
     _final_zoom_top_timepoint   : TimePoint = dataclasses.field(init=False, repr=False)
     _final_zoom_bottom_timepoint: TimePoint = dataclasses.field(init=False, repr=False)
+    _first_lane_split_timepoint : TimePoint | None = dataclasses.field(default=None, init=False, repr=False)
+    _final_lane_split_timepoint : TimePoint | None = dataclasses.field(default=None, init=False, repr=False)
 
     def __post_init__(self, file: TextIO):
         self._ksh_path = Path(file.name).resolve()
@@ -390,15 +392,21 @@ class KSHParser:
                 if cur_time in self._chart_info.spcontroller_data.zoom_bottom:
                     self._chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
                 else:
-                    self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(zoom_val, zoom_val,
-                    point_type=SegmentFlag.MIDDLE)
+                    self._chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(
+                        zoom_val, zoom_val,
+                        point_type=SegmentFlag.MIDDLE)
                 self._final_zoom_bottom_timepoint = cur_time
             elif key == 'center_split':
+                if self._first_lane_split_timepoint is None:
+                    self._first_lane_split_timepoint = cur_time
+                self._final_lane_split_timepoint = cur_time
                 split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
                 if cur_time in self._chart_info.spcontroller_data.lane_split:
                     self._chart_info.spcontroller_data.lane_split[cur_time].end = split_val
                 else:
-                    self._chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(split_val, split_val)
+                    self._chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(
+                        split_val, split_val,
+                        point_type=SegmentFlag.MIDDLE)
             elif key in ['laserrange_l', 'laserrange_r']:
                 key = f'vol_{key[-1]}'
                 if not self._cont_segment[key]:
@@ -779,6 +787,24 @@ class KSHParser:
                     vol_data[timept].interpolated = False
             vol_data.update(new_points)
 
+        # Add final point for zooms
+        end_point = TimePoint(self._chart_info.total_measures, 0, 1)
+        zt_end = self._chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint].duplicate()
+        zt_end.start = zt_end.end
+        self._chart_info.spcontroller_data.zoom_top[end_point] = zt_end
+        zb_end = self._chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint].duplicate()
+        zb_end.start = zb_end.end
+        self._chart_info.spcontroller_data.zoom_bottom[end_point] = zb_end
+
+        # Mark first lane split point as start and add final point
+        if self._first_lane_split_timepoint is not None and self._final_lane_split_timepoint is not None:
+            first_timept = self._first_lane_split_timepoint
+            self._chart_info.spcontroller_data.lane_split[first_timept].point_type |= SegmentFlag.START
+            final_timept = self._final_lane_split_timepoint
+            ls_end = self._chart_info.spcontroller_data.lane_split[final_timept].duplicate()
+            ls_end.start = ls_end.end
+            self._chart_info.spcontroller_data.lane_split[end_point] = ls_end
+
         # Mark tilt and lane split points as end of segment
         for data_dict in [self._chart_info.spcontroller_data.tilt, self._chart_info.spcontroller_data.lane_split]:
             timepts = list(data_dict.keys())
@@ -787,13 +813,6 @@ class KSHParser:
                     if data_dict[time_f].point_type == SegmentFlag.START:
                         data_dict[time_i].point_type |= SegmentFlag.END
                 data_dict[time_f].point_type |= SegmentFlag.END
-
-        # Add final point for zooms
-        end_point = TimePoint(self._chart_info.total_measures, 0, 1)
-        top_end_value = self._chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint]
-        self._chart_info.spcontroller_data.zoom_top[end_point] = top_end_value
-        bottom_end_value = self._chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint]
-        self._chart_info.spcontroller_data.zoom_bottom[end_point] = bottom_end_value
 
         # Convert detected FX list into effect instances
         if len(self._fx_list) > 12:
@@ -1215,100 +1234,82 @@ class KSHParser:
                 '001,01,00\tAIRL_ScaX\t1\t0\t0.00\t1.00\t0.00\t0.00\n'
                 '001,01,00\tAIRR_ScaX\t1\t0\t0.00\t2.00\t0.00\t0.00\n')
 
-        # Zoom top -> CAM_RotX
-        zoom_top_keys = list(self._chart_info.spcontroller_data.zoom_top.keys())
-        for timept_i, timept_f in itertools.pairwise(zoom_top_keys):
-            zt_i = self._chart_info.spcontroller_data.zoom_top[timept_i]
-            zt_f = self._chart_info.spcontroller_data.zoom_top[timept_f]
-            if zt_i.start != zt_i.end:
-                f.write('\t'.join([
-                    f'{self._chart_info.timepoint_to_vox(timept_i)}',
-                     'CAM_RotX',
-                     '2',
-                     '0',
-                    f'{zt_i.start:.2f}',
-                    f'{zt_i.end:.2f}',
-                     '0.00',
-                     '0.00\n',
-                ]))
-            tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
-            f.write('\t'.join([
-                f'{self._chart_info.timepoint_to_vox(timept_i)}',
-                 'CAM_RotX',
-                 '2',
-                f'{tick_amt}',
-                f'{zt_i.end:.2f}',
-                f'{zt_f.start:.2f}',
-                 '0.00',
-                 '0.00\n',
-            ]))
-
+        # Zoom top    -> CAM_RotX
         # Zoom bottom -> CAM_Radi
-        zoom_bottom_keys = list(self._chart_info.spcontroller_data.zoom_bottom.keys())
-        for timept_i, timept_f in itertools.pairwise(zoom_bottom_keys):
-            zb_i = self._chart_info.spcontroller_data.zoom_bottom[timept_i]
-            zb_f = self._chart_info.spcontroller_data.zoom_bottom[timept_f]
-            if zb_i.start != zb_i.end:
+        data_dict: dict[TimePoint, SPControllerInfo]
+        keyword: str
+        for data_dict, keyword in [
+            (self._chart_info.spcontroller_data.zoom_top, 'CAM_RotX'),
+            (self._chart_info.spcontroller_data.zoom_bottom, 'CAM_Radi'),
+        ]:
+            keys = list(data_dict.keys())
+            for timept_i, timept_f in itertools.pairwise(keys):
+                z_i = data_dict[timept_i]
+                z_f = data_dict[timept_f]
+                if z_i.is_snap():
+                    f.write('\t'.join([
+                        f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                        keyword,
+                        '2',
+                        '0',
+                        f'{z_i.start:.2f}',
+                        f'{z_i.end:.2f}',
+                        '0.00',
+                        '0.00\n',
+                    ]))
+                tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept_i)}',
-                     'CAM_Radi',
-                     '2',
-                     '0',
-                    f'{zb_i.start:.2f}',
-                    f'{zb_i.end:.2f}',
-                     '0.00',
-                     '0.00\n',
+                    keyword,
+                    '2',
+                    f'{tick_amt}',
+                    f'{z_i.end:.2f}',
+                    f'{z_f.start:.2f}',
+                    '0.00',
+                    '0.00\n',
                 ]))
-            tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
-            f.write('\t'.join([
-                f'{self._chart_info.timepoint_to_vox(timept_i)}',
-                 'CAM_Radi',
-                 '2',
-                f'{tick_amt}',
-                f'{zb_i.end:.2f}',
-                f'{zb_f.start:.2f}',
-                 '0.00',
-                 '0.00\n',
-            ]))
 
-        # Tilt info
-        tilt_keys = list(self._chart_info.spcontroller_data.tilt.keys())
-        for timept_i, timept_f in itertools.pairwise(tilt_keys):
-            tilt_i = self._chart_info.spcontroller_data.tilt[timept_i]
-            tilt_f = self._chart_info.spcontroller_data.tilt[timept_f]
-            if tilt_i.start != tilt_i.end:
-                point_flag = 2 if tilt_i.point_type == SegmentFlag.START else 0
+        # Tilt info  -> Tilt
+        # Lane split -> Morphing2
+        for data_dict, keyword in [
+            (self._chart_info.spcontroller_data.tilt, 'Tilt'),
+            (self._chart_info.spcontroller_data.lane_split, 'Morphing2'),
+        ]:
+            keys = list(data_dict.keys())
+            for timept_i, timept_f in itertools.pairwise(keys):
+                sp_i = data_dict[timept_i]
+                sp_f = data_dict[timept_f]
+                if sp_i.is_snap():
+                    point_flag = (1 if sp_i.point_type == SegmentFlag.POINT else
+                                  2 if SegmentFlag.START in sp_i.point_type else
+                                  3 if SegmentFlag.END in sp_i.point_type else 0)
+                    f.write('\t'.join([
+                        f'{self._chart_info.timepoint_to_vox(timept_i)}',
+                        keyword,
+                        '2',
+                        '0',
+                        f'{sp_i.start:.2f}',
+                        f'{sp_i.end:.2f}',
+                        f'{point_flag:.2f}',
+                        '0.00\n',
+                    ]))
+                # Don't add another entry if sp_i is the tail end of a segment
+                if SegmentFlag.END in sp_i.point_type:
+                    continue
+                point_flag = (1 if SegmentFlag.START in sp_i.point_type and SegmentFlag.END in sp_f.point_type and not sp_f.is_snap() else
+                              2 if SegmentFlag.START in sp_i.point_type and (sp_f.is_snap() or (not sp_f.is_snap() and SegmentFlag.END not in sp_f.point_type)) else
+                              3 if sp_i.point_type == SegmentFlag.MIDDLE and (not sp_f.is_snap() and SegmentFlag.END in sp_f.point_type) else 0)
+                tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept_i)}',
-                     'Tilt',
-                     '2',
-                     '0',
-                    f'{tilt_i.start:.2f}',
-                    f'{tilt_i.end:.2f}',
+                    keyword,
+                    '2',
+                    f'{tick_amt}',
+                    f'{sp_i.end:.2f}',
+                    f'{sp_f.start:.2f}',
                     f'{point_flag:.2f}',
-                     '0.00\n',
+                    '0.00\n',
                 ]))
-            # Don't add an entry if tilt_i is the tail end of a segment
-            if SegmentFlag.END in tilt_i.point_type:
-                continue
-            point_flag = (1 if tilt_i.point_type == SegmentFlag.START and tilt_f.point_type == SegmentFlag.END else
-                          2 if tilt_i.point_type == SegmentFlag.START else
-                          3 if tilt_f.point_type == SegmentFlag.END else 0)
-            tick_amt = round(192 * self._chart_info.get_distance(timept_i, timept_f))
-            f.write('\t'.join([
-                f'{self._chart_info.timepoint_to_vox(timept_i)}',
-                 'Tilt',
-                 '2',
-                f'{tick_amt}',
-                f'{tilt_i.end:.2f}',
-                f'{tilt_f.start:.2f}',
-                f'{point_flag:.2f}',
-                 '0.00\n',
-            ]))
-
-        # TODO: Lane split
-        for timept, ls in self._chart_info.spcontroller_data.lane_split.items():
-            pass
 
         f.write('#END\n')
         f.write('\n')
