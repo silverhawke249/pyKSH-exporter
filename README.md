@@ -33,6 +33,7 @@ The following chart comments are treated as commands:
 - `curveBeginSpL`, `curveBeginSpR`
 - `curveEndL`, `curveEndR`, `curveEndLR`
 - `lightFXL`, `lightFXR`, `lightFXLR`
+- `applyFilter`
 
 ### Curves
 
@@ -71,8 +72,19 @@ If multiple commands need to be issued at the same time point, they can be separ
 
 FX chip sound sample can be autodetected by using the appropriate file name (`1.wav`, etc.) or by specifying it using the `lightFX` command -- e.g. `lightFXLR=7`.
 
+### Filter overriding
+
+In the VOX format, effects on lasers are implemented as an additional layer above FX effects.
+As a result, effects on lasers can be overlaid on top of regular laser effects -- e.g. putting a Re16 effect on a laser while the laser applies a LPF effect on the song.
+The only effect that cannot be overlaid on is the `PEAK` effect.
+
+To use this command, simply write `applyFilter=[filter]` as a chart comment where the active filter changes to the custom filter activates.
+Valid `filter` values are: `lpf`, `hpf`, `bitc`, `1`, `2`, `3`, `4`, `5`.
+
 ## Version history
 
+- v1.2 (2023/05/03)
+  - Add `applyFilter` command.
 - v1.1 (2023/04/30)
   - Add background previews.
   - Add advanced curve commands.
@@ -96,4 +108,4 @@ The following are features/improvements that are being considered for implementa
 - [ ] Make MS ADPCM encoding faster (currently it takes ~15 seconds for typical audio files about ~2:30 in length).
 - [x] Show a preview of the selected background.
 - [ ] Release a standalone binary, possibly compiled with Nuitka.
-- [ ] Allow custom filters to overlap with non-peak filters.
+- [x] Allow custom filters to overlap with non-peak filters.
