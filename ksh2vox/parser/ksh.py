@@ -719,10 +719,7 @@ class KSHParser:
                 vol_i, vol_f = vol_data[time_i], vol_data[time_f]
                 # Mark laser points as end of segment
                 if vol_f.point_type == SegmentFlag.START:
-                    if vol_i.point_type == SegmentFlag.START:
-                        vol_i.point_type = SegmentFlag.POINT
-                    else:
-                        vol_i.point_type = SegmentFlag.END
+                    vol_i.point_type |= SegmentFlag.END
                     continue
                 # Interpolate lasers (no interpolation done if the first point is an endpoint)
                 if vol_i.ease_type != EasingType.NO_EASING:
@@ -745,10 +742,7 @@ class KSHParser:
                             point_type=SegmentFlag.MIDDLE,
                             wide_laser=vol_i.wide_laser,
                             interpolated=True)
-            if vol_data[time_f].point_type == SegmentFlag.START:
-                vol_data[time_f].point_type = SegmentFlag.POINT
-            else:
-                vol_data[time_f].point_type = SegmentFlag.END
+            vol_data[time_f].point_type |= SegmentFlag.END
 
         # Insert laser midpoints where filter type changes
         for vol_data in self._vols.values():
@@ -767,7 +761,7 @@ class KSHParser:
                     if time_i == time_f:
                         continue
                     # Ignore filter changes between segments
-                    if vol_data[time_i].point_type in [SegmentFlag.END, SegmentFlag.POINT]:
+                    if SegmentFlag.END in vol_data[time_i].point_type:
                         continue
                     part_dist = self._chart_info.get_distance(time_i, timept)
                     total_dist = self._chart_info.get_distance(time_i, time_f)
@@ -791,8 +785,8 @@ class KSHParser:
             if timepts:
                 for time_i, time_f in itertools.pairwise(timepts):
                     if data_dict[time_f].point_type == SegmentFlag.START:
-                        data_dict[time_i].point_type = SegmentFlag.END
-                data_dict[time_f].point_type = SegmentFlag.END
+                        data_dict[time_i].point_type |= SegmentFlag.END
+                data_dict[time_f].point_type |= SegmentFlag.END
 
         # Add final point for zooms
         end_point = TimePoint(self._chart_info.total_measures, 0, 1)
@@ -985,8 +979,8 @@ class KSHParser:
                 ]))
             # Slam
             else:
-                vol_flag_start = 1 if vol.point_type in [SegmentFlag.START, SegmentFlag.POINT] else 0
-                vol_flag_end = 2 if vol.point_type in [SegmentFlag.END, SegmentFlag.POINT] else 0
+                vol_flag_start = 1 if SegmentFlag.START in vol.point_type else 0
+                vol_flag_end = 2 if SegmentFlag.END in vol.point_type else 0
                 f.write('\t'.join([
                     f'{self._chart_info.timepoint_to_vox(timept)}',
                     f'{float(vol.start):.6f}',
@@ -1295,7 +1289,7 @@ class KSHParser:
                      '0.00\n',
                 ]))
             # Don't add an entry if tilt_i is the tail end of a segment
-            if tilt_i.point_type == SegmentFlag.END:
+            if SegmentFlag.END in tilt_i.point_type:
                 continue
             point_flag = (1 if tilt_i.point_type == SegmentFlag.START and tilt_f.point_type == SegmentFlag.END else
                           2 if tilt_i.point_type == SegmentFlag.START else

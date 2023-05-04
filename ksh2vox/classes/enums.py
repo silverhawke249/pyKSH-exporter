@@ -1,4 +1,4 @@
-from enum import Enum, unique
+from enum import Enum, Flag, unique
 
 
 @unique
@@ -166,8 +166,8 @@ class FilterIndex(Enum):
     CUSTOM   = 6
 
 
-class SegmentFlag(Enum):
+class SegmentFlag(Flag):
     MIDDLE = 0
     START  = 1
     END    = 2
-    POINT  = 4
+    POINT  = 3
