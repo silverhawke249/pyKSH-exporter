@@ -196,6 +196,7 @@ class KSH2VOXApp():
 
             with dpg.child_window(label='Logs', width=-1, height=-1, horizontal_scrollbar=True) as log_window:
                 self.ui['log'] = log_window
+                self.ui['log_last_line'] = 0
 
         with dpg.window(
             label='Error', show=False, autosize=True, no_move=True, no_close=True, modal=True
@@ -305,12 +306,9 @@ class KSH2VOXApp():
         self.log(f'Warning: {message}')
 
     def log(self, message):
-        dpg.add_text(f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}', parent=self.ui['log'])
-
-    # Figure out where are we attaching this to
-    def scroll_log(self):
-        y_max = dpg.get_y_scroll_max(self.ui['log'])
-        dpg.set_y_scroll(self.ui['log'], y_max)
+        self.ui['log_last_line'] = dpg.add_text(
+            f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}',
+            parent=self.ui['log'], before=self.ui['log_last_line'])
 
     def show_popup(self, message):
         dpg.set_value(self.ui['popup_text'], message)
