@@ -1315,3 +1315,15 @@ class KSHParser:
         f.write('\n')
 
         f.write('//====================================\n')
+
+    @property
+    def ksh_path(self):
+        return self._ksh_path
+
+    @property
+    def song_info(self):
+        return self._song_info
+
+    @property
+    def chart_info(self):
+        return self._chart_info

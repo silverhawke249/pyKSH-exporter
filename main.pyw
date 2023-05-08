@@ -222,7 +222,7 @@ class KSH2VOXApp():
         #================#
 
         with dpg.item_handler_registry() as background_handler:
-            dpg.add_item_visible_handler(callback=self.switch_image_texture)
+            dpg.add_item_visible_handler(callback=self.change_image_texture)
 
         dpg.bind_item_handler_registry(self.ui['background'], background_handler)
 
@@ -318,7 +318,7 @@ class KSH2VOXApp():
         self.popup_result = user_data
         dpg.hide_item(self.ui['popup_window'])
 
-    def switch_image_texture(self):
+    def change_image_texture(self):
         if self.gmbg_available and not dpg.get_item_configuration(self.ui['bg_tooltip'])['show']:
             dpg.show_item(self.ui['bg_tooltip'])
         elif not self.gmbg_available and dpg.get_item_configuration(self.ui['bg_tooltip'])['show']:
@@ -366,9 +366,9 @@ class KSH2VOXApp():
         try:
             obj_name = self.get_obj_name(sender)
             if obj_name in SONG_INFO_FIELDS:
-                setattr(self.parser._song_info, obj_name, self.parser._song_info.__annotations__[obj_name](app_data))
+                setattr(self.parser.song_info, obj_name, self.parser.song_info.__annotations__[obj_name](app_data))
             elif obj_name in CHART_INFO_FIELDS:
-                setattr(self.parser._chart_info, obj_name, self.parser._chart_info.__annotations__[obj_name](app_data))
+                setattr(self.parser.chart_info, obj_name, self.parser.chart_info.__annotations__[obj_name](app_data))
         except AttributeError:
             pass
 
@@ -391,16 +391,16 @@ class KSH2VOXApp():
             with open(file_path, 'r', encoding='utf-8-sig') as f:
                 self.parser = KSHParser(f)
 
-            self.current_path = self.parser._ksh_path.parent
-            self.log(f'Chart loaded: {self.parser._song_info.title} / {self.parser._song_info.artist} '
-                    f'({SLOT_MAPPING[self.parser._chart_info.difficulty]} {self.parser._chart_info.level})')
+            self.current_path = self.parser.ksh_path.parent
+            self.log(f'Chart loaded: {self.parser.song_info.title} / {self.parser.song_info.artist} '
+                    f'({SLOT_MAPPING[self.parser.chart_info.difficulty]} {self.parser.chart_info.level})')
 
             for field in SONG_INFO_FIELDS:
-                dpg.set_value(self.ui[field], getattr(self.parser._song_info, field))
+                dpg.set_value(self.ui[field], getattr(self.parser.song_info, field))
             for field in CHART_INFO_FIELDS:
-                dpg.set_value(self.ui[field], getattr(self.parser._chart_info, field))
+                dpg.set_value(self.ui[field], getattr(self.parser.chart_info, field))
 
-            self.background_id = self.parser._song_info.background.value
+            self.background_id = self.parser.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
 
         dpg.configure_item(self.ui['vox_button'], enabled=True)
@@ -410,8 +410,8 @@ class KSH2VOXApp():
 
     def export_vox(self):
         with disable_buttons(self), show_throbber(self):
-            file_name = (f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}_'
-                         f'{self.parser._chart_info.difficulty.to_shorthand()}.vox')
+            file_name = (f'{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}_'
+                         f'{self.parser.chart_info.difficulty.to_shorthand()}.vox')
             file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
                 defaultextension='vox',
@@ -435,8 +435,8 @@ class KSH2VOXApp():
 
     def export_xml(self):
         with disable_buttons(self), show_throbber(self):
-            file_name = (f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}_'
-                         f'{self.parser._chart_info.difficulty.to_shorthand()}.xml')
+            file_name = (f'{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}_'
+                         f'{self.parser.chart_info.difficulty.to_shorthand()}.xml')
             file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
                 defaultextension='xml',
@@ -460,13 +460,13 @@ class KSH2VOXApp():
 
     def export_2dx(self):
         with disable_buttons(self), show_throbber(self):
-            audio_path = (self.parser._ksh_path.parent / self.parser._chart_info.music_path).resolve()
+            audio_path = (self.parser.ksh_path.parent / self.parser.chart_info.music_path).resolve()
             if not audio_path.exists():
                 self.log(f'Cannot open "{audio_path}".')
                 self.show_popup(f'Cannot open "{audio_path}".')
                 return
 
-            song_label = f'{self.parser._song_info.id:04}_{self.parser._song_info.ascii_label}'
+            song_label = f'{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}'
             song_file_name = f'{song_label}.2dx'
             song_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -498,7 +498,7 @@ class KSH2VOXApp():
                 return None
 
             self.log('Converting audio to 2DX format...')
-            song_bytes, preview_bytes = get_2dxs(audio_path, song_label, self.parser._chart_info.preview_start)
+            song_bytes, preview_bytes = get_2dxs(audio_path, song_label, self.parser.chart_info.preview_start)
 
             self.log(f'Writing to "{song_file_path}"...')
             with open(song_file_path, 'wb') as f:
@@ -512,15 +512,15 @@ class KSH2VOXApp():
 
     def export_jacket(self):
         with disable_buttons(self), show_throbber(self):
-            jacket_path = (self.parser._ksh_path.parent / self.parser._chart_info.jacket_path).resolve()
+            jacket_path = (self.parser.ksh_path.parent / self.parser.chart_info.jacket_path).resolve()
             if not jacket_path.exists():
                 self.log(f'Cannot open "{jacket_path}".')
                 self.show_popup(f'Cannot open "{jacket_path}".')
                 return
 
-            jacket_r_file_name = f'jk_{self.parser._song_info.id:04}_{self.parser._chart_info.difficulty.value}.png'
-            jacket_b_file_name = f'jk_{self.parser._song_info.id:04}_{self.parser._chart_info.difficulty.value}_b.png'
-            jacket_s_file_name = f'jk_{self.parser._song_info.id:04}_{self.parser._chart_info.difficulty.value}_s.png'
+            jacket_r_file_name = f'jk_{self.parser.song_info.id:04}_{self.parser.chart_info.difficulty.value}.png'
+            jacket_b_file_name = f'jk_{self.parser.song_info.id:04}_{self.parser.chart_info.difficulty.value}_b.png'
+            jacket_s_file_name = f'jk_{self.parser.song_info.id:04}_{self.parser.chart_info.difficulty.value}_s.png'
 
             jacket_r_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
