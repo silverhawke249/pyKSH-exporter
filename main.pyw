@@ -44,6 +44,7 @@ CHART_INFO_FIELDS = [
     'effector',
     'illustrator',
 ]
+YOMIGANA_VALIDATION_REGEX = re.compile('^[\uFF66-\uFF9F]+')
 ENUM_REGEX = re.compile(r'\((\d+)\)')
 
 
@@ -408,6 +409,23 @@ class KSH2VOXApp():
         dpg.configure_item(self.ui['2dx_button'], enabled=True)
         dpg.configure_item(self.ui['jackets_button'], enabled=True)
 
+    def validate_metadata(self):
+        title_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.title_yomigana)
+        if title_check is None:
+            self.log('Warning: Title yomigana is not a valid yomigana string or is empty')
+
+        artist_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.artist_yomigana)
+        if artist_check is None:
+            self.log('Warning: Artist yomigana is not a valid yomigana string or is empty')
+
+        if not (self.parser.song_info.ascii_label and self.parser.song_info.ascii_label.isascii()):
+            self.log('Warning: ASCII label is not an ASCII string or is empty')
+
+        try:
+            time.strptime(self.parser.song_info.release_date, '%Y%m%d')
+        except ValueError:
+            self.log('Warning: Release date is not a valid YYYYMMDD date string')
+
     def export_vox(self):
         with disable_buttons(self), show_throbber(self):
             file_name = (f'{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}_'
@@ -435,6 +453,8 @@ class KSH2VOXApp():
 
     def export_xml(self):
         with disable_buttons(self), show_throbber(self):
+            self.validate_metadata()
+
             file_name = (f'{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}_'
                          f'{self.parser.chart_info.difficulty.to_shorthand()}.xml')
             file_path = filedialog.asksaveasfilename(
