@@ -94,7 +94,6 @@ class GameBackground(Enum):
     EXCEED_GEAR_TOWER_1                 = 88
     APRIL_FOOLS_EXCEED                  = 89
     SPECIAL_REMINISCENCE                = 90
-    # 2021121400 END
     HEXA_DIVER_PHASE_5                  = 91
     HEXA_DIVER_XHRONOXAPSULE            = 92
     HEXA_DIVER_MIXXION                  = 93

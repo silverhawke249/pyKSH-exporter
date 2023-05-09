@@ -448,9 +448,7 @@ class KSHParser:
                     self._cur_filter = filter_now
                     self._chart_info.active_filter[cur_time] = filter_now
             elif ':' in key:
-                # TODO: Filter settings... this might get supported in the future
-                # > filter:[filter_name]:[parameter]=[value]
-                # Technically FX parameters can also be changed here but like no one uses that
+                # This might get supported in the future, but is too complicated
                 pass
             else:
                 # Silently ignoring all other metadata
