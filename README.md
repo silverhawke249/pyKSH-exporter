@@ -83,8 +83,13 @@ Valid `filter` values are: `lpf`, `hpf`, `bitc`, `1`, `2`, `3`, `4`, `5`.
 
 ## Version history
 
-- v1.2 (2023/05/03)
-  - Add `applyFilter` command.
+- v1.2 (2023/05/09)
+  - `applyFilter` command added.
+  - Lane splits are converted.
+  - XML escaping applied to certain fields.
+  - Some fields are validated on XML export; failures are logged.
+  - Logs are now reverse chronological.
+  - Missing backgrounds added.
 - v1.1 (2023/04/30)
   - Add background previews.
   - Add advanced curve commands.
@@ -101,7 +106,7 @@ Valid `filter` values are: `lpf`, `hpf`, `bitc`, `1`, `2`, `3`, `4`, `5`.
 ## Future additions?
 
 The following are features/improvements that are being considered for implementation -- some more important than others:
-- [ ] Convert lane splits.
+- [x] Convert lane splits.
 - [ ] Handle custom filters with a changing parameter.
 - [ ] Attempt to match custom filters with existing effects.
 - [ ] Handle charts with pre-effected audio file.
