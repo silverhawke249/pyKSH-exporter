@@ -131,6 +131,7 @@ class KSHParser:
 
     _filter_changed : bool                    = dataclasses.field(default=False, init=False, repr=False)
     _tilt_segment   : bool                    = dataclasses.field(default=False, init=False, repr=False)
+    _last_tilt_value: Decimal                 = dataclasses.field(default_factory=Decimal, init=False, repr=False)
     _filter_override: FilterIndex             = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
     _recent_vol     : dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _cont_segment   : dict[str, bool]         = dataclasses.field(init=False, repr=False)
@@ -356,6 +357,7 @@ class KSHParser:
                         tilt_val = Decimal()
                     else:
                         tilt_val = (Decimal(value) * TILT_CONVERSION_RATE).normalize() + 0
+                    self._last_tilt_value = tilt_val
                     # Modify existing tilt value if it exists
                     if cur_time in self._chart_info.spcontroller_data.tilt:
                         self._chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
@@ -365,19 +367,23 @@ class KSHParser:
                             point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START)
                     self._tilt_segment = True
                 except InvalidOperation:
-                    if value == 'normal':
-                        self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
-                        self._tilt_segment = False
-                    elif value in ['bigger', 'biggest']:
-                        self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
-                        self._tilt_segment = False
-                        if value == 'biggest':
-                            warnings.warn(f'downgrading tilt "{value}" at m{m_no} to "bigger"', ParserWarning)
-                    elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
-                        self._chart_info.tilt_type[cur_time] = TiltType.KEEP
-                        self._tilt_segment = False
-                    else:
+                    if value not in ['normal', 'bigger', 'biggest', 'keep_normal', 'keep_bigger', 'keep_biggest']:
                         warnings.warn(f'unrecognized tilt mode "{value}" at m{m_no}', ParserWarning)
+                    else:
+                        # Make sure manual tilt segments are terminated properly
+                        if self._tilt_segment and cur_time not in self._chart_info.spcontroller_data.tilt:
+                            self._chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
+                                self._last_tilt_value, self._last_tilt_value,
+                                point_type=SegmentFlag.MIDDLE)  # Will get updated later anyway
+                        self._tilt_segment = False
+                        if value == 'normal':
+                            self._chart_info.tilt_type[cur_time] = TiltType.NORMAL
+                        elif value in ['bigger', 'biggest']:
+                            self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
+                            if value == 'biggest':
+                                warnings.warn(f'downgrading tilt "{value}" at m{m_no} to "bigger"', ParserWarning)
+                        elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
+                            self._chart_info.tilt_type[cur_time] = TiltType.KEEP
             elif key == 'zoom_top':
                 zoom_val = (int(value) * ZOOM_TOP_CONVERSION_RATE).normalize() + 0
                 if cur_time in self._chart_info.spcontroller_data.zoom_top:
