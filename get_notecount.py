@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum, IntEnum, auto
+from fractions import Fraction
 
 from ksh2vox.classes.base import TimePoint, TimeSignature, ParserWarning
 
@@ -43,7 +44,7 @@ class VOXInfo():
     # lasers  : dict[TimePoint, int]
 
 
-class Main():
+class Parser():
     vox_data: VOXInfo = VOXInfo()
 
     parser_state: ParserState
@@ -77,7 +78,12 @@ class Main():
                         warnings.warn(f'invalid line (got {line})', ParserWarning)
 
     def str_to_timepoint(self, time_str: str) -> TimePoint:
-        return TimePoint(0, 0, 1)
+        mno, bno, sno = [int(s) for s in time_str.split(',')]
+
+        duration = Fraction(bno - 1, self.cur_timesig.lower)
+        duration += Fraction(sno, 192 // self.cur_timesig.lower)
+
+        return TimePoint(mno, duration.numerator, duration.denominator)
 
     def handle_line(self, line):
         line_parts = re.split(r'\s+', line)
@@ -109,4 +115,4 @@ if __name__ == '__main__':
     parser.add_argument('infile', help='input VOX file')
 
     args = parser.parse_args()
-    main(args.infile)
+    file_parser = Parser(args.infile)
