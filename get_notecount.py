@@ -48,8 +48,8 @@ class VOXInfo():
     timesigs: dict[TimePoint, TimeSignature]          = field(default_factory=dict)
     bpms    : dict[TimePoint, Decimal]                = field(default_factory=dict)
     buttons : dict[tuple[TimePoint, ButtonType], int] = field(default_factory=dict)
-    lasers  : set[tuple[LaserType, TimePoint]]        = field(default_factory=set)
-    slams   : set[tuple[LaserType, TimePoint]]        = field(default_factory=set)
+    lasers  : dict[LaserType, list[TimePoint]]        = field(default_factory=dict)
+    slams   : dict[LaserType, set[TimePoint]]         = field(default_factory=dict)
 
 
 class Parser():
@@ -57,6 +57,8 @@ class Parser():
     parser_state: ParserState
     cur_bpm     : Decimal
     cur_timesig : TimeSignature
+    cur_track   : str
+    prev_laser  : dict[LaserType, TimePoint]
 
     chip_count : int
     long_count : int
@@ -68,6 +70,11 @@ class Parser():
         self.parser_state = ParserState.Nothing
         self.cur_bpm      = Decimal(120)
         self.cur_timesig  = TimeSignature()
+        self.cur_track    = '0'
+        self.prev_laser   = {
+            LaserType.L: TimePoint(0, 0, 1),
+            LaserType.R: TimePoint(0, 0, 1),
+        }
 
         self.chip_count = 0
         self.long_count = 0
@@ -83,6 +90,7 @@ class Parser():
                     self.parser_state = ParserState.BPMInfo
                 elif line.startswith('#TRACK') and len(line) == 7:
                     self.parser_state = ParserState.TrackInfo
+                    self.cur_track    = line[-1]
                 elif line == '#END':
                     self.parser_state = ParserState.Nothing
                 elif line.startswith('#'):
@@ -93,8 +101,8 @@ class Parser():
                     except ValueError:
                         warnings.warn(f'invalid line (got {line})', ParserWarning)
 
-        if (sum(s[0] == LaserType.L for s in self.vox_data.lasers) % 2 or
-            sum(s[0] == LaserType.R for s in self.vox_data.lasers) % 2):
+        if (sum(s[0] == LaserType.L for s in self.vox_data.lasers) % 2 != 0 or
+            sum(s[0] == LaserType.R for s in self.vox_data.lasers) % 2 != 0):
             warnings.warn(f'malformed VOX file', ParserWarning)
 
         self.calculate_notes()
@@ -107,7 +115,19 @@ class Parser():
 
         return TimePoint(mno, duration.numerator, duration.denominator)
 
+    def get_active_bpm(self, timepoint: TimePoint) -> Decimal:
+        prev_bpm = Decimal(0)
+        for time, bpm in self.vox_data.bpms.items():
+            if time > timepoint:
+                break
+            prev_bpm = bpm
+
+        return prev_bpm
+
     def handle_line(self, line):
+        if self.parser_state in [ParserState.Nothing, ParserState.OtherInfo]:
+            return
+
         line_parts = re.split(r'\s+', line)
         if len(line_parts) < 2:
             warnings.warn(f'invalid line (got {line})', ParserWarning)
@@ -122,13 +142,17 @@ class Parser():
             self.cur_bpm = Decimal(data[0])
             self.vox_data.bpms[timepoint] = self.cur_bpm
         elif self.parser_state == ParserState.TrackInfo:
-            if line[-1] in ['1', '8']:
+            track_type = TRACK_MAP[self.cur_track]
+            if self.cur_track in ['1', '8']:
                 # Handle start/endpoints of lasers
-                if data[1] in ['1', '2']:
-                    self.vox_data.lasers.add(timepoint)
-                # TODO: Handle slams
-            elif '1' < line[-1] < '8':
-                self.vox_data.buttons[timepoint, TRACK_MAP[line[-1]]] = int(data[0])
+                if data[1] != '0':
+                    self.vox_data.lasers[track_type].append(timepoint)
+                # Handle slams
+                if self.prev_laser[track_type] == timepoint:
+                    self.vox_data.slams[track_type].add(timepoint)
+                self.prev_laser[track_type] = timepoint
+            elif '1' < self.cur_track < '8':
+                self.vox_data.buttons[timepoint, track_type] = int(data[0])
             else:
                 warnings.warn(f'invalid track section (got {line})', ParserWarning)
         else:
@@ -142,6 +166,13 @@ class Parser():
                 continue
             # Long notes
             timepoint, _ = key
+            cur_bpm = self.get_active_bpm(timepoint)
+            tick_rate = Fraction(1, 8) if cur_bpm >= 256 else Fraction(1, 16)
+            remainder = Fraction(0)
+            if timepoint.position % tick_rate != 0:
+                remainder = tick_rate - (timepoint.position % tick_rate)
+                self.long_count += 1
+            self.long_count += (timepoint.position - remainder) // tick_rate
         # TODO: Lasers
 
         self.max_exscore = 5 * self.chip_count + 2 * (self.long_count + self.laser_count)
@@ -149,7 +180,7 @@ class Parser():
 if __name__ == '__main__':
     parser = ArgumentParser(description='Predict the notecount breakdown for a given VOX file.')
     parser.add_argument('infile', help='input VOX file')
-    # TODO: add formatting argument
+    # TODO: Add formatting argument
 
     args = parser.parse_args()
     file_parser = Parser(args.infile)
@@ -159,3 +190,4 @@ if __name__ == '__main__':
     print(f'long notes:  {file_parser.long_count:6}')
     print(f'laser notes: {file_parser.laser_count:6}')
     print(f'max exscore: {file_parser.max_exscore:6}')
+    print(f'slams: {len(file_parser.vox_data.slams):6}')
