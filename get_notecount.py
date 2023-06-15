@@ -31,7 +31,7 @@ class LaserType(IntEnum):
     L = 1
     R = 8
 
-TRACK_MAP = {
+TRACK_MAP: dict[str, LaserType | ButtonType] = {
     '1': LaserType.L,
     '2': ButtonType.L,
     '3': ButtonType.A,
@@ -101,8 +101,8 @@ class Parser():
                     except ValueError:
                         warnings.warn(f'invalid line (got {line})', ParserWarning)
 
-        if (sum(s[0] == LaserType.L for s in self.vox_data.lasers) % 2 != 0 or
-            sum(s[0] == LaserType.R for s in self.vox_data.lasers) % 2 != 0):
+        if (len(self.vox_data.lasers[LaserType.L]) % 2 != 0 or
+            len(self.vox_data.lasers[LaserType.R]) % 2 != 0):
             warnings.warn(f'malformed VOX file', ParserWarning)
 
         self.calculate_notes()
@@ -115,6 +115,19 @@ class Parser():
 
         return TimePoint(mno, duration.numerator, duration.denominator)
 
+    def add_duration(self, a: TimePoint, b: Fraction | int) -> TimePoint:
+        if isinstance(b, Fraction):
+            modified_length = a.position + b
+        else:
+            modified_length = a.position + Fraction(b, 192)
+
+        m_no = a.measure
+        while modified_length >= (m_len := self.get_active_timesig(m_no).as_fraction()):
+            modified_length -= m_len
+            m_no += 1
+
+        return TimePoint(m_no, modified_length.numerator, modified_length.denominator)
+
     def get_active_bpm(self, timepoint: TimePoint) -> Decimal:
         prev_bpm = Decimal(0)
         for time, bpm in self.vox_data.bpms.items():
@@ -124,7 +137,16 @@ class Parser():
 
         return prev_bpm
 
-    def handle_line(self, line):
+    def get_active_timesig(self, m: int):
+        prev_timesig = TimeSignature()
+        for time, timesig in self.vox_data.timesigs.items():
+            if time.measure > m:
+                break
+            prev_timesig = timesig
+
+        return prev_timesig
+
+    def handle_line(self, line) -> None:
         if self.parser_state in [ParserState.Nothing, ParserState.OtherInfo]:
             return
 
@@ -142,8 +164,12 @@ class Parser():
             self.cur_bpm = Decimal(data[0])
             self.vox_data.bpms[timepoint] = self.cur_bpm
         elif self.parser_state == ParserState.TrackInfo:
+            if self.cur_track not in TRACK_MAP:
+                warnings.warn(f'invalid track section (got {self.cur_track})', ParserWarning)
+                return
+
             track_type = TRACK_MAP[self.cur_track]
-            if self.cur_track in ['1', '8']:
+            if isinstance(track_type, LaserType):
                 # Handle start/endpoints of lasers
                 if data[1] != '0':
                     self.vox_data.lasers[track_type].append(timepoint)
@@ -151,14 +177,14 @@ class Parser():
                 if self.prev_laser[track_type] == timepoint:
                     self.vox_data.slams[track_type].add(timepoint)
                 self.prev_laser[track_type] = timepoint
-            elif '1' < self.cur_track < '8':
+            elif isinstance(track_type, ButtonType):
                 self.vox_data.buttons[timepoint, track_type] = int(data[0])
             else:
-                warnings.warn(f'invalid track section (got {line})', ParserWarning)
+                pass
         else:
             pass
 
-    def calculate_notes(self):
+    def calculate_notes(self) -> None:
         for key, duration in self.vox_data.buttons.items():
             # Chip notes
             if duration == 0:
@@ -172,8 +198,28 @@ class Parser():
             if timepoint.position % tick_rate != 0:
                 remainder = tick_rate - (timepoint.position % tick_rate)
                 self.long_count += 1
-            self.long_count += (timepoint.position - remainder) // tick_rate
-        # TODO: Lasers
+            self.long_count += (Fraction(duration, 192) - remainder) // tick_rate
+        # Lasers
+        laser_ticks: dict[LaserType, list[TimePoint]] = {
+            LaserType.L: [],
+            LaserType.R: [],
+        }
+        for laser_type, laser_timepts in self.vox_data.lasers.items():
+            for laser_s, laser_e in zip(*[iter(laser_timepts)] * 2):
+                # Round to next tick
+                cur_bpm = self.get_active_bpm(laser_s)
+                tick_rate = Fraction(1, 8) if cur_bpm >= 256 else Fraction(1, 16)
+                remainder = Fraction(0)
+                if timepoint.position % tick_rate != 0:
+                    remainder = tick_rate - (timepoint.position % tick_rate)
+                    cur_timept = self.add_duration(laser_s, remainder)
+                else:
+                    cur_timept = laser_s
+                # Add ticks until it exceeds endpoint
+                while cur_timept < laser_e:
+                    laser_ticks[laser_type].append(cur_timept)
+                    cur_timept = self.add_duration(cur_timept, tick_rate)
+        # TODO: Slams
 
         self.max_exscore = 5 * self.chip_count + 2 * (self.long_count + self.laser_count)
 
