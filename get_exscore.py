@@ -259,15 +259,21 @@ class Parser():
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Predict the notecount breakdown for a given VOX file.')
-    parser.add_argument('infile', help='input VOX file')
-    # TODO: Add formatting argument
+    parser.add_argument('infile', help='path to input VOX file')
+    parser.add_argument('-n', '--notecount', action='store_true', help='print max chain instead of max ex score')
+    parser.add_argument('-v', '--verbose', action='store_true', help='show detailed note count breakdown')
 
     args = parser.parse_args()
     file_parser = Parser(args.infile)
 
-    print(f'input: {args.infile}')
-    print(f'chip notes : {file_parser.chip_count:6}')
-    print(f'long notes : {file_parser.long_count:6}')
-    print(f'laser notes: {file_parser.laser_count:6}')
-    print(f'max chain  : {file_parser.chip_count + file_parser.long_count + file_parser.laser_count:6}')
-    print(f'max exscore: {file_parser.max_exscore:6}')
+    if args.verbose:
+        print(f'input: {args.infile}')
+        print(f'chip notes  : {file_parser.chip_count:6}')
+        print(f'long notes  : {file_parser.long_count:6}')
+        print(f'laser notes : {file_parser.laser_count:6}')
+        print(f'max chain   : {file_parser.chip_count + file_parser.long_count + file_parser.laser_count:6}')
+        print(f'max ex score: {file_parser.max_exscore:6}')
+    elif args.notecount:
+        print(file_parser.chip_count + file_parser.long_count + file_parser.laser_count)
+    else:
+        print(file_parser.max_exscore)
