@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import IntEnum, auto
 from fractions import Fraction
+from functools import cache
 
-from ksh2vox.classes.base import TimePoint, TimeSignature, ParserWarning
+from ksh2vox.classes.base import TimeSignature, ParserWarning
+
+Tickcount = int
 
 
 class ParserState(IntEnum):
@@ -45,11 +48,21 @@ TRACK_MAP: dict[str, LaserType | ButtonType] = {
 
 @dataclass
 class VOXInfo():
-    timesigs: dict[TimePoint, TimeSignature]          = field(default_factory=dict)
-    bpms    : dict[TimePoint, Decimal]                = field(default_factory=dict)
-    buttons : dict[tuple[TimePoint, ButtonType], int] = field(default_factory=dict)
-    lasers  : dict[LaserType, list[TimePoint]]        = field(default_factory=dict)
-    slams   : dict[LaserType, set[TimePoint]]         = field(default_factory=dict)
+    timesigs: dict[Tickcount, TimeSignature]          = field(default_factory=dict)
+    bpms    : dict[Tickcount, Decimal]                = field(default_factory=dict)
+    buttons : dict[tuple[Tickcount, ButtonType], int] = field(default_factory=dict)
+    lasers  : dict[LaserType, list[Tickcount]]        = field(default_factory=dict)
+    slams   : dict[LaserType, set[Tickcount]]         = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.lasers = {
+            LaserType.L: [],
+            LaserType.R: [],
+        }
+        self.slams = {
+            LaserType.L: set(),
+            LaserType.R: set(),
+        }
 
 
 class Parser():
@@ -58,7 +71,7 @@ class Parser():
     cur_bpm     : Decimal
     cur_timesig : TimeSignature
     cur_track   : str
-    prev_laser  : dict[LaserType, TimePoint]
+    prev_laser  : dict[LaserType, Tickcount]
 
     chip_count : int
     long_count : int
@@ -72,8 +85,8 @@ class Parser():
         self.cur_timesig  = TimeSignature()
         self.cur_track    = '0'
         self.prev_laser   = {
-            LaserType.L: TimePoint(0, 0, 1),
-            LaserType.R: TimePoint(0, 0, 1),
+            LaserType.L: Tickcount(0),
+            LaserType.R: Tickcount(0),
         }
 
         self.chip_count = 0
@@ -107,40 +120,38 @@ class Parser():
 
         self.calculate_notes()
 
-    def str_to_timepoint(self, time_str: str) -> TimePoint:
+    @cache
+    def str_to_tick(self, time_str: str) -> Tickcount:
         mno, bno, sno = [int(s) for s in time_str.split(',')]
+        if mno <= 0:
+            raise ValueError(f'measure number must be positive (got {mno})')
 
-        duration = Fraction(bno - 1, self.cur_timesig.lower)
-        duration += Fraction(sno, 192 // self.cur_timesig.lower)
-
-        return TimePoint(mno, duration.numerator, duration.denominator)
-
-    def add_duration(self, a: TimePoint, b: Fraction | int) -> TimePoint:
-        if isinstance(b, Fraction):
-            modified_length = a.position + b
+        if (mno, bno, sno) == (1, 1, 0):
+            duration = 0
+        elif (bno, sno) == (1, 0):
+            duration = self.str_to_tick(f'{mno - 1:03},01,00')
+            timesig = self.get_active_timesig(duration)
+            duration += timesig.upper * (192 // timesig.lower)
         else:
-            modified_length = a.position + Fraction(b, 192)
+            duration = self.str_to_tick(f'{mno:03},01,00')
+            timesig = self.get_active_timesig(duration)
+            duration += (bno - 1) * (192 // timesig.lower) + sno
 
-        m_no = a.measure
-        while modified_length >= (m_len := self.get_active_timesig(m_no).as_fraction()):
-            modified_length -= m_len
-            m_no += 1
+        return duration
 
-        return TimePoint(m_no, modified_length.numerator, modified_length.denominator)
-
-    def get_active_bpm(self, timepoint: TimePoint) -> Decimal:
+    def get_active_bpm(self, tick: Tickcount) -> Decimal:
         prev_bpm = Decimal(0)
         for time, bpm in self.vox_data.bpms.items():
-            if time > timepoint:
+            if time > tick:
                 break
             prev_bpm = bpm
 
         return prev_bpm
 
-    def get_active_timesig(self, m: int):
+    def get_active_timesig(self, tick: Tickcount) -> TimeSignature:
         prev_timesig = TimeSignature()
         for time, timesig in self.vox_data.timesigs.items():
-            if time.measure > m:
+            if time > tick:
                 break
             prev_timesig = timesig
 
@@ -156,13 +167,13 @@ class Parser():
             return
 
         time_str, *data = line_parts
-        timepoint = self.str_to_timepoint(time_str)
+        tick = self.str_to_tick(time_str)
         if self.parser_state == ParserState.BeatInfo:
             self.cur_timesig = TimeSignature(int(data[0]), int(data[1]))
-            self.vox_data.timesigs[timepoint] = self.cur_timesig
+            self.vox_data.timesigs[tick] = self.cur_timesig
         elif self.parser_state == ParserState.BPMInfo:
             self.cur_bpm = Decimal(data[0])
-            self.vox_data.bpms[timepoint] = self.cur_bpm
+            self.vox_data.bpms[tick] = self.cur_bpm
         elif self.parser_state == ParserState.TrackInfo:
             if self.cur_track not in TRACK_MAP:
                 warnings.warn(f'invalid track section (got {self.cur_track})', ParserWarning)
@@ -172,13 +183,13 @@ class Parser():
             if isinstance(track_type, LaserType):
                 # Handle start/endpoints of lasers
                 if data[1] != '0':
-                    self.vox_data.lasers[track_type].append(timepoint)
+                    self.vox_data.lasers[track_type].append(tick)
                 # Handle slams
-                if self.prev_laser[track_type] == timepoint:
-                    self.vox_data.slams[track_type].add(timepoint)
-                self.prev_laser[track_type] = timepoint
+                if self.prev_laser[track_type] == tick:
+                    self.vox_data.slams[track_type].add(tick)
+                self.prev_laser[track_type] = tick
             elif isinstance(track_type, ButtonType):
-                self.vox_data.buttons[timepoint, track_type] = int(data[0])
+                self.vox_data.buttons[tick, track_type] = int(data[0])
             else:
                 pass
         else:
@@ -191,16 +202,19 @@ class Parser():
                 self.chip_count += 1
                 continue
             # Long notes
-            timepoint, _ = key
-            cur_bpm = self.get_active_bpm(timepoint)
-            tick_rate = Fraction(1, 8) if cur_bpm >= 256 else Fraction(1, 16)
-            remainder = Fraction(0)
-            if timepoint.position % tick_rate != 0:
-                remainder = tick_rate - (timepoint.position % tick_rate)
+            # TODO: Figure out what's wrong with this
+            tick, _ = key
+            cur_bpm = self.get_active_bpm(tick)
+            tick_rate = 24 if cur_bpm >= 256 else 12
+            remainder = 0
+            if tick % tick_rate != 0:
+                print(key, duration)
+                remainder = tick_rate - (tick % tick_rate)
                 self.long_count += 1
-            self.long_count += (Fraction(duration, 192) - remainder) // tick_rate
+            # TODO: Factor in BPM changes
+            self.long_count += (duration - remainder) // tick_rate
         # Lasers
-        laser_ticks: dict[LaserType, list[TimePoint]] = {
+        laser_ticks: dict[LaserType, list[Tickcount]] = {
             LaserType.L: [],
             LaserType.R: [],
         }
@@ -208,18 +222,37 @@ class Parser():
             for laser_s, laser_e in zip(*[iter(laser_timepts)] * 2):
                 # Round to next tick
                 cur_bpm = self.get_active_bpm(laser_s)
-                tick_rate = Fraction(1, 8) if cur_bpm >= 256 else Fraction(1, 16)
-                remainder = Fraction(0)
-                if timepoint.position % tick_rate != 0:
-                    remainder = tick_rate - (timepoint.position % tick_rate)
-                    cur_timept = self.add_duration(laser_s, remainder)
+                tick_rate = 24 if cur_bpm >= 256 else 12
+                if laser_s % tick_rate != 0:
+                    remainder = tick_rate - (laser_s % tick_rate)
+                    cur_timept = laser_s + remainder
                 else:
                     cur_timept = laser_s
                 # Add ticks until it exceeds endpoint
+                # TODO: Factor in BPM changes
                 while cur_timept < laser_e:
                     laser_ticks[laser_type].append(cur_timept)
-                    cur_timept = self.add_duration(cur_timept, tick_rate)
-        # TODO: Slams
+                    cur_timept += tick_rate
+            self.laser_count += len(laser_ticks[laser_type])
+        # Slams
+        slam_overlapping_ticks: dict[LaserType, list[Tickcount]] = {
+            LaserType.L: [],
+            LaserType.R: [],
+        }
+        for laser_type, slam_timepts in self.vox_data.slams.items():
+            for tick in slam_timepts:
+                # Round to previous tick
+                cur_bpm = self.get_active_bpm(tick)
+                tick_rate = 24 if cur_bpm >= 256 else 12
+                if tick % tick_rate != 0:
+                    tick -= tick % tick_rate
+                if tick in laser_ticks[laser_type]:
+                    if tick in slam_overlapping_ticks[laser_type]:
+                        self.laser_count += 1
+                    else:
+                        slam_overlapping_ticks[laser_type].append(tick)
+                else:
+                    self.laser_count += 1
 
         self.max_exscore = 5 * self.chip_count + 2 * (self.long_count + self.laser_count)
 
@@ -232,8 +265,8 @@ if __name__ == '__main__':
     file_parser = Parser(args.infile)
 
     print(f'input: {args.infile}')
-    print(f'chip notes:  {file_parser.chip_count:6}')
-    print(f'long notes:  {file_parser.long_count:6}')
+    print(f'chip notes : {file_parser.chip_count:6}')
+    print(f'long notes : {file_parser.long_count:6}')
     print(f'laser notes: {file_parser.laser_count:6}')
+    print(f'max chain  : {file_parser.chip_count + file_parser.long_count + file_parser.laser_count:6}')
     print(f'max exscore: {file_parser.max_exscore:6}')
-    print(f'slams: {len(file_parser.vox_data.slams):6}')
