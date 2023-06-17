@@ -181,7 +181,6 @@ class Parser():
             if self.cur_track not in TRACK_MAP:
                 warnings.warn(f'invalid track section (got {self.cur_track})', ParserWarning)
                 return
-
             track_type = TRACK_MAP[self.cur_track]
             if isinstance(track_type, LaserType):
                 # Handle start/endpoints of lasers
@@ -215,10 +214,13 @@ class Parser():
                     cur_timept = (cur_timept // tick_rate) * tick_rate
                 cur_timept += tick_rate
                 self.long_count += 1
-            # TODO: Figure out why some holds lose ticks
-            if value >= tick_rate * 8:
-                self.long_count -= 2
+            # Long enough holds lose ticks (untested with unaligned holds)
+            if value / tick_rate > 5:
+                self.long_count -= 1
+            if value / tick_rate > 6:
+                self.long_count -= 1
         # Lasers
+        # TODO: Figure out what's wrong with Azure Vixen
         laser_ticks: dict[LaserType, list[Tickcount]] = {
             LaserType.L: [],
             LaserType.R: [],
@@ -243,10 +245,10 @@ class Parser():
         }
         for laser_type, slam_timepts in self.vox_data.slams.items():
             for timepoint in slam_timepts:
-                # Round to previous tick
+                # Round to next tick
                 tick_rate = self.get_active_tickrate(timepoint)
                 if timepoint % tick_rate != 0:
-                    timepoint -= timepoint % tick_rate
+                    timepoint += tick_rate - (timepoint % tick_rate)
                 if timepoint in laser_ticks[laser_type]:
                     if timepoint in slam_overlapping_ticks[laser_type]:
                         self.laser_count += 1
