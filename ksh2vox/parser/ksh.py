@@ -911,7 +911,7 @@ class KSHParser:
             if not line.startswith('#'):
                 warnings.warn(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"', ParserWarning)
                 continue
-            line_type, name, definition = line[1:].split(' ')
+            line_type, name, definition = re.split(r'\s+', line[1:])
             params_list = [s.split('=', 1) for s in definition.split(';')]
             params_dict: dict[str, str] = {s[0]: s[1] for s in params_list}
             if 'type' not in params_dict:
