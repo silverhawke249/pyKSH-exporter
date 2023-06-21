@@ -1,4 +1,4 @@
-from enum import Enum, Flag, unique
+from enum import Enum, Flag, auto, unique
 
 
 @unique
@@ -170,3 +170,29 @@ class SegmentFlag(Flag):
     START  = 1
     END    = 2
     POINT  = 3
+
+
+class VOXSection(Enum):
+    NONE             = 0
+    VERSION          = auto()
+    TIME_SIGNATURE   = auto()
+    BPM              = auto()
+    TILT             = auto()
+    LYRICS           = auto()
+    END_POSITION     = auto()
+    FILTER_PARAMS    = auto()
+    EFFECT_PARAMS    = auto()
+    AUTOTAB_PARAMS   = auto()
+    REVERB           = auto()
+    TRACK_VOL_L      = auto()
+    TRACK_FX_L       = auto()
+    TRACK_BT_A       = auto()
+    TRACK_BT_B       = auto()
+    TRACK_BT_C       = auto()
+    TRACK_BT_D       = auto()
+    TRACK_FX_R       = auto()
+    TRACK_VOL_R      = auto()
+    AUTOTAB_SETTING  = auto()
+    TRACK_VOL_L_ORIG = auto()
+    TRACK_VOL_R_ORIG = auto()
+    SPCONTROLLER     = auto()
