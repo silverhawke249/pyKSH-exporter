@@ -197,10 +197,15 @@ class ChartInfo:
     spcontroller_data: SPControllerData = field(default_factory=SPControllerData)
 
     # Private data
-    _timesig_memo : dict[int, TimeSignature] = field(default_factory=dict, init=False, repr=False)
     _custom_effect: dict[str, Effect]        = field(default_factory=dict, init=False, repr=False)
     _custom_filter: dict[str, Effect]        = field(default_factory=dict, init=False, repr=False)
     _filter_param : dict[str, int]           = field(default_factory=dict, init=False, repr=False)
+
+    # Cached values
+    _timesig_cache     : dict[int, TimeSignature]  = field(default_factory=dict, init=False, repr=False)
+    _bpm_cache         : dict[TimePoint, Decimal]  = field(default_factory=dict, init=False, repr=False)
+    _tickrate_cache    : dict[TimePoint, Fraction] = field(default_factory=dict, init=False, repr=False)
+    _time_to_frac_cache: dict[TimePoint, Fraction] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self):
         # Default values
@@ -289,7 +294,7 @@ class ChartInfo:
                         # Mark ticks as "occupied" by slams
                         tick_index = 0
                         for slam in slam_locations:
-                            while tick_index < len(tick_keys) and tick_keys[tick_index + 1] <= slam:
+                            while tick_index < len(tick_keys) - 1 and tick_keys[tick_index + 1] <= slam:
                                 tick_index += 1
                             if tick_index == len(tick_keys) - 1:
                                 tick_rate = self.get_tick_rate(tick_keys[tick_index])
@@ -308,30 +313,34 @@ class ChartInfo:
                 else:
                     pass
 
-    @cache
     def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
-        prev_timesig = TimeSignature()
-        for timept, timesig in self.timesigs.items():
-            if timept.measure > measure:
-                break
-            prev_timesig = timesig
+        if measure not in self._timesig_cache:
+            prev_timesig = TimeSignature()
+            for timept, timesig in self.timesigs.items():
+                if timept.measure > measure:
+                    break
+                prev_timesig = timesig
+            self._timesig_cache[measure] = prev_timesig
 
-        return prev_timesig
+        return self._timesig_cache[measure]
 
-    @cache
     def get_bpm(self, timepoint: TimePoint) -> Decimal:
-        prev_bpm = Decimal(0)
-        for timept, bpm in self.bpms.items():
-            if timept > timepoint:
-                break
-            prev_bpm = bpm
+        if timepoint not in self._bpm_cache:
+            prev_bpm = Decimal(0)
+            for timept, bpm in self.bpms.items():
+                if timept > timepoint:
+                    break
+                prev_bpm = bpm
+            self._bpm_cache[timepoint] = prev_bpm
 
-        return prev_bpm
+        return self._bpm_cache[timepoint]
 
-    @cache
     def get_tick_rate(self, timepoint: TimePoint) -> Fraction:
-        return Fraction(1, 16) if self.get_bpm(timepoint) < 256 else Fraction(1, 8)
+        if timepoint not in self._tickrate_cache:
+            self._tickrate_cache[timepoint] = Fraction(1, 16) if self.get_bpm(timepoint) < 256 else Fraction(1, 8)
+
+        return self._tickrate_cache[timepoint]
 
     def get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
         """ Calculate the distance between two timepoints as a fraction. """
@@ -368,17 +377,20 @@ class ChartInfo:
 
         return f'{timepoint.measure:03},{div + 1:02},{subdiv:02}'
 
-    @cache
     def timepoint_to_fraction(self, timepoint: TimePoint) -> Fraction:
         """ Convert a timepoint to a fraction representation. """
-        if timepoint == TimePoint(1, 0, 1):
-            return Fraction(0)
-        if timepoint.position == 0:
-            prev_timepoint = TimePoint(timepoint.measure - 1, 0, 1)
-            prev_timesig = self.get_timesig(timepoint.measure - 1)
-            return self.timepoint_to_fraction(prev_timepoint) + prev_timesig.as_fraction()
-        prev_timepoint = TimePoint(timepoint.measure, 0, 1)
-        return self.timepoint_to_fraction(prev_timepoint) + timepoint.position
+        if timepoint not in self._time_to_frac_cache:
+            if timepoint == TimePoint(1, 0, 1):
+                self._time_to_frac_cache[timepoint] = Fraction(0)
+            elif timepoint.position == 0:
+                prev_timepoint = TimePoint(timepoint.measure - 1, 0, 1)
+                prev_timesig = self.get_timesig(timepoint.measure - 1)
+                self._time_to_frac_cache[timepoint] = self.timepoint_to_fraction(prev_timepoint) + prev_timesig.as_fraction()
+            else:
+                prev_timepoint = TimePoint(timepoint.measure, 0, 1)
+                self._time_to_frac_cache[timepoint] = self.timepoint_to_fraction(prev_timepoint) + timepoint.position
+
+        return self._time_to_frac_cache[timepoint]
 
     @property
     def chip_notecount(self) -> int:
@@ -394,9 +406,9 @@ class ChartInfo:
 
     @property
     def vol_notecount(self) -> int:
-        if self._long_notecount == -1:
+        if self._vol_notecount == -1:
             self._calculate_notecounts()
-        return self._long_notecount
+        return self._vol_notecount
 
     @property
     def max_chain(self) -> int:
