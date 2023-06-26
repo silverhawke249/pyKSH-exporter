@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, InitVar
 from decimal import Decimal
 from fractions import Fraction
+from functools import cache
 from typing import Any
 
 from .base import (
@@ -164,6 +165,11 @@ class ChartInfo:
     jacket_path   : str = ''
     total_measures: int = 0
 
+    # Calculated data
+    _chip_notecount: int = -1
+    _long_notecount: int = -1
+    _vol_notecount : int = -1
+
     # Song data that may change mid-song
     bpms     : dict[TimePoint, Decimal]       = field(default_factory=dict)
     timesigs : dict[TimePoint, TimeSignature] = field(default_factory=dict)
@@ -209,28 +215,117 @@ class ChartInfo:
         # Populate autotab list
         self.autotab_list = get_default_autotab()
 
+    def _calculate_notecounts(self) -> None:
+        self._chip_notecount = 0
+        self._long_notecount = 0
+        self._vol_notecount = 0
+
+        # Chip and long notes
+        note_dicts: list[dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]] = [
+            self.note_data.bt_a, self.note_data.bt_b, self.note_data.bt_c, self.note_data.bt_d,
+            self.note_data.fx_l, self.note_data.fx_r
+        ]
+        for notes in note_dicts:
+            for timept, note in notes.items():
+                if note.duration == 0:
+                    self._chip_notecount += 1
+                else:
+                    tick_rate = self.get_tick_rate(timept)
+                    tick_start = self.timepoint_to_fraction(timept)
+                    hold_end = self.add_duration(timept, note.duration)
+                    cur_hold_ticks = 0
+                    # Round up to next tick
+                    if tick_start % tick_rate != 0:
+                        cur_hold_ticks += 1
+                        timept = self.add_duration(timept, tick_rate - (tick_start % tick_rate))
+                    # Add ticks
+                    while timept < hold_end:
+                        cur_hold_ticks += 1
+                        tick_rate = self.get_tick_rate(timept)
+                        timept = self.add_duration(timept, tick_rate)
+                    # Long enough holds become lenient at the end
+                    if cur_hold_ticks > 5:
+                        cur_hold_ticks -= 1
+                    if cur_hold_ticks > 6:
+                        cur_hold_ticks -= 1
+                    self._long_notecount += cur_hold_ticks
+
+        # Lasers
+        for lasers in [self.note_data.vol_l, self.note_data.vol_r]:
+            laser_start, laser_end = TimePoint(1, 0, 1), TimePoint(1, 0, 1)
+            slam_locations: list[TimePoint] = []
+            for timept, laser in lasers.items():
+                # This really should only be slams
+                if laser.point_type == SegmentFlag.POINT:
+                    self._vol_notecount += 1
+                elif laser.point_type in [SegmentFlag.START, SegmentFlag.END]:
+                    if laser.start != laser.end:
+                        slam_locations.append(timept)
+                    if laser.point_type == SegmentFlag.START:
+                        laser_start = timept
+                    elif laser.point_type == SegmentFlag.END:
+                        laser_end = timept
+                        # Process ticks
+                        tick_rate = self.get_tick_rate(laser_start)
+                        tick_start = self.timepoint_to_fraction(laser_start)
+                        # Round up to next tick
+                        if tick_start % tick_rate != 0:
+                            laser_start = self.add_duration(laser_start, tick_rate - (tick_start % tick_rate))
+                        timept = laser_start
+                        # Get tick locations
+                        tick_locations: dict[TimePoint, bool] = {}
+                        tick_keys: list[TimePoint] = []
+                        while timept < laser_end:
+                            tick_locations[timept] = True
+                            tick_keys.append(timept)
+                            tick_rate = self.get_tick_rate(timept)
+                            timept = self.add_duration(timept, tick_rate)
+                        # Mark ticks as "occupied" by slams
+                        tick_index = 0
+                        for slam in slam_locations:
+                            while tick_index < len(tick_keys) and tick_keys[tick_index + 1] <= slam:
+                                tick_index += 1
+                            if tick_index == len(tick_keys) - 1:
+                                tick_rate = self.get_tick_rate(tick_keys[tick_index])
+                                next_tick_timept = self.add_duration(tick_keys[tick_index], tick_rate)
+                                if slam < next_tick_timept:
+                                    tick_locations[tick_keys[tick_index]] = False
+                            else:
+                                tick_rate = self.get_tick_rate(tick_keys[tick_index])
+                                halfway_timept = self.add_duration(tick_keys[tick_index], tick_rate / 2)
+                                if slam <= halfway_timept:
+                                    tick_locations[tick_keys[tick_index]] = False
+                                if slam >= halfway_timept:
+                                    tick_locations[tick_keys[tick_index + 1]] = False
+                        self._vol_notecount += len(slam_locations) + sum(tick_locations.values())
+                        slam_locations = []
+                else:
+                    pass
+
+    @cache
     def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
-        if measure not in self._timesig_memo:
-            prev_timesig = TimeSignature()
-            for timept, timesig in self.timesigs.items():
-                if timept.measure > measure:
-                    break
-                prev_timesig = timesig
+        prev_timesig = TimeSignature()
+        for timept, timesig in self.timesigs.items():
+            if timept.measure > measure:
+                break
+            prev_timesig = timesig
 
-            self._timesig_memo[measure] = prev_timesig
+        return prev_timesig
 
-        return self._timesig_memo[measure]
+    @cache
+    def get_bpm(self, timepoint: TimePoint) -> Decimal:
+        prev_bpm = Decimal(0)
+        for timept, bpm in self.bpms.items():
+            if timept > timepoint:
+                break
+            prev_bpm = bpm
 
-    def timepoint_to_vox(self, timepoint: TimePoint) -> str:
-        """ Convert a timepoint to string in VOX format. """
-        timesig = self.get_timesig(timepoint.measure)
+        return prev_bpm
 
-        note_val = Fraction(1, timesig.lower)
-        div = timepoint.position // note_val
-        subdiv = round(192 * (timepoint.position % note_val))
-
-        return f'{timepoint.measure:03},{div + 1:02},{subdiv:02}'
+    @cache
+    def get_tick_rate(self, timepoint: TimePoint) -> Fraction:
+        return Fraction(1, 16) if self.get_bpm(timepoint) < 256 else Fraction(1, 8)
 
     def get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
         """ Calculate the distance between two timepoints as a fraction. """
@@ -256,3 +351,51 @@ class ChartInfo:
             m_no += 1
 
         return TimePoint(m_no, modified_length.numerator, modified_length.denominator)
+
+    def timepoint_to_vox(self, timepoint: TimePoint) -> str:
+        """ Convert a timepoint to string in VOX format. """
+        timesig = self.get_timesig(timepoint.measure)
+
+        note_val = Fraction(1, timesig.lower)
+        div = timepoint.position // note_val
+        subdiv = round(192 * (timepoint.position % note_val))
+
+        return f'{timepoint.measure:03},{div + 1:02},{subdiv:02}'
+
+    @cache
+    def timepoint_to_fraction(self, timepoint: TimePoint) -> Fraction:
+        """ Convert a timepoint to a fraction representation. """
+        if timepoint == TimePoint(1, 0, 1):
+            return Fraction(0)
+        if timepoint.position == 0:
+            prev_timepoint = TimePoint(timepoint.measure - 1, 0, 1)
+            prev_timesig = self.get_timesig(timepoint.measure - 1)
+            return self.timepoint_to_fraction(prev_timepoint) + prev_timesig.as_fraction()
+        prev_timepoint = TimePoint(timepoint.measure, 0, 1)
+        return self.timepoint_to_fraction(prev_timepoint) + timepoint.position
+
+    @property
+    def chip_notecount(self) -> int:
+        if self._chip_notecount == -1:
+            self._calculate_notecounts()
+        return self._chip_notecount
+
+    @property
+    def long_notecount(self) -> int:
+        if self._long_notecount == -1:
+            self._calculate_notecounts()
+        return self._long_notecount
+
+    @property
+    def vol_notecount(self) -> int:
+        if self._long_notecount == -1:
+            self._calculate_notecounts()
+        return self._long_notecount
+
+    @property
+    def max_chain(self) -> int:
+        return self.chip_notecount + self.long_notecount + self.vol_notecount
+
+    @property
+    def max_ex_score(self) -> int:
+        return 5 * self.chip_notecount + 2 * (self.long_notecount + self.vol_notecount)
