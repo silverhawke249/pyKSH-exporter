@@ -970,15 +970,38 @@ class KSHParser:
             if self._chart_info.difficulty == diff:
                 f.write(f'        <difnum __type="u8">{self._chart_info.level}</difnum>\n'
                         f'        <illustrator>{escape(self._chart_info.illustrator)}</illustrator>\n'
-                        f'        <effected_by>{escape(self._chart_info.effector)}</effected_by>\n')
+                        f'        <effected_by>{escape(self._chart_info.effector)}</effected_by>\n'
+                         '        <price __type="s32">-1</price>\n'
+                         '        <limited __type="u8">3</limited>\n'
+                         '        <jacket_print __type="s32">-2</jacket_print>\n'
+                         '        <jacket_mask __type="s32">0</jacket_mask>\n'
+                        f'        <max_exscore __type="s32">{self._chart_info.max_ex_score}</max_exscore>\n'
+                         '        <radar>\n'
+                        f'          <notes __type="u8">{self._chart_info.radar_notes}</notes>\n'
+                        f'          <peak __type="u8">{self._chart_info.radar_peak}</peak>\n'
+                        f'          <tsumami __type="u8">{self._chart_info.radar_tsumami}</tsumami>\n'
+                        f'          <tricky __type="u8">{self._chart_info.radar_tricky}</tricky>\n'
+                        f'          <hand-trip __type="u8">{self._chart_info.radar_handtrip}</hand-trip>\n'
+                        f'          <one-hand __type="u8">{self._chart_info.radar_onehand}</one-hand>\n'
+                         '        </radar>\n')
             else:
                 f.write('        <difnum __type="u8">0</difnum>\n'
                         '        <illustrator>dummy</illustrator>\n'
-                        '        <effected_by>dummy</effected_by>\n')
-            f.write('        <price __type="s32">-1</price>\n'
-                    '        <limited __type="u8">3</limited>\n'
-                   f'      </{diff.name.lower()}>\n')
-
+                        '        <effected_by>dummy</effected_by>\n'
+                        '        <price __type="s32">-1</price>\n'
+                        '        <limited __type="u8">3</limited>\n'
+                        '        <jacket_print __type="s32">-2</jacket_print>\n'
+                        '        <jacket_mask __type="s32">0</jacket_mask>\n'
+                        '        <max_exscore __type="s32">0</max_exscore>\n'
+                        '        <radar>\n'
+                        '          <notes __type="u8">0</notes>\n'
+                        '          <peak __type="u8">0</peak>\n'
+                        '          <tsumami __type="u8">0</tsumami>\n'
+                        '          <tricky __type="u8">0</tricky>\n'
+                        '          <hand-trip __type="u8">0</hand-trip>\n'
+                        '          <one-hand __type="u8">0</one-hand>\n'
+                        '        </radar>\n')
+            f.write(f'      </{diff.name.lower()}>\n')
         f.write('    </difficulty>\n'
                 '  </music>\n')
 
