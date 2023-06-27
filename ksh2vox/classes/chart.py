@@ -169,6 +169,12 @@ class ChartInfo:
     _chip_notecount: int = -1
     _long_notecount: int = -1
     _vol_notecount : int = -1
+    _radar_notes   : int = -1
+    _radar_peak    : int = -1
+    _radar_tsumami : int = -1
+    _radar_tricky  : int = -1
+    _radar_handtrip: int = -1
+    _radar_onehand : int = -1
 
     # Song data that may change mid-song
     bpms     : dict[TimePoint, Decimal]       = field(default_factory=dict)
@@ -399,3 +405,27 @@ class ChartInfo:
     @property
     def max_ex_score(self) -> int:
         return 5 * self.chip_notecount + 2 * (self.long_notecount + self.vol_notecount)
+
+    @property
+    def radar_notes(self) -> int:
+        return 0
+
+    @property
+    def radar_peak(self) -> int:
+        return 0
+
+    @property
+    def radar_tsumami(self) -> int:
+        return 0
+
+    @property
+    def radar_tricky(self) -> int:
+        return 0
+
+    @property
+    def radar_handtrip(self) -> int:
+        return 0
+
+    @property
+    def radar_onehand(self) -> int:
+        return 0
