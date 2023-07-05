@@ -102,8 +102,6 @@ class VolInfo:
             raise ValueError(f'start value out of range (got {self.start})')
         if not 0 <= self.end <= 1:
             raise ValueError(f'end value out of range (got {self.end})')
-        if self.start == self.end and self.spin_type != SpinType.NO_SPIN:
-            raise ValueError(f'spin_type must be NO_SPIN when start is equal to end (got {self.spin_type.name})')
         if self.spin_duration < 0:
             raise ValueError(f'spin_duration cannot be negative (got {self.spin_duration})')
         if self.spin_type != SpinType.NO_SPIN and self.spin_duration == 0:
