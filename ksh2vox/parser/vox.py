@@ -1,22 +1,13 @@
 import dataclasses
-import itertools
 import re
-import time
 import warnings
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from typing import TextIO
-from xml.sax.saxutils import escape
 
-from ..classes import (
-    effects,
-    filters,
-)
 from ..classes.base import (
-    AutoTabInfo,
-    ParserWarning,
     TimePoint,
     TimeSignature,
 )
@@ -28,64 +19,14 @@ from ..classes.chart import (
     VolInfo,
 )
 from ..classes.enums import (
-    DifficultySlot,
     EasingType,
     FilterIndex,
     SegmentFlag,
     SpinType,
-    TiltType,
     VOXSection,
 )
-from ..classes.song import (
-    SongInfo,
-)
-from ..utils import (
-    clamp,
-    interpolate,
-)
 
-BAR_LINE = '--'
-CHART_REGEX = re.compile(r'^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?')
-TITLE_REGEX = re.compile(r'[^a-zA-Z0-9]+')
-LASER_POSITION = [
-    '05AFKPUZejo',
-    '0257ACFHKMPSUXZbehjmo',
-    '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmno',
-]
-INPUT_BT  = ['bt_a', 'bt_b', 'bt_c', 'bt_d']
-INPUT_FX  = ['fx_l', 'fx_r']
-INPUT_VOL = ['vol_l', 'vol_r']
-FILTER_TYPE_MAP = {
-    'peak': FilterIndex.PEAK,
-    'lpf1': FilterIndex.LPF,
-    'hpf1': FilterIndex.HPF,
-    'bitc': FilterIndex.BITCRUSH,
-}
-KSH_EFFECT_MAP: dict[str, effects.Effect] = {
-    'Retrigger' : effects.Retrigger(),
-    'Gate'      : effects.Gate(),
-    'Flanger'   : effects.Flanger(),
-    'PitchShift': effects.PitchShift(),
-    'BitCrusher': effects.Bitcrush(),
-    'Phaser'    : effects.Flanger(mix=50, period=2, feedback=0.35, stereo_width=0, hicut_gain=8),
-    'Wobble'    : effects.Wobble(),
-    'TapeStop'  : effects.Tapestop(),
-    'Echo'      : effects.RetriggerEx(mix=100, wavelength=4, update_period=4, feedback=0.6, amount=1, decay=0.8),
-    'SideChain' : effects.Sidechain(),
-}
-NO_EFFECT_INDEX             = 0
-KSH_SLAM_DISTANCE           = Fraction(1, 32)
-INTERPOLATION_DISTANCE      = Fraction(1, 64)
-SPIN_CONVERSION_RATE        = Fraction(4, 3) / 48
-STOP_CONVERSION_RATE        = Fraction(1, 192)
-# KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
-# change and distance change... basically, polar coordinates for the camera. This
-# means that the mapping between KSM and SDVX isn't as clean-cut as we'd like.
-ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.006667)
-ZOOM_TOP_CONVERSION_RATE    = Decimal(0.002222)
-TILT_CONVERSION_RATE        = Decimal(-0.420000)
-LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
-
+# TODO: Handle script segment
 SECTION_MAP: dict[str, VOXSection] = {
     'END'                  : VOXSection.NONE,
     'FORMAT VERSION'       : VOXSection.VERSION,
@@ -111,53 +52,45 @@ SECTION_MAP: dict[str, VOXSection] = {
     'TRACK ORIGINAL R'     : VOXSection.TRACK_VOL_R_ORIG,
     'SPCONTROLER'          : VOXSection.SPCONTROLLER,
 }
+# TODO: Name the regex groups
 SECTION_REGEX: dict[VOXSection, re.Pattern] = {
     VOXSection.NONE            : re.compile(r'(?!)'),
-    VOXSection.VERSION         : re.compile(r'(?!)'),
-    VOXSection.TIME_SIGNATURE  : re.compile(r'(?!)'),
-    VOXSection.BPM             : re.compile(r'(?!)'),
-    VOXSection.TILT            : re.compile(r'(?!)'),
+    VOXSection.VERSION         : re.compile(r'(?P<version>\d+)'),
+    VOXSection.TIME_SIGNATURE  : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<upper>\d+)\s+(?P<lower>\d+)'),
+    VOXSection.BPM             : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<bpm>\d+\.\d+)\s+(?P<unknown>\d+-?)'),
+    VOXSection.TILT            : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<tilt_type>\d)'),
     VOXSection.LYRICS          : re.compile(r'(?!)'),
-    VOXSection.END_POSITION    : re.compile(r'(?!)'),
-    VOXSection.FILTER_PARAMS   : re.compile(r'(?!)'),
-    VOXSection.EFFECT_PARAMS   : re.compile(r'(?!)'),
-    VOXSection.AUTOTAB_PARAMS  : re.compile(r'(?!)'),
+    VOXSection.END_POSITION    : re.compile(r'(?P<timepoint>\d+,\d+,\d+)'),
+    VOXSection.FILTER_PARAMS   : re.compile(r'(?P<filter_index>\d+)(?P<content>(,\s+\d+(\.\d+)?))+'),
+    VOXSection.EFFECT_PARAMS   : re.compile(r'(?P<effect_index>\d+)(?P<content>(,\s+\d+(\.\d+)?))+'),
+    VOXSection.AUTOTAB_PARAMS  : re.compile(r'(?P<index>\d+),\s+(?P<param_index>\d+),\s+'
+                                            r'(?P<param_start>\d+(\.\d+)?),\s+(?P<param_end>\d+(\.\d+)?)'),
     VOXSection.REVERB          : re.compile(r'(?!)'),
-    VOXSection.TRACK_VOL_L     : re.compile(r'(?!)'),
-    VOXSection.TRACK_FX_L      : re.compile(r'(?!)'),
-    VOXSection.TRACK_BT_A      : re.compile(r'(?!)'),
-    VOXSection.TRACK_BT_B      : re.compile(r'(?!)'),
-    VOXSection.TRACK_BT_C      : re.compile(r'(?!)'),
-    VOXSection.TRACK_BT_D      : re.compile(r'(?!)'),
-    VOXSection.TRACK_FX_R      : re.compile(r'(?!)'),
-    VOXSection.TRACK_VOL_R     : re.compile(r'(?!)'),
-    VOXSection.AUTOTAB_SETTING : re.compile(r'(?!)'),
-    VOXSection.TRACK_VOL_L_ORIG: re.compile(r'(?!)'),
-    VOXSection.TRACK_VOL_R_ORIG: re.compile(r'(?!)'),
-    VOXSection.SPCONTROLLER    : re.compile(r'(?!)'),
+    VOXSection.TRACK_VOL_L     : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<position>\d+(?:\.\d+)?)\s+'
+                                            r'(?P<segment_type>\d)\s+(?P<spin_type>\d)\s+(?P<filter_type>\d)(?:\s+'
+                                            r'(?P<wide_laser>\d)\s+0\s+(?P<ease_type>\d)\s+(?P<spin_length>\d+))?'),
+    VOXSection.TRACK_FX_L      : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<special>\d+)'),
+    VOXSection.TRACK_BT_A      : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<unknown>\d+)'),
+    VOXSection.TRACK_BT_B      : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<unknown>\d+)'),
+    VOXSection.TRACK_BT_C      : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<unknown>\d+)'),
+    VOXSection.TRACK_BT_D      : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<unknown>\d+)'),
+    VOXSection.TRACK_FX_R      : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<special>\d+)'),
+    VOXSection.TRACK_VOL_R     : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<position>\d+(?:\.\d+)?)\s+'
+                                            r'(?P<segment_type>\d)\s+(?P<spin_type>\d)\s+(?P<filter_type>\d)(?:\s+'
+                                            r'(?P<wide_laser>\d)\s+0\s+(?P<ease_type>\d)\s+(?P<spin_length>\d+))?'),
+    VOXSection.AUTOTAB_SETTING : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<duration>\d+)\s+(?P<which>\d+)'),
+    VOXSection.TRACK_VOL_L_ORIG: re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<position>\d+(?:\.\d+)?)\s+'
+                                            r'(?P<segment_type>\d)\s+(?P<spin_type>\d)\s+(?P<filter_type>\d)(?:\s+'
+                                            r'(?P<wide_laser>\d)\s+0\s+(?P<ease_type>\d)\s+(?P<spin_length>\d+))?'),
+    VOXSection.TRACK_VOL_R_ORIG: re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<position>\d+(?:\.\d+)?)\s+'
+                                            r'(?P<segment_type>\d)\s+(?P<spin_type>\d)\s+(?P<filter_type>\d)(?:\s+'
+                                            r'(?P<wide_laser>\d)\s+0\s+(?P<ease_type>\d)\s+(?P<spin_length>\d+))?'),
+    VOXSection.SPCONTROLLER    : re.compile(r'(?P<timepoint>\d+,\d+,\d+)\s+(?P<sp_type>\w+)'
+                                            r'(?P<content>(\s+-?\d+(\.\d+)?)+)'),
 }
 WHITESPACE_REGEX = re.compile(r'\s+')
-
-
-@dataclasses.dataclass
-class _HoldInfo:
-    start: TimePoint
-    duration: Fraction = Fraction(0)
-
-
-@dataclasses.dataclass
-class _LastVolInfo:
-    when: TimePoint
-    duration: Fraction
-    prev_vol: VolInfo
-
-
-def convert_laser_pos(s: str) -> Fraction:
-    for laser_str in LASER_POSITION:
-        if s in laser_str:
-            laser_pos = laser_str.index(s)
-            return Fraction(laser_pos, len(laser_str) - 1)
-    return Fraction()
+LASER_SCALE_DEFAULT = Fraction(1)
+LASER_SCALE_OLD = Fraction(1, 127)
 
 
 @dataclasses.dataclass(eq=False)
@@ -170,11 +103,12 @@ class VOXParser:
 
     _current_section: VOXSection = dataclasses.field(default=VOXSection.NONE, init=False)
     _vox_version: int = dataclasses.field(default=0, init=False)
+    _laser_scale: Fraction = dataclasses.field(default=LASER_SCALE_DEFAULT, init=False)
 
-    _song_info : SongInfo  = dataclasses.field(init=False)
     _chart_info: ChartInfo = dataclasses.field(init=False)
 
     def __post_init__(self, file: TextIO):
+        self._chart_info = ChartInfo()
         self._vox_path = Path(file.name).resolve()
 
         for lineno, line in enumerate(file):
@@ -192,21 +126,48 @@ class VOXParser:
                 # Ignore everything between sections
                 if self._current_section == VOXSection.NONE:
                     continue
-                # Ignore invalid lines
-                if not SECTION_REGEX[self._current_section].match(line):
-                    warnings.warn(f'unrecognized line at line {lineno + 1}: "{line}"')
+                # Ignore empty lines
+                if not line:
                     continue
-                # Parse valid lines
-                self._parse_line(line)
+                # Parse lines
+                try:
+                    self._parse_line(line)
+                except ValueError:
+                    warnings.warn(f'unrecognized line at line {lineno + 1}: "{line}"')
 
-    def _parse_line(self, line) -> None:
-        line_chunks = WHITESPACE_REGEX.split(line)
+    def _convert_vox_timepoint(self, s: str) -> TimePoint:
+        # This assumes there is no need to normalize the timepoint
+        m, c, d = map(int, s.split(',', maxsplit=3))
+        timesig = self.chart_info.get_timesig(m)
+        position = Fraction(c - 1, timesig.lower) + Fraction(d, 192)
+        t = TimePoint(m, position.numerator, position.denominator)
+        # print(f'{s} => {t}')
+        return t
+
+    def _parse_line(self, line: str) -> None:
+        # Ignore invalid lines
+        match = SECTION_REGEX[self._current_section].match(line)
+        if not match:
+            raise ValueError
+
         if self._current_section == VOXSection.VERSION:
-            pass
+            self._vox_version = int(match['version'])
+            if self._vox_version <= 12:
+                self._laser_scale = LASER_SCALE_OLD
         elif self._current_section == VOXSection.TIME_SIGNATURE:
-            pass
+            timepoint = match['timepoint']
+            upper = int(match['upper'])
+            lower = int(match['lower'])
+            # Not gonna bother checking multiple measure overflow
+            m, c, d = map(int, timepoint.split(',', maxsplit=3))
+            if (c, d) != (0, 0):
+                m += 1
+            self.chart_info.timesigs[TimePoint(m, 0, 1)] = TimeSignature(upper, lower)
         elif self._current_section == VOXSection.BPM:
-            pass
+            timepoint = self._convert_vox_timepoint(match['timepoint'])
+            bpm = Decimal(match['bpm'])
+            # Ignoring stops because it's unnecessary (for now)
+            self.chart_info.bpms[timepoint] = bpm
         elif self._current_section == VOXSection.TILT:
             pass
         elif self._current_section == VOXSection.LYRICS:
@@ -221,28 +182,73 @@ class VOXParser:
             pass
         elif self._current_section == VOXSection.REVERB:
             pass
-        elif self._current_section == VOXSection.TRACK_VOL_L:
-            pass
-        elif self._current_section == VOXSection.TRACK_FX_L:
-            pass
-        elif self._current_section == VOXSection.TRACK_BT_A:
-            pass
-        elif self._current_section == VOXSection.TRACK_BT_B:
-            pass
-        elif self._current_section == VOXSection.TRACK_BT_C:
-            pass
-        elif self._current_section == VOXSection.TRACK_BT_D:
-            pass
-        elif self._current_section == VOXSection.TRACK_FX_R:
-            pass
-        elif self._current_section == VOXSection.TRACK_VOL_R:
-            pass
+        elif self._current_section in [VOXSection.TRACK_VOL_L, VOXSection.TRACK_VOL_R]:
+            # Parse all parameters
+            timepoint = self._convert_vox_timepoint(match['timepoint'])
+            position = Fraction(match['position']) * self._laser_scale
+            segment_type_str = match['segment_type']
+            segment_type = (SegmentFlag.START if segment_type_str == '1' else
+                            SegmentFlag.END if segment_type_str == '2' else
+                            SegmentFlag.MIDDLE)
+            spin_type_str = match['spin_type']
+            spin_type = (SpinType.SINGLE_SPIN if spin_type_str in ['1', '2', '3'] else
+                         SpinType.TRIPLE_SPIN if spin_type_str == '4' else
+                         SpinType.HALF_SPIN if spin_type_str == '5' else
+                         SpinType.NO_SPIN)
+            filter_type_str = match['filter_type']
+            filter_type = (FilterIndex(int(filter_type_str)) if '0' <= filter_type_str <= '6' else
+                           FilterIndex.CUSTOM)
+            wide_laser = match['wide_laser'] == '2'
+            ease_type_str = match['ease_type'] or '0'
+            ease_type = (EasingType.LINEAR if ease_type_str == '2' else
+                         EasingType.EASE_IN_SINE if ease_type_str == '4' else
+                         EasingType.EASE_OUT_SINE if ease_type_str == '5' else
+                         EasingType.NO_EASING)
+            spin_length = int(match['spin_length'] or 0)
+            # Insert into the right dictionary
+            vol_dict: dict[TimePoint, VolInfo]
+            if self._current_section  == VOXSection.TRACK_VOL_L:
+                vol_dict = self.chart_info.note_data.vol_l
+            else:
+                vol_dict = self.chart_info.note_data.vol_r
+            # Become slam if timepoint already exists
+            if timepoint in vol_dict:
+                vol_dict[timepoint].point_type |= segment_type
+                vol_dict[timepoint].end = position
+            else:
+                vol_dict[timepoint] = VolInfo(
+                    position, position, spin_type, spin_length, ease_type, filter_type,
+                    segment_type, wide_laser
+                )
+        elif self._current_section in [VOXSection.TRACK_FX_L, VOXSection.TRACK_FX_R]:
+            timepoint = self._convert_vox_timepoint(match['timepoint'])
+            duration = int(match['duration'])
+            special = int(match['special'])
+            fx_dict: dict[TimePoint, FXInfo]
+            if self._current_section == VOXSection.TRACK_FX_L:
+                fx_dict = self.chart_info.note_data.fx_l
+            else:
+                fx_dict = self.chart_info.note_data.fx_r
+            fx_dict[timepoint] = FXInfo(Fraction(duration, 192), special)
+        elif self._current_section in [VOXSection.TRACK_BT_A, VOXSection.TRACK_BT_B, VOXSection.TRACK_BT_C,
+                                       VOXSection.TRACK_BT_D]:
+            timepoint = self._convert_vox_timepoint(match['timepoint'])
+            duration = int(match['duration'])
+            bt_dict: dict[TimePoint, BTInfo]
+            if self._current_section == VOXSection.TRACK_BT_A:
+                bt_dict = self.chart_info.note_data.bt_a
+            elif self._current_section == VOXSection.TRACK_BT_B:
+                bt_dict = self.chart_info.note_data.bt_b
+            elif self._current_section == VOXSection.TRACK_BT_C:
+                bt_dict = self.chart_info.note_data.bt_c
+            else:
+                bt_dict = self.chart_info.note_data.bt_d
+            bt_dict[timepoint] = BTInfo(Fraction(duration, 192))
         elif self._current_section == VOXSection.AUTOTAB_SETTING:
             pass
-        elif self._current_section == VOXSection.TRACK_VOL_L_ORIG:
+        elif self._current_section in [VOXSection.TRACK_VOL_L_ORIG, VOXSection.TRACK_VOL_R_ORIG]:
             pass
-        elif self._current_section == VOXSection.TRACK_VOL_R_ORIG:
-            pass
+        # TODO: Handle SPController section
         elif self._current_section == VOXSection.SPCONTROLLER:
             pass
         else:
@@ -251,10 +257,6 @@ class VOXParser:
     @property
     def vox_path(self):
         return self._vox_path
-
-    @property
-    def song_info(self):
-        return self._song_info
 
     @property
     def chart_info(self):
