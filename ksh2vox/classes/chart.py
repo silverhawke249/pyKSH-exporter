@@ -104,8 +104,6 @@ class VolInfo:
             raise ValueError(f'end value out of range (got {self.end})')
         if self.spin_duration < 0:
             raise ValueError(f'spin_duration cannot be negative (got {self.spin_duration})')
-        if self.spin_type != SpinType.NO_SPIN and self.spin_duration == 0:
-            raise ValueError('spin cannot have zero duration')
 
 
 @dataclass
