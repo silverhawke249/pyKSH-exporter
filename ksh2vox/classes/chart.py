@@ -290,11 +290,15 @@ class ChartInfo:
                             tick_rate = self.get_tick_rate(timept)
                             timept = self.add_duration(timept, tick_rate)
                         # Mark ticks as "occupied" by slams
-                        tick_index = 0
+                        tick_index = -1
                         for slam in slam_locations:
-                            while tick_index < len(tick_keys) - 1 and tick_keys[tick_index + 1] <= slam:
+                            if not tick_keys:
+                                break
+                            while tick_index < len(tick_keys) - 1 and tick_keys[tick_index + 1] < slam:
                                 tick_index += 1
-                            if tick_index == len(tick_keys) - 1:
+                            if tick_index == -1:
+                                tick_locations[tick_keys[0]] = False
+                            elif tick_index == len(tick_keys) - 1:
                                 tick_rate = self.get_tick_rate(tick_keys[tick_index])
                                 next_tick_timept = self.add_duration(tick_keys[tick_index], tick_rate)
                                 if slam < next_tick_timept:
@@ -308,13 +312,12 @@ class ChartInfo:
                                     tick_locations[tick_keys[tick_index + 1]] = False
                         disabled_ticks = [k for k, v in tick_locations.items() if not v]
                         if disabled_ticks:
-                            debug(f'disabled tick: {self.timepoint_to_vox(disabled_ticks[0])}')
-                            for t in disabled_ticks[1:]:
-                                debug(f'             : {self.timepoint_to_vox(disabled_ticks[0])}')
+                            debug(f'disabled tick: {disabled_ticks}')
                         self._vol_notecount += len(slam_locations) + sum(tick_locations.values())
                         slam_locations = []
                 else:
-                    pass
+                    if laser.start != laser.end:
+                        slam_locations.append(timept)
 
     def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
