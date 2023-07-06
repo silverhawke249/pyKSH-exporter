@@ -273,6 +273,7 @@ class ChartInfo:
                     elif laser.point_type == SegmentFlag.END:
                         laser_end = timept
                         debug(f'laser segment: {laser_start} => {laser_end}')
+                        debug(f'             : {self.timepoint_to_vox(laser_start)} => {self.timepoint_to_vox(laser_end)}')
                         # Process ticks
                         tick_rate = self.get_tick_rate(laser_start)
                         tick_start = self.timepoint_to_fraction(laser_start)
@@ -305,6 +306,11 @@ class ChartInfo:
                                     tick_locations[tick_keys[tick_index]] = False
                                 if slam >= halfway_timept:
                                     tick_locations[tick_keys[tick_index + 1]] = False
+                        disabled_ticks = [k for k, v in tick_locations.items() if not v]
+                        if disabled_ticks:
+                            debug(f'disabled tick: {self.timepoint_to_vox(disabled_ticks[0])}')
+                            for t in disabled_ticks[1:]:
+                                debug(f'             : {self.timepoint_to_vox(disabled_ticks[0])}')
                         self._vol_notecount += len(slam_locations) + sum(tick_locations.values())
                         slam_locations = []
                 else:
