@@ -1,6 +1,6 @@
 import dataclasses
+import logging
 import re
-import warnings
 
 from decimal import Decimal
 from fractions import Fraction
@@ -133,7 +133,7 @@ class VOXParser:
                 try:
                     self._parse_line(line)
                 except ValueError:
-                    warnings.warn(f'unrecognized line at line {lineno + 1}: "{line}"')
+                    logging.warning(f'unrecognized line at line {lineno + 1}: "{line}"')
 
     def _convert_vox_timepoint(self, s: str) -> TimePoint:
         # This assumes there is no need to normalize the timepoint

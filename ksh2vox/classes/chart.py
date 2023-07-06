@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, InitVar
 from decimal import Decimal
 from fractions import Fraction
-from functools import cache
+from logging import debug
 from typing import Any
 
 from .base import (
@@ -272,6 +272,7 @@ class ChartInfo:
                         laser_start = timept
                     elif laser.point_type == SegmentFlag.END:
                         laser_end = timept
+                        debug(f'laser segment: {laser_start} => {laser_end}')
                         # Process ticks
                         tick_rate = self.get_tick_rate(laser_start)
                         tick_start = self.timepoint_to_fraction(laser_start)
