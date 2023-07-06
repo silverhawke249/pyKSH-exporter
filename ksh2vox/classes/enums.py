@@ -196,3 +196,5 @@ class VOXSection(Enum):
     TRACK_VOL_L_ORIG = auto()
     TRACK_VOL_R_ORIG = auto()
     SPCONTROLLER     = auto()
+    SCRIPT           = auto()
+    SCRIPTED_TRACK   = auto()
