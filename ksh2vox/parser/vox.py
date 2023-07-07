@@ -147,6 +147,8 @@ class VOXParser:
                 except ValueError:
                     logger.warning(f'unrecognized line at line {lineno + 1}: "{line}"')
 
+        self._post_process()
+
     def _convert_vox_timepoint(self, s: str) -> TimePoint:
         # This assumes there is no need to normalize the timepoint
         m, c, d = map(int, s.split(',', maxsplit=3))
@@ -270,6 +272,17 @@ class VOXParser:
             pass
         else:
             pass
+
+    def _post_process(self) -> None:
+        # Fix when last vol segment isn't properly indicated
+        for vol_data in [self.chart_info.note_data.vol_l, self.chart_info.note_data.vol_r]:
+            vol_keys = list(vol_data.keys())
+            if not vol_keys:
+                continue
+            vol_keys.sort()
+
+            last_timept = vol_keys[-1]
+            vol_data[last_timept].point_type |= SegmentFlag.END
 
     @property
     def vox_path(self):
