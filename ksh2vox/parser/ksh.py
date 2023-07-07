@@ -85,6 +85,8 @@ ZOOM_TOP_CONVERSION_RATE    = Decimal(0.002222)
 TILT_CONVERSION_RATE        = Decimal(-0.420000)
 LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
 
+logger = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass
 class _HoldInfo:
@@ -191,7 +193,7 @@ class KSHParser:
         for line_no, line in enumerate(self._raw_metadata):
             try:
                 if '=' not in line:
-                    logging.warning(f'unrecognized line at line {line_no + 1}: "{line}"')
+                    logger.warning(f'unrecognized line at line {line_no + 1}: "{line}"')
                 key, value = line.split('=', 1)
                 if key == 'title':
                     self._song_info.title = value
@@ -233,7 +235,7 @@ class KSHParser:
                 elif key == 'm':
                     self._chart_info.music_path, *music_path_ex = value.split(';')
                     if music_path_ex:
-                        logging.warning('multiple song files are not supported yet')
+                        logger.warning('multiple song files are not supported yet')
                 elif key == 'mvol':
                     self._song_info.music_volume = int(value)
                 elif key == 'o':
@@ -256,7 +258,7 @@ class KSHParser:
                     # Silently ignoring all other metadata
                     pass
             except ValueError as e:
-                logging.warning(str(e))
+                logger.warning(str(e))
 
     def _initialize_stateful_data(self) -> None:
         self._cur_easing = {
@@ -318,7 +320,7 @@ class KSHParser:
                 measure_data      = []
                 subdivision_count = 0
             else:
-                logging.warning(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"')
+                logger.warning(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"')
 
         self._chart_info.total_measures = measure_number + 1
 
@@ -339,7 +341,7 @@ class KSHParser:
                 self._chart_info.bpms[cur_time] = Decimal(value)
             elif key == 'beat':
                 if '/' not in value:
-                    logging.warning(f'invalid time signature (got {value})')
+                    logger.warning(f'invalid time signature (got {value})')
                 upper_str, lower_str = value.split('/')
                 upper, lower = int(upper_str), int(lower_str)
                 # Time signature changes should be at the start of the measure
@@ -368,7 +370,7 @@ class KSHParser:
                     self._tilt_segment = True
                 except InvalidOperation:
                     if value not in ['normal', 'bigger', 'biggest', 'keep_normal', 'keep_bigger', 'keep_biggest']:
-                        logging.warning(f'unrecognized tilt mode "{value}" at m{m_no}')
+                        logger.warning(f'unrecognized tilt mode "{value}" at m{m_no}')
                     else:
                         # Make sure manual tilt segments are terminated properly
                         if self._tilt_segment and cur_time not in self._chart_info.spcontroller_data.tilt:
@@ -381,7 +383,7 @@ class KSHParser:
                         elif value in ['bigger', 'biggest']:
                             self._chart_info.tilt_type[cur_time] = TiltType.BIGGER
                             if value == 'biggest':
-                                logging.warning(f'downgrading tilt "{value}" at m{m_no} to "bigger"')
+                                logger.warning(f'downgrading tilt "{value}" at m{m_no} to "bigger"')
                         elif value in ['keep_normal', 'keep_bigger', 'keep_biggest']:
                             self._chart_info.tilt_type[cur_time] = TiltType.KEEP
             elif key == 'zoom_top':
@@ -427,7 +429,7 @@ class KSHParser:
                     # - currently stored effect is not the null effect
                     # - currently stored effect is different from incoming effect
                     if value and self._set_fx[key] and self._set_fx[key] != value:
-                        logging.warning(f'ignoring effect "{value}" assigned to {key} that already has an assigned '
+                        logger.warning(f'ignoring effect "{value}" assigned to {key} that already has an assigned '
                                         f'effect "{self._set_fx[key]}" at m{m_no}', ParserWarning)
                     return
                 self._set_fx[key] = value
@@ -460,7 +462,7 @@ class KSHParser:
                 # Silently ignoring all other metadata
                 pass
         except ValueError as e:
-            logging.warning(str(e))
+            logger.warning(str(e))
 
     def _handle_notechart_custom_commands(self, line: str, cur_time: TimePoint) -> None:
         # Remove initial `//`
@@ -564,7 +566,7 @@ class KSHParser:
                 del self._holds[bt]
             if state == '1':
                 if bt in self._holds:
-                    logging.warning(f'improperly terminated hold at {cur_time}')
+                    logger.warning(f'improperly terminated hold at {cur_time}')
                     del self._holds[bt]
                 self._bts[bt][cur_time] = BTInfo(0)
             if state == '2':
@@ -589,7 +591,7 @@ class KSHParser:
                 self._holds[fx].duration += subdivision
             if state == '2':
                 if fx in self._holds:
-                    logging.warning(f'improperly terminated hold at {cur_time}')
+                    logger.warning(f'improperly terminated hold at {cur_time}')
                     del self._holds[fx]
                 se_index = self._set_se.get(fx, 0)
                 self._fxs[fx][cur_time] = FXInfo(0, se_index)
@@ -616,7 +618,7 @@ class KSHParser:
             else:
                 if vol in self._ease_start:
                     if self._ease_start[vol] != cur_time:
-                        logging.warning(
+                        logger.warning(
                             f'curve command at {self._ease_start[vol]} for {vol} was not placed on a laser point',
                             ParserWarning)
                     del self._ease_start[vol]
@@ -716,7 +718,7 @@ class KSHParser:
                 if spin_matched:
                     break
             if not spin_matched:
-                logging.warning(f'cannot match spin "{state}" at {cur_time} with any slam')
+                logger.warning(f'cannot match spin "{state}" at {cur_time} with any slam')
 
         # Convert stop durations to timepoints
         for cur_time, duration in self._stops.items():
@@ -724,7 +726,7 @@ class KSHParser:
             stop_end = self._chart_info.add_duration(cur_time, duration)
             self._chart_info.stops[stop_end] = False
 
-        for vol_data in self._vols.values():
+        for vol_name, vol_data in self._vols.items():
             if not vol_data:
                 continue
             time_list = list(vol_data.keys())
@@ -756,6 +758,7 @@ class KSHParser:
                             wide_laser=vol_i.wide_laser,
                             interpolated=True)
             vol_data[time_f].point_type |= SegmentFlag.END
+            logger.debug(f'{vol_name}: {time_f}, {vol_f}')
 
         # Insert laser midpoints where filter type changes
         for vol_data in self._vols.values():
@@ -821,7 +824,7 @@ class KSHParser:
 
         # Convert detected FX list into effect instances
         if len(self._fx_list) > 12:
-            logging.warning(f'found more than 12 distinct effects')
+            logger.warning(f'found more than 12 distinct effects')
             while len(self._chart_info.effect_list) < len(self._fx_list):
                 index = len(self._chart_info.effect_list)
                 self._chart_info.effect_list.append(effects.EffectEntry())
@@ -837,7 +840,7 @@ class KSHParser:
             try:
                 fx_params = [int(s) for s in fx_params_str]
             except ValueError:
-                logging.warning(f'cannot convert effect parameters "{fx_entry}" to int')
+                logger.warning(f'cannot convert effect parameters "{fx_entry}" to int')
                 fx_params = []
             effect: effects.Effect
             if fx_name in KSH_EFFECT_MAP:
@@ -856,7 +859,7 @@ class KSHParser:
         # Write custom filter as FX
         # TODO: Try matching with existing effects
         if len(self._fx_list) + len(self._chart_info._custom_filter) > 12:
-            logging.warning(f'including custom filters causes more than 12 distinct effects')
+            logger.warning(f'including custom filters causes more than 12 distinct effects')
             while len(self._chart_info.effect_list) < len(self._fx_list) + len(self._chart_info._custom_filter):
                 index = len(self._chart_info.effect_list)
                 self._chart_info.effect_list.append(effects.EffectEntry())
@@ -894,13 +897,13 @@ class KSHParser:
                 try:
                     self._handle_notechart_custom_commands(line, cur_time)
                 except ValueError as e:
-                    logging.warning(str(e))
+                    logger.warning(str(e))
             # 2. Metadata
             elif '=' in line:
                 try:
                     self._handle_notechart_metadata(line, cur_time, m_no)
                 except ValueError as e:
-                    logging.warning(str(e))
+                    logger.warning(str(e))
             # 3. Notedata
             else:
                 self._handle_notechart_notedata(line, cur_time, subdivision)
@@ -910,13 +913,13 @@ class KSHParser:
         ln_offset: int = len(self._raw_metadata) + len(self._raw_notedata) + 1
         for line_no, line in enumerate(self._raw_definitions):
             if not line.startswith('#'):
-                logging.warning(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"')
+                logger.warning(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"')
                 continue
             line_type, name, definition = re.split(r'\s+', line[1:])
             params_list = [s.split('=', 1) for s in definition.split(';')]
             params_dict: dict[str, str] = {s[0]: s[1] for s in params_list}
             if 'type' not in params_dict:
-                logging.warning(
+                logger.warning(
                     f'ignoring definition at line {ln_offset + line_no + 1}; "type" parameter missing: "{line}"',
                     ParserWarning)
                 continue
@@ -936,13 +939,13 @@ class KSHParser:
                 elif line_type == 'define_filter':
                     self._chart_info._custom_filter[name] = effects.from_definition(params_dict)
                 else:
-                    logging.warning(
+                    logger.warning(
                         f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning)
             except ValueError as e:
-                logging.warning(
+                logger.warning(
                     f'ignoring definition at line {ln_offset + line_no + 1}; unable to parse definition: "{line}"',
                     ParserWarning)
-                logging.warning(f'this is caused by: {e}')
+                logger.warning(f'this is caused by: {e}')
 
     def write_xml(self, f: TextIO):
         f.write(f'  <music id="{self._song_info.id}">\n'

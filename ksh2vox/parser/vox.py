@@ -60,7 +60,6 @@ SECTION_MAP: dict[str, VOXSection] = {
     'SCRIPTED_TRACK7'      : VOXSection.SCRIPTED_TRACK,
     'SCRIPTED_TRACK8'      : VOXSection.SCRIPTED_TRACK,
 }
-# TODO: Name the regex groups
 SECTION_REGEX: dict[VOXSection, re.Pattern] = {
     VOXSection.NONE            : re.compile(r'(?!)'),
     VOXSection.VERSION         : re.compile(r'(?P<version>\d+)'),
@@ -103,6 +102,8 @@ WHITESPACE_REGEX = re.compile(r'\s+')
 LASER_SCALE_DEFAULT = Fraction(1)
 LASER_SCALE_OLD = Fraction(1, 127)
 
+logger = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass(eq=False)
 class VOXParser:
@@ -144,7 +145,7 @@ class VOXParser:
                 try:
                     self._parse_line(line)
                 except ValueError:
-                    logging.warning(f'unrecognized line at line {lineno + 1}: "{line}"')
+                    logger.warning(f'unrecognized line at line {lineno + 1}: "{line}"')
 
     def _convert_vox_timepoint(self, s: str) -> TimePoint:
         # This assumes there is no need to normalize the timepoint
@@ -152,7 +153,8 @@ class VOXParser:
         timesig = self.chart_info.get_timesig(m)
         position = Fraction(c - 1, timesig.lower) + Fraction(d, 192)
         t = TimePoint(m, position.numerator, position.denominator)
-        # print(f'{s} => {t}')
+        logger.debug(f'calc. position: {position} ({timesig})')
+        logger.debug(f'{s} => {t}')
         return t
 
     def _parse_line(self, line: str) -> None:
@@ -171,7 +173,7 @@ class VOXParser:
             lower = int(match['lower'])
             # Not gonna bother checking multiple measure overflow
             m, c, d = map(int, timepoint.split(',', maxsplit=3))
-            if (c, d) != (0, 0):
+            if (c, d) != (1, 0):
                 m += 1
             self.chart_info.timesigs[TimePoint(m, 0, 1)] = TimeSignature(upper, lower)
         elif self._current_section == VOXSection.BPM:

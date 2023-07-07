@@ -1,7 +1,8 @@
+import logging
+
 from dataclasses import dataclass, field, InitVar
 from decimal import Decimal
 from fractions import Fraction
-from logging import debug
 from typing import Any
 
 from .base import (
@@ -28,6 +29,8 @@ from .filters import (
     get_default_autotab,
     get_default_filters,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -228,15 +231,17 @@ class ChartInfo:
         self._vol_notecount = 0
 
         # Chip and long notes
-        note_dicts: list[dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]] = [
-            self.note_data.bt_a, self.note_data.bt_b, self.note_data.bt_c, self.note_data.bt_d,
-            self.note_data.fx_l, self.note_data.fx_r
+        note_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]]] = [
+            ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
+            ('BT_D', self.note_data.bt_d), ('FX_L', self.note_data.fx_l), ('FX_R', self.note_data.fx_r),
         ]
-        for notes in note_dicts:
+        for track_name, notes in note_dicts:
             for timept, note in notes.items():
                 if note.duration == 0:
+                    logger.debug(f'{track_name} chip: {self.timepoint_to_vox(timept)}')
                     self._chip_notecount += 1
                 else:
+                    logger.debug(f'{track_name} long: {self.timepoint_to_vox(timept)}')
                     tick_rate = self.get_tick_rate(timept)
                     tick_start = self.timepoint_to_fraction(timept)
                     hold_end = self.add_duration(timept, note.duration)
@@ -272,8 +277,7 @@ class ChartInfo:
                         laser_start = timept
                     elif laser.point_type == SegmentFlag.END:
                         laser_end = timept
-                        debug(f'laser segment: {laser_start} => {laser_end}')
-                        debug(f'             : {self.timepoint_to_vox(laser_start)} => {self.timepoint_to_vox(laser_end)}')
+                        logger.debug(f'laser segment: {self.timepoint_to_vox(laser_start)} => {self.timepoint_to_vox(laser_end)}')
                         # Process ticks
                         tick_rate = self.get_tick_rate(laser_start)
                         tick_start = self.timepoint_to_fraction(laser_start)
@@ -312,7 +316,7 @@ class ChartInfo:
                                     tick_locations[tick_keys[tick_index + 1]] = False
                         disabled_ticks = [k for k, v in tick_locations.items() if not v]
                         if disabled_ticks:
-                            debug(f'disabled tick: {disabled_ticks}')
+                            logger.debug(f'disabled tick: {[self.timepoint_to_vox(t) for t in disabled_ticks]}')
                         self._vol_notecount += len(slam_locations) + sum(tick_locations.values())
                         slam_locations = []
                 else:
