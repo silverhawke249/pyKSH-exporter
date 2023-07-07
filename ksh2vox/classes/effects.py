@@ -1,11 +1,14 @@
+import logging
+
 from abc import abstractmethod, abstractproperty
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from logging import warning
 
 from .base import VoxEntity
 from ..utils import parse_decibel, parse_frequency, parse_length, parse_time
+
+logger = logging.getLogger(__name__)
 
 
 class FXType(Enum):
@@ -106,7 +109,7 @@ class Retrigger(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
             return
         self.wavelength = int(s[0] * self.update_period / 4)
 
@@ -141,7 +144,7 @@ class Gate(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
             return
         self.wavelength = int(s[0] * self.length / 2)
 
@@ -213,7 +216,7 @@ class Tapestop(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
             return
         self.speed = s[0] * 0.16
 
@@ -295,7 +298,7 @@ class Wobble(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
             return
         self.frequency = s[0] / 4
 
@@ -330,7 +333,7 @@ class Bitcrush(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
             return
         self.amount = s[0]
 
@@ -370,7 +373,7 @@ class RetriggerEx(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 or 2 parameters (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 or 2 parameters (got {len(s)})')
             return
         if len(s) >= 2:
             self.feedback = s[1] / 100
@@ -406,7 +409,7 @@ class PitchShift(Effect):
 
     def map_params(self, s: Sequence[int]) -> None:
         if len(s) < 1:
-            warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
+            logger.warning(f'{self.__class__.__name__} requires 1 parameter (got {len(s)})')
             return
         self.amount = s[0]
 
@@ -565,6 +568,6 @@ def from_definition(definition: MutableMapping[str, str]) -> Effect:
     elif definition['type'] == 'SideChain':
         effect_class = Sidechain
     else:
-        warning(f'custom fx not parsed: "{definition}"')
+        logger.warning(f'custom fx not parsed: "{definition}"')
         return NullEffect()
     return effect_class.from_dict(definition)

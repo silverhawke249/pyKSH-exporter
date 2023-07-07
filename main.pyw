@@ -1,15 +1,13 @@
 #!/usr/bin/env python
+import logging
 import re
-import sys
 import time
-import warnings
 
 import dearpygui.dearpygui as dpg
-import dearpygui.demo as demo
 
 from pathlib import Path
 from tkinter import filedialog
-from typing import Any
+from typing import Any, Callable
 
 from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
 from ksh2vox.media.audio import get_2dxs
@@ -48,16 +46,15 @@ YOMIGANA_VALIDATION_REGEX = re.compile('^[\uFF66-\uFF9F]+')
 ENUM_REGEX = re.compile(r'\((\d+)\)')
 
 
-def dpg_demo():
-    dpg.create_context()
-    dpg.create_viewport()
-    dpg.setup_dearpygui()
+class FunctionHandler(logging.Handler):
+    _handler: Callable[[str], Any]
 
-    demo.show_demo()
+    def __init__(self, callable: Callable[[str], Any], level: int | str = 0) -> None:
+        super().__init__(level)
+        self._handler = callable
 
-    dpg.show_viewport()
-    dpg.start_dearpygui()
-    dpg.destroy_context()
+    def emit(self, record: logging.LogRecord) -> None:
+        self._handler(self.format(record))
 
 
 class KSH2VOXApp():
@@ -79,8 +76,12 @@ class KSH2VOXApp():
     def __init__(self):
         self.gmbg_data = get_game_backgrounds()
 
-        warnings.simplefilter('always')
-        warnings.showwarning = self.log_warning
+        logging.basicConfig(format='[%(levelname)s %(asctime)s] %(name)s: %(message)s', level=logging.DEBUG)
+
+        warning_handler = FunctionHandler(self.log_warning)
+        warning_handler.setLevel(logging.WARNING)
+        warning_handler.setFormatter(logging.Formatter('%(message)s'))
+        logging.getLogger('').addHandler(warning_handler)
 
         dpg.create_context()
         dpg.create_viewport(title='KSH Exporter', width=650, height=850, resizable=False)
@@ -303,7 +304,7 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
-    def log_warning(self, message, category, filename, lineno, file=None, line=None):
+    def log_warning(self, message):
         self.log(f'Warning: {message}')
 
     def log(self, message):
@@ -637,7 +638,4 @@ class show_throbber():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) >= 2 and sys.argv[1] == 'demo':
-        dpg_demo()
-    else:
-        KSH2VOXApp()
+    KSH2VOXApp()
