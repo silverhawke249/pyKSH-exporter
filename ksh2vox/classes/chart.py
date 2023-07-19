@@ -1,3 +1,4 @@
+import itertools
 import logging
 
 from dataclasses import dataclass, field, InitVar
@@ -29,6 +30,10 @@ from .filters import (
     get_default_autotab,
     get_default_filters,
 )
+from ..utils import clamp
+
+MIN_RADAR_VAL = 0.0
+MAX_RADAR_VAL = 200.0
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +176,9 @@ class ChartInfo:
     _radar_notes   : int = -1
     _radar_peak    : int = -1
     _radar_tsumami : int = -1
-    _radar_tricky  : int = -1
-    _radar_handtrip: int = -1
     _radar_onehand : int = -1
+    _radar_handtrip: int = -1
+    _radar_tricky  : int = -1
 
     # Song data that may change mid-song
     bpms     : dict[TimePoint, Decimal]       = field(default_factory=dict)
@@ -225,6 +230,7 @@ class ChartInfo:
         # Populate autotab list
         self.autotab_list = get_default_autotab()
 
+    # TODO: Look into why sometimes this predicts wrong long/tsumami counts
     def _calculate_notecounts(self) -> None:
         self._chip_notecount = 0
         self._long_notecount = 0
@@ -322,6 +328,50 @@ class ChartInfo:
                 else:
                     if laser.start != laser.end:
                         slam_locations.append(timept)
+
+    # Radar calculation algorithm adapted from ZR147654's code, with some adjustments.
+    # As such, it will not return the same values, but it should be close enough.
+    def _calculate_radar_values(self) -> None:
+        self._radar_notes = 0
+        self._radar_peak = 0
+        self._radar_tsumami = 0
+        self._radar_onehand = 0
+        self._radar_handtrip = 0
+        self._radar_tricky = 0
+
+        total_chart_time = 0.0
+        endpoint = TimePoint(self.total_measures, 0, 1)
+        for timept_i, timept_f in itertools.pairwise([*self.bpms.keys(), endpoint]):
+            # Distance is in fractions of 4 beats -- i.e. 1 distance = 4 beats
+            bpm_duration = self.get_distance(timept_i, timept_f)
+            # Inverse of BPM is in minutes/beat
+            # Multiply that with distance to get duration in minutes
+            # So we need to multiply with 60 sec/min
+            # tl;dr: 1 / bpm (min/beat) * 60 (sec/min) * distance (dist) * 4 (beats/dist)
+            total_chart_time += 4 * 60 * bpm_duration.numerator / bpm_duration.denominator / float(self.bpms[timept_i])
+
+        # Short songs = smaller radar value, vice versa
+        length_coefficient = total_chart_time / 118.5
+
+        # Notes
+        # Higher average NPS = higher radar value
+        notes_value = self.chip_notecount / total_chart_time / 12.521 * 200
+        self._radar_notes = int(clamp(notes_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
+
+        # Peak
+        # Higher peak density (over 2 seconds) = higher radar value
+
+        # Tsumami
+        # More lasers = higher radar value
+
+        # One-hand
+        # More buttons while laser movement happens = higher radar value
+
+        # Hand-trip
+        # More opposite side buttons while one-handing = higher radar value
+
+        # Tricky
+        # BPM change, camera change, tilts, spins, jacks = higher radar value
 
     def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
@@ -430,24 +480,36 @@ class ChartInfo:
 
     @property
     def radar_notes(self) -> int:
-        return 0
+        if self._radar_notes == -1:
+            self._calculate_radar_values()
+        return self._radar_notes
 
     @property
     def radar_peak(self) -> int:
-        return 0
+        if self._radar_peak == -1:
+            self._calculate_radar_values()
+        return self._radar_peak
 
     @property
     def radar_tsumami(self) -> int:
-        return 0
-
-    @property
-    def radar_tricky(self) -> int:
-        return 0
-
-    @property
-    def radar_handtrip(self) -> int:
-        return 0
+        if self._radar_tsumami == -1:
+            self._calculate_radar_values()
+        return self._radar_tsumami
 
     @property
     def radar_onehand(self) -> int:
-        return 0
+        if self._radar_onehand == -1:
+            self._calculate_radar_values()
+        return self._radar_onehand
+
+    @property
+    def radar_handtrip(self) -> int:
+        if self._radar_handtrip == -1:
+            self._calculate_radar_values()
+        return self._radar_handtrip
+
+    @property
+    def radar_tricky(self) -> int:
+        if self._radar_tricky == -1:
+            self._calculate_radar_values()
+        return self._radar_tricky
