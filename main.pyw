@@ -450,6 +450,7 @@ class KSH2VOXApp():
             with open(file_path, 'w') as f:
                 self.parser.write_vox(f)
 
+            # TODO: Change this to actually say the file name (if changed in dialog box)
             self.log(f'File saved: {file_name}')
 
     def export_xml(self):
