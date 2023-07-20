@@ -598,21 +598,14 @@ class KSHParser:
             # Clean up -- FX SE only affects the FX chip immediately after
             if fx in self._set_se:
                 del self._set_se[fx]
-        # TODO: Investigate error with stella.ksh (from ME.ARi)
         # VOLs
         for vol, state in zip(INPUT_VOL, vols):
-            # Delete "last vol point" if laser segment ends, else extend duration
-            if state == '-' and vol in self._recent_vol:
-                del self._recent_vol[vol]
-            elif vol in self._recent_vol:
-                self._recent_vol[vol].duration += subdivision
-                # Forget the info if distance is more than a 32nd
-                if self._recent_vol[vol].duration > KSH_SLAM_DISTANCE:
-                    del self._recent_vol[vol]
             # Handle incoming laser
             if state == '-':
                 self._cont_segment[vol] = False
                 self._wide_segment[vol] = False
+                if vol in self._recent_vol:
+                    del self._recent_vol[vol]
             elif state == ':':
                 pass
             else:
@@ -628,6 +621,7 @@ class KSHParser:
                     self._recent_vol[vol].duration <= KSH_SLAM_DISTANCE and
                     self._recent_vol[vol].prev_vol.start != vol_position):
                     last_vol_info = self._recent_vol[vol]
+                    logger.debug(f'{vol}: making a slam at {last_vol_info.when} because distance is {last_vol_info.duration}')
                     self._vols[vol][last_vol_info.when] = VolInfo(
                         last_vol_info.prev_vol.start, vol_position,
                         ease_type=last_vol_info.prev_vol.ease_type,
@@ -637,28 +631,32 @@ class KSHParser:
                 else:
                     # Ignoring midpoints while doing easing...
                     # This is done here to avoid breaking slams
-                    if vol not in self._cur_easing:
-                        continue
-                    self._vols[vol][cur_time] = VolInfo(
-                        vol_position, vol_position,
-                        ease_type=self._cur_easing[vol],
-                        filter_index=self._cur_filter,
-                        point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
-                        wide_laser=self._wide_segment[vol])
-                if vol not in self._cur_easing:
-                    continue
-                self._recent_vol[vol] = _LastVolInfo(
-                    cur_time,
-                    Fraction(0),
-                    VolInfo(
-                        vol_position, vol_position,
-                        ease_type=self._cur_easing[vol],
-                        filter_index=self._cur_filter,
-                        point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
-                        wide_laser=self._wide_segment[vol]))
-                self._cont_segment[vol] = True
-                if self._cur_easing[vol] != EasingType.NO_EASING:
-                    del self._cur_easing[vol]
+                    if vol in self._cur_easing:
+                        self._vols[vol][cur_time] = VolInfo(
+                            vol_position, vol_position,
+                            ease_type=self._cur_easing[vol],
+                            filter_index=self._cur_filter,
+                            point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
+                            wide_laser=self._wide_segment[vol])
+                if vol in self._cur_easing:
+                    self._recent_vol[vol] = _LastVolInfo(
+                        cur_time,
+                        Fraction(0),
+                        VolInfo(
+                            vol_position, vol_position,
+                            ease_type=self._cur_easing[vol],
+                            filter_index=self._cur_filter,
+                            point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
+                            wide_laser=self._wide_segment[vol]))
+                    self._cont_segment[vol] = True
+                    if self._cur_easing[vol] != EasingType.NO_EASING:
+                        del self._cur_easing[vol]
+            # Delete "last vol point" if laser segment ends, else extend duration
+            if vol in self._recent_vol:
+                self._recent_vol[vol].duration += subdivision
+                # Forget the info if distance is more than a 32nd
+                if self._recent_vol[vol].duration > KSH_SLAM_DISTANCE:
+                    del self._recent_vol[vol]
         if spin:
             self._spins[cur_time] = spin
 
@@ -758,7 +756,7 @@ class KSHParser:
                             wide_laser=vol_i.wide_laser,
                             interpolated=True)
             vol_data[time_f].point_type |= SegmentFlag.END
-            logger.debug(f'{vol_name}: {time_f}, {vol_f}')
+            logger.debug(f'{vol_name} last point: {time_f}, {vol_f}')
 
         # Insert laser midpoints where filter type changes
         for vol_data in self._vols.values():
