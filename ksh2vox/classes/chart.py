@@ -225,13 +225,13 @@ class ChartInfo:
 
     def __post_init__(self):
         # Default values
-        self.bpms[TimePoint(1, 0, 1)]          = Decimal(120)
-        self.timesigs[TimePoint(1, 0, 1)]      = TimeSignature()
-        self.tilt_type[TimePoint(1, 0, 1)]     = TiltType.NORMAL
-        self.active_filter[TimePoint(1, 0, 1)] = 0
+        self.bpms[TimePoint()]          = Decimal(120)
+        self.timesigs[TimePoint()]      = TimeSignature()
+        self.tilt_type[TimePoint()]     = TiltType.NORMAL
+        self.active_filter[TimePoint()] = 0
 
-        self.spcontroller_data.zoom_bottom[TimePoint(1, 0, 1)] = SPControllerInfo(Decimal(), Decimal())
-        self.spcontroller_data.zoom_top[TimePoint(1, 0, 1)]    = SPControllerInfo(Decimal(), Decimal())
+        self.spcontroller_data.zoom_bottom[TimePoint()] = SPControllerInfo(Decimal(), Decimal())
+        self.spcontroller_data.zoom_top[TimePoint()]    = SPControllerInfo(Decimal(), Decimal())
 
         # Populate filter list
         self.filter_list = get_default_filters()
@@ -282,7 +282,7 @@ class ChartInfo:
 
         # Lasers
         for lasers in [self.note_data.vol_l, self.note_data.vol_r]:
-            laser_start, laser_end = TimePoint(1, 0, 1), TimePoint(1, 0, 1)
+            laser_start, laser_end = TimePoint(), TimePoint()
             slam_locations: list[TimePoint] = []
             for timept, laser in lasers.items():
                 # This really should only be slams
@@ -366,7 +366,7 @@ class ChartInfo:
         """ Convert timepoint into seconds. """
         if timept not in self._elapsed_time:
             time_in_sec     = 0.0
-            prev_bpm_timept = TimePoint(1, 0, 1)
+            prev_bpm_timept = TimePoint()
             for bpm_timept, elapsed_time in self._elapsed_time.items():
                 if timept > bpm_timept:
                     break
@@ -396,7 +396,7 @@ class ChartInfo:
 
         # For total chart time
         chart_begin_timept: TimePoint | None = None
-        chart_end_timept  : TimePoint        = TimePoint(1, 0, 1)
+        chart_end_timept  : TimePoint        = TimePoint()
         all_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo] | dict[TimePoint, VolInfo]]] = [
             ('VOL_L', self.note_data.vol_l),
             ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
@@ -410,7 +410,7 @@ class ChartInfo:
                 chart_begin_timept = min(timept, chart_begin_timept)
                 chart_end_timept   = max(timept, chart_end_timept)
         if chart_begin_timept is None:
-            chart_begin_timept = TimePoint(1, 0, 1)
+            chart_begin_timept = TimePoint()
         chart_begin_time = self._get_elapsed_time(chart_begin_timept)
         chart_end_time   = self._get_elapsed_time(chart_end_timept)
         total_chart_time = chart_end_time - chart_begin_time
@@ -558,7 +558,7 @@ class ChartInfo:
     def timepoint_to_fraction(self, timepoint: TimePoint) -> Fraction:
         """ Convert a timepoint to a fraction representation. """
         if timepoint not in self._time_to_frac_cache:
-            if timepoint == TimePoint(1, 0, 1):
+            if timepoint == TimePoint():
                 self._time_to_frac_cache[timepoint] = Fraction(0)
             elif timepoint.position == 0:
                 prev_timepoint = TimePoint(timepoint.measure - 1, 0, 1)
