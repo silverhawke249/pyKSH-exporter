@@ -34,6 +34,14 @@ from ..utils import clamp
 
 MIN_RADAR_VAL = 0.0
 MAX_RADAR_VAL = 200.0
+NOTE_STR_FLAG_MAP = {
+    'FX_L': 0o40,
+    'BT_A': 0o20,
+    'BT_B': 0o10,
+    'BT_C': 0o04,
+    'BT_D': 0o02,
+    'FX_R': 0o01,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +213,10 @@ class ChartInfo:
     _custom_filter: dict[str, Effect]        = field(default_factory=dict, init=False, repr=False)
     _filter_param : dict[str, int]           = field(default_factory=dict, init=False, repr=False)
 
+    # For radar calculation
+    _elapsed_time : dict[TimePoint, float] = field(default_factory=dict, init=False, repr=False)
+    _bpm_durations: dict[Decimal, float]   = field(default_factory=dict, init=False, repr=False)
+
     # Cached values
     _timesig_cache     : dict[int, TimeSignature]  = field(default_factory=dict, init=False, repr=False)
     _bpm_cache         : dict[TimePoint, Decimal]  = field(default_factory=dict, init=False, repr=False)
@@ -234,7 +246,7 @@ class ChartInfo:
     def _calculate_notecounts(self) -> None:
         self._chip_notecount = 0
         self._long_notecount = 0
-        self._vol_notecount = 0
+        self._vol_notecount  = 0
 
         # Chip and long notes
         note_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]]] = [
@@ -248,9 +260,9 @@ class ChartInfo:
                     self._chip_notecount += 1
                 else:
                     logger.debug(f'{track_name} long: {self.timepoint_to_vox(timept)}')
-                    tick_rate = self.get_tick_rate(timept)
+                    tick_rate  = self.get_tick_rate(timept)
                     tick_start = self.timepoint_to_fraction(timept)
-                    hold_end = self.add_duration(timept, note.duration)
+                    hold_end   = self.add_duration(timept, note.duration)
                     cur_hold_ticks = 0
                     # Round up to next tick
                     if tick_start % tick_rate != 0:
@@ -260,7 +272,7 @@ class ChartInfo:
                     while timept < hold_end:
                         cur_hold_ticks += 1
                         tick_rate = self.get_tick_rate(timept)
-                        timept = self.add_duration(timept, tick_rate)
+                        timept    = self.add_duration(timept, tick_rate)
                     # Long enough holds become lenient at the end
                     if cur_hold_ticks > 5:
                         cur_hold_ticks -= 1
@@ -285,7 +297,7 @@ class ChartInfo:
                         laser_end = timept
                         logger.debug(f'laser segment: {self.timepoint_to_vox(laser_start)} => {self.timepoint_to_vox(laser_end)}')
                         # Process ticks
-                        tick_rate = self.get_tick_rate(laser_start)
+                        tick_rate  = self.get_tick_rate(laser_start)
                         tick_start = self.timepoint_to_fraction(laser_start)
                         # Round up to next tick
                         if tick_start % tick_rate != 0:
@@ -293,12 +305,12 @@ class ChartInfo:
                         timept = laser_start
                         # Get tick locations
                         tick_locations: dict[TimePoint, bool] = {}
-                        tick_keys: list[TimePoint] = []
+                        tick_keys     : list[TimePoint]       = []
                         while timept < laser_end:
                             tick_locations[timept] = True
                             tick_keys.append(timept)
                             tick_rate = self.get_tick_rate(timept)
-                            timept = self.add_duration(timept, tick_rate)
+                            timept    = self.add_duration(timept, tick_rate)
                         # Mark ticks as "occupied" by slams
                         tick_index = -1
                         for slam in slam_locations:
@@ -309,12 +321,12 @@ class ChartInfo:
                             if tick_index == -1:
                                 tick_locations[tick_keys[0]] = False
                             elif tick_index == len(tick_keys) - 1:
-                                tick_rate = self.get_tick_rate(tick_keys[tick_index])
+                                tick_rate        = self.get_tick_rate(tick_keys[tick_index])
                                 next_tick_timept = self.add_duration(tick_keys[tick_index], tick_rate)
                                 if slam < next_tick_timept:
                                     tick_locations[tick_keys[tick_index]] = False
                             else:
-                                tick_rate = self.get_tick_rate(tick_keys[tick_index])
+                                tick_rate      = self.get_tick_rate(tick_keys[tick_index])
                                 halfway_timept = self.add_duration(tick_keys[tick_index], tick_rate / 2)
                                 if slam <= halfway_timept:
                                     tick_locations[tick_keys[tick_index]] = False
@@ -329,37 +341,142 @@ class ChartInfo:
                     if laser.start != laser.end:
                         slam_locations.append(timept)
 
-    # Radar calculation algorithm adapted from ZR147654's code, with some adjustments.
-    # As such, it will not return the same values, but it should be close enough.
-    def _calculate_radar_values(self) -> None:
-        self._radar_notes = 0
-        self._radar_peak = 0
-        self._radar_tsumami = 0
-        self._radar_onehand = 0
-        self._radar_handtrip = 0
-        self._radar_tricky = 0
-
-        total_chart_time = 0.0
+    # Figure out how long each particular BPM lasts
+    # Helpful to figure out time elapsed for a particular note
+    def _populate_bpm_durations(self) -> None:
         endpoint = TimePoint(self.total_measures, 0, 1)
         for timept_i, timept_f in itertools.pairwise([*self.bpms.keys(), endpoint]):
+            # First BPM point should be at 001,01,00, which means elapsed time is 0 sec.
+            if not self._elapsed_time:
+                self._elapsed_time[timept_i] = 0
+            cur_bpm = self.bpms[timept_i]
             # Distance is in fractions of 4 beats -- i.e. 1 distance = 4 beats
-            bpm_duration = self.get_distance(timept_i, timept_f)
+            bpm_distance = self.get_distance(timept_i, timept_f)
             # Inverse of BPM is in minutes/beat
             # Multiply that with distance to get duration in minutes
             # So we need to multiply with 60 sec/min
             # tl;dr: 1 / bpm (min/beat) * 60 (sec/min) * distance (dist) * 4 (beats/dist)
-            total_chart_time += 4 * 60 * bpm_duration.numerator / bpm_duration.denominator / float(self.bpms[timept_i])
+            bpm_duration = 4 * 60 * bpm_distance.numerator / bpm_distance.denominator / float(cur_bpm)
+            if cur_bpm not in self._bpm_durations:
+                self._bpm_durations[cur_bpm] = 0
+            self._bpm_durations[cur_bpm]      += bpm_duration
+            self._elapsed_time[timept_f] = bpm_duration
 
+    def _get_elapsed_time(self, timept: TimePoint) -> float:
+        """ Convert timepoint into seconds. """
+        if timept not in self._elapsed_time:
+            time_in_sec     = 0.0
+            prev_bpm_timept = TimePoint(1, 0, 1)
+            for bpm_timept, elapsed_time in self._elapsed_time.items():
+                if timept > bpm_timept:
+                    break
+                time_in_sec += elapsed_time
+                prev_bpm_timept = bpm_timept
+            # Similar calculation as in _populate_bpm_durations
+            note_distance_frac = self.get_distance(timept, prev_bpm_timept)
+            cur_bpm            = self.bpms[prev_bpm_timept]
+            note_distance      = 4 * 60 * note_distance_frac.numerator / note_distance_frac.denominator / float(cur_bpm)
+            self._elapsed_time[timept] = time_in_sec + note_distance
+
+        return self._elapsed_time[timept]
+
+    # Radar calculation algorithm adapted from ZR147654's code, with some adjustments.
+    # As such, it will not return the same values, but it should be close enough.
+    def _calculate_radar_values(self) -> None:
+        self._radar_notes    = 0
+        self._radar_peak     = 0
+        self._radar_tsumami  = 0
+        self._radar_onehand  = 0
+        self._radar_handtrip = 0
+        self._radar_tricky   = 0
+
+        # This is the BPM the hi-speed setting is tuned to
+        self._populate_bpm_durations()
+        standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1]
+
+        # For total chart time
+        chart_begin_timept: TimePoint | None = None
+        chart_end_timept  : TimePoint        = TimePoint(1, 0, 1)
+        all_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo] | dict[TimePoint, VolInfo]]] = [
+            ('VOL_L', self.note_data.vol_l),
+            ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
+            ('BT_D', self.note_data.bt_d), ('FX_L', self.note_data.fx_l), ('FX_R', self.note_data.fx_r),
+            ('VOL_R', self.note_data.vol_r),
+        ]
+        for _, notes in all_dicts:
+            for timept in notes.keys():
+                if chart_begin_timept is None:
+                    chart_begin_timept = timept
+                chart_begin_timept = min(timept, chart_begin_timept)
+                chart_end_timept   = max(timept, chart_end_timept)
+        if chart_begin_timept is None:
+            chart_begin_timept = TimePoint(1, 0, 1)
+        chart_begin_time = self._get_elapsed_time(chart_begin_timept)
+        chart_end_time   = self._get_elapsed_time(chart_end_timept)
+        total_chart_time = chart_end_time - chart_begin_time
         # Short songs = smaller radar value, vice versa
-        length_coefficient = total_chart_time / 118.5
+        time_coefficient = total_chart_time / 118.5
+        logger.info(f'chart span: {chart_begin_time:.3f} ~ {chart_end_time:.3f} ({total_chart_time:.3f})')
 
-        # Notes
-        # Higher average NPS = higher radar value
-        notes_value = self.chip_notecount / total_chart_time / 12.521 * 200
+        # Notes + Peak
+        # Higher average NPS = higher "notes" value
+        # Higher peak density (over 2 seconds) = higher "peak" value
+        note_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]]] = [
+            ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
+            ('BT_D', self.note_data.bt_d), ('FX_L', self.note_data.fx_l), ('FX_R', self.note_data.fx_r),
+        ]
+        peak_flags: dict[float, int] = {}
+        notes_value = 0.0
+        for track_name, notes in note_dicts:
+            for timept, note in notes.items():
+                notes_value += 1
+                if note.duration != 0:
+                    continue
+                # Figure out the time this particular note happens
+                note_timing = self._get_elapsed_time(timept)
+                if note_timing not in peak_flags:
+                    peak_flags[note_timing] = 0
+                peak_flags[note_timing] += NOTE_STR_FLAG_MAP[track_name]
+
+        peak_values: dict[float, float] = {}
+        for note_timing, flags in sorted(peak_flags.items()):
+            peak_value = 0.0
+            # Decrease peak value when certain chords happen
+            if flags & 0o70 == 0o70:
+                peak_value -= 1.5
+            elif any(flags & mask == mask for mask in [0o60, 0o50, 0o30]):
+                peak_value -= 0.83
+            if flags & 0o07 == 0o07:
+                peak_value -= 1.5
+            elif any(flags & mask == mask for mask in [0o06, 0o05, 0o03]):
+                peak_value -= 0.83
+            # Only applies for exactly a BC chord
+            if not flags ^ 0o14:
+                peak_value -= 0.83
+            # Increase peak value by 1 for each note
+            while flags:
+                peak_value += flags % 2
+                flags //= 2
+            peak_values[note_timing] = peak_value
+            logger.debug(f'time: {note_timing:.2f}, flags: {bin(peak_flags[note_timing])[2:]:>06}, peakval: {peak_value:.2f}')
+
+        # Calculate "notes" value
+        # Number of chips + number of holds (not the chain from holds)
+        # All these values are gonna have some adjustment coefficient that's obtained experimentally (oof)
+        notes_value *= 200 / 12.521 / total_chart_time
         self._radar_notes = int(clamp(notes_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
-        # Peak
-        # Higher peak density (over 2 seconds) = higher radar value
+        # Calculate "peak" value
+        # Sum peak values over a range of 2 seconds (i.e. diff of at most ±1)
+        ranged_peak_values = {tn: sum(v for tr, v in peak_values.items() if abs(tr - tn) <= 1)
+                              for tn in peak_values.keys()}
+        peak_value = 0
+        for t, v in ranged_peak_values.items():
+            if v > peak_value:
+                peak_value = v
+                logger.debug(f'peak value at {t:.3f}s = {v:.2f}')
+        peak_value /= 0.238
+        self._radar_peak = int(clamp(peak_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tsumami
         # More lasers = higher radar value
