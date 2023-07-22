@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass
 from fractions import Fraction
 
 
@@ -33,25 +33,35 @@ class TimeSignature:
 
 @dataclass(frozen=True, order=True)
 class TimePoint:
-    measure: int
-    _count: InitVar[int]
-    _subdivision: InitVar[int]
-    position: Fraction = field(init=False)
+    measure : int
+    position: Fraction
 
-    def __post_init__(self, _count, _subdivision):
-        self.validate(_count, _subdivision)
-        object.__setattr__(self, 'position', Fraction(_count, _subdivision))
+    def __init__(
+        self,
+        measure: int | None = None,
+        count: int | None = None,
+        subdivision: int | None = None, /
+    ):
+        if measure is None:
+            measure = 1
+        if count is None:
+            count = 0
+        if subdivision is None:
+            subdivision = 1
+        self.validate(measure, count, subdivision)
+        object.__setattr__(self, 'measure', measure)
+        object.__setattr__(self, 'position', Fraction(count, subdivision))
 
-    def validate(self, _count, _subdivision):
-        if self.measure < 0:
-            raise ValueError(f'measure cannot be negative (got {self.measure})')
-        if _subdivision <= 0:
-            raise ValueError(f'subdivision must be positive (got {_subdivision})')
-        if _count < 0:
-            raise ValueError(f'count cannot be negative (got {_count})')
+    def validate(self, measure: int, count: int, subdivision: int):
+        if measure < 0:
+            raise ValueError(f'measure cannot be negative (got {measure})')
+        if subdivision <= 0:
+            raise ValueError(f'subdivision must be positive (got {subdivision})')
+        if count < 0:
+            raise ValueError(f'count cannot be negative (got {count})')
 
 
 @dataclass
 class AutoTabInfo:
-    which: int
+    which   : int
     duration: Fraction
