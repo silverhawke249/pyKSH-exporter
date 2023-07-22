@@ -444,6 +444,7 @@ class KSHParser:
                 except ValueError:
                     pass
             elif key == 'filtertype':
+                filter_now: FilterIndex
                 self._filter_names[cur_time] = value
                 if self._filter_override != FilterIndex.PEAK:
                     filter_now = self._filter_override
