@@ -226,11 +226,11 @@ class KSHParser:
                         bpm = Decimal(value)
                         self._song_info.min_bpm = bpm
                         self._song_info.max_bpm = bpm
-                        self._chart_info.bpms[TimePoint(1, 0, 1)] = bpm
+                        self._chart_info.bpms[TimePoint()] = bpm
                 elif key == 'beat':
                     upper_str, lower_str = value.split('/')
                     upper, lower = int(upper_str), int(lower_str)
-                    self._chart_info.timesigs[TimePoint(1, 0, 1)] = TimeSignature(upper, lower)
+                    self._chart_info.timesigs[TimePoint()] = TimeSignature(upper, lower)
                     self._cur_timesig = TimeSignature(upper, lower)
                 elif key == 'm':
                     self._chart_info.music_path, *music_path_ex = value.split(';')
@@ -244,7 +244,7 @@ class KSHParser:
                     self._chart_info.preview_start = int(value)
                 elif key == 'filtertype':
                     if value in FILTER_TYPE_MAP:
-                        self._chart_info.active_filter[TimePoint(1, 0, 1)] = FILTER_TYPE_MAP[value]
+                        self._chart_info.active_filter[TimePoint()] = FILTER_TYPE_MAP[value]
                 elif key == 'ver':
                     # You know, I should probably differentiate handling top/bottom zooms depending if
                     # the version is >= 167 or not, but I'm most likely not going to fucking bother
@@ -287,8 +287,8 @@ class KSHParser:
             'vol_l': {},
             'vol_r': {},
         }
-        self._final_zoom_bottom_timepoint = TimePoint(1, 0, 1)
-        self._final_zoom_top_timepoint = TimePoint(1, 0, 1)
+        self._final_zoom_bottom_timepoint = TimePoint()
+        self._final_zoom_top_timepoint = TimePoint()
 
     def _parse_notedata(self) -> None:
         self._initialize_stateful_data()
