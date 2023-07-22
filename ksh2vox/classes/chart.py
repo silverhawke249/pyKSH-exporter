@@ -428,10 +428,8 @@ class ChartInfo:
         peak_flags: dict[float, int] = {}
         notes_value = 0.0
         for track_name, notes in note_dicts:
-            for timept, note in notes.items():
+            for timept in notes.keys():
                 notes_value += 1
-                if note.duration != 0:
-                    continue
                 # Figure out the time this particular note happens
                 note_timing = self._get_elapsed_time(timept)
                 if note_timing not in peak_flags:
@@ -467,15 +465,18 @@ class ChartInfo:
         self._radar_notes = int(clamp(notes_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Calculate "peak" value
-        # Sum peak values over a range of 2 seconds (i.e. diff of at most ±1)
-        ranged_peak_values = {tn: sum(v for tr, v in peak_values.items() if abs(tr - tn) <= 1)
-                              for tn in peak_values.keys()}
+        # Sum peak values over a range of 2 seconds
+        # Doing it twice -- once when note is at the start of the 2sec window, once at the end
+        ranged_peak_values  = [(tn, sum(v for tr, v in peak_values.items() if 0 <= (tr - tn) <= 2))
+                               for tn in peak_values.keys()]
+        ranged_peak_values += [(tn, sum(v for tr, v in peak_values.items() if 0 <= (tn - tr) <= 2))
+                               for tn in peak_values.keys()]
         peak_value = 0
-        for t, v in ranged_peak_values.items():
+        for t, v in ranged_peak_values:
             if v > peak_value:
                 peak_value = v
                 logger.debug(f'peak value at {t:.3f}s = {v:.2f}')
-        peak_value /= 0.238
+        peak_value /= 0.24
         self._radar_peak = int(clamp(peak_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tsumami
