@@ -444,13 +444,13 @@ class KSH2VOXApp():
             )
             if not file_path:
                 return None
+            file_name = Path(file_path).name
 
             self.log(f'Writing to "{file_path}"...')
             self.current_path = Path(file_path).parent
             with open(file_path, 'w') as f:
                 self.parser.write_vox(f)
 
-            # TODO: Change this to actually say the file name (if changed in dialog box)
             self.log(f'File saved: {file_name}')
 
     def export_xml(self):
@@ -472,6 +472,7 @@ class KSH2VOXApp():
             )
             if not file_path:
                 return None
+            file_name = Path(file_path).name
 
             self.log(f'Writing to "{file_path}"...')
             self.current_path = Path(file_path).parent
@@ -503,6 +504,7 @@ class KSH2VOXApp():
             )
             if not song_file_path:
                 return None
+            song_file_name = Path(song_file_path).name
 
             preview_file_name = f'{song_label}_pre.2dx'
             preview_file_path = filedialog.asksaveasfilename(
@@ -518,6 +520,7 @@ class KSH2VOXApp():
             )
             if not preview_file_path:
                 return None
+            preview_file_name = Path(preview_file_path).name
 
             self.log('Converting audio to 2DX format...')
             song_bytes, preview_bytes = get_2dxs(
@@ -558,6 +561,7 @@ class KSH2VOXApp():
             )
             if not jacket_r_file_path:
                 return None
+            jacket_r_file_name = Path(jacket_r_file_path).name
 
             jacket_b_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -572,6 +576,7 @@ class KSH2VOXApp():
             )
             if not jacket_b_file_path:
                 return None
+            jacket_b_file_name = Path(jacket_b_file_path).name
 
             jacket_s_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -586,6 +591,7 @@ class KSH2VOXApp():
             )
             if not jacket_s_file_path:
                 return None
+            jacket_s_file_name = Path(jacket_s_file_path).name
 
             self.log('Resizing jacket image...')
             jk_r_bytes, jk_b_bytes, jk_s_bytes = get_jacket_images(jacket_path)
