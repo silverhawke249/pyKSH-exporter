@@ -241,7 +241,7 @@ class Container2DX:
 
 
 # Preview start must be in ms
-def prepare_audio(file_path: Path, preview_start: int) -> tuple[wave.Wave_read, wave.Wave_read]:
+def prepare_audio(file_path: Path, preview_start: int, offset: int) -> tuple[wave.Wave_read, wave.Wave_read]:
     audio = AudioSegment.from_file(str(file_path))
     audio = audio.set_frame_rate(44100)
     audio = audio.set_channels(2)
@@ -250,6 +250,14 @@ def prepare_audio(file_path: Path, preview_start: int) -> tuple[wave.Wave_read, 
     # 10s preview sample
     preview = audio[preview_start:preview_start + 10_000]
     preview = preview.fade_in(1000).fade_out(1000)
+
+    # Apply offset
+    if offset > 0:
+        audio = AudioSegment.silent(offset) + audio
+    elif offset < 0:
+        audio = audio[offset:]
+    else:
+        pass
 
     audio_out = BytesIO()
     preview_out = BytesIO()
@@ -262,9 +270,15 @@ def prepare_audio(file_path: Path, preview_start: int) -> tuple[wave.Wave_read, 
     return wave.open(audio_out, 'rb'), wave.open(preview_out, 'rb')
 
 
-def get_2dxs(file_path: Path, song_label: str, preview_start: int) -> tuple[bytes, bytes]:
-    """ Return song files as 2DX blobs at full length and preview length, in that order. """
-    song_wave, preview_wave = prepare_audio(file_path, preview_start)
+def get_2dxs(file_path: Path, song_label: str, preview_start: int, offset: int = 0) -> tuple[bytes, bytes]:
+    """
+    Return song files as 2DX blobs at full length and preview length, in that order.
+
+    Positive offset means audio starts later, which means silence will be added to the start.
+    Negative offset means audio starts earlier, which is implemented by trimming the start.
+    It is the charter's responsibility to ensure that the song will not be cut off by this processing.
+    """
+    song_wave, preview_wave = prepare_audio(file_path, preview_start, offset)
 
     song_container = Container2DX(f'{song_label}.2dx')
     preview_container = Container2DX(f'{song_label}_pre.2dx')

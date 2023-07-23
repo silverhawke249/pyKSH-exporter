@@ -520,7 +520,8 @@ class KSH2VOXApp():
                 return None
 
             self.log('Converting audio to 2DX format...')
-            song_bytes, preview_bytes = get_2dxs(audio_path, song_label, self.parser.chart_info.preview_start)
+            song_bytes, preview_bytes = get_2dxs(
+                audio_path, song_label, self.parser.chart_info.preview_start, self.parser.chart_info.music_offset)
 
             self.log(f'Writing to "{song_file_path}"...')
             with open(song_file_path, 'wb') as f:
