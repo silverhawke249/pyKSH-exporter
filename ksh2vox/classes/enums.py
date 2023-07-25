@@ -198,3 +198,19 @@ class VOXSection(Enum):
     SPCONTROLLER     = auto()
     SCRIPT           = auto()
     SCRIPTED_TRACK   = auto()
+
+
+class NoteType(Flag):
+    VOL_L = auto()
+    FX_L  = auto()
+    BT_A  = auto()
+    BT_B  = auto()
+    BT_C  = auto()
+    BT_D  = auto()
+    FX_R  = auto()
+    VOL_R = auto()
+
+    def __str__(self) -> str:
+        if self.name is None:
+            return super().__str__()
+        return self.name.replace('_', '-')
