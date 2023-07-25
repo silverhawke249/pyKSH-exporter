@@ -1,6 +1,7 @@
 import itertools
 import logging
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field, InitVar
 from decimal import Decimal
 from fractions import Fraction
@@ -20,6 +21,7 @@ from .enums import (
     DifficultySlot,
     EasingType,
     FilterIndex,
+    NoteType,
     SegmentFlag,
     SpinType,
     TiltType,
@@ -35,12 +37,12 @@ from ..utils import clamp
 MIN_RADAR_VAL = 0.0
 MAX_RADAR_VAL = 200.0
 NOTE_STR_FLAG_MAP = {
-    'FX_L': 0o40,
-    'BT_A': 0o20,
-    'BT_B': 0o10,
-    'BT_C': 0o04,
-    'BT_D': 0o02,
-    'FX_R': 0o01,
+    NoteType.FX_L: 0o40,
+    NoteType.BT_A: 0o20,
+    NoteType.BT_B: 0o10,
+    NoteType.BT_C: 0o04,
+    NoteType.BT_D: 0o02,
+    NoteType.FX_R: 0o01,
 }
 
 logger = logging.getLogger(__name__)
@@ -137,6 +139,63 @@ class NoteData:
     # VOL
     vol_l: dict[TimePoint, VolInfo] = field(default_factory=dict)
     vol_r: dict[TimePoint, VolInfo] = field(default_factory=dict)
+
+    def iter_bts(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo]]:
+        dicts: list[tuple[NoteType, dict]] = [
+            (NoteType.BT_A, self.bt_a),
+            (NoteType.BT_B, self.bt_b),
+            (NoteType.BT_C, self.bt_c),
+            (NoteType.BT_D, self.bt_d),
+        ]
+        for note_type, note_dict in dicts:
+            for key, value in note_dict.items():
+                yield note_type, key, value
+
+    def iter_fxs(self) -> Iterable[tuple[NoteType, TimePoint, FXInfo]]:
+        dicts: list[tuple[NoteType, dict]] = [
+            (NoteType.FX_L, self.fx_l),
+            (NoteType.FX_R, self.fx_r),
+        ]
+        for note_type, note_dict in dicts:
+            for key, value in note_dict.items():
+                yield note_type, key, value
+
+    def iter_vols(self) -> Iterable[tuple[NoteType, TimePoint, VolInfo]]:
+        dicts: list[tuple[NoteType, dict]] = [
+            (NoteType.VOL_L, self.vol_l),
+            (NoteType.VOL_R, self.vol_r),
+        ]
+        for note_type, note_dict in dicts:
+            for key, value in note_dict.items():
+                yield note_type, key, value
+
+    def iter_buttons(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo | FXInfo]]:
+        dicts: list[tuple[NoteType, dict]] = [
+            (NoteType.BT_A, self.bt_a),
+            (NoteType.BT_B, self.bt_b),
+            (NoteType.BT_C, self.bt_c),
+            (NoteType.BT_D, self.bt_d),
+            (NoteType.FX_L, self.fx_l),
+            (NoteType.FX_R, self.fx_r),
+        ]
+        for note_type, note_dict in dicts:
+            for key, value in note_dict.items():
+                yield note_type, key, value
+
+    def iter_notes(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo | FXInfo | VolInfo]]:
+        dicts: list[tuple[NoteType, dict]] = [
+            (NoteType.BT_A, self.bt_a),
+            (NoteType.BT_B, self.bt_b),
+            (NoteType.BT_C, self.bt_c),
+            (NoteType.BT_D, self.bt_d),
+            (NoteType.FX_L, self.fx_l),
+            (NoteType.FX_R, self.fx_r),
+            (NoteType.VOL_L, self.vol_l),
+            (NoteType.VOL_R, self.vol_r),
+        ]
+        for note_type, note_dict in dicts:
+            for key, value in note_dict.items():
+                yield note_type, key, value
 
 
 @dataclass
@@ -249,97 +308,91 @@ class ChartInfo:
         self._vol_notecount  = 0
 
         # Chip and long notes
-        note_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]]] = [
-            ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
-            ('BT_D', self.note_data.bt_d), ('FX_L', self.note_data.fx_l), ('FX_R', self.note_data.fx_r),
-        ]
-        for track_name, notes in note_dicts:
-            for timept, note in notes.items():
-                if note.duration == 0:
-                    logger.debug(f'{track_name} chip: {self.timepoint_to_vox(timept)}')
-                    self._chip_notecount += 1
-                else:
-                    logger.debug(f'{track_name} long: {self.timepoint_to_vox(timept)}')
-                    tick_rate  = self.get_tick_rate(timept)
-                    tick_start = self.timepoint_to_fraction(timept)
-                    hold_end   = self.add_duration(timept, note.duration)
-                    cur_hold_ticks = 0
-                    # Round up to next tick
-                    if tick_start % tick_rate != 0:
-                        cur_hold_ticks += 1
-                        timept = self.add_duration(timept, tick_rate - (tick_start % tick_rate))
-                    # Add ticks
-                    while timept < hold_end:
-                        cur_hold_ticks += 1
-                        tick_rate = self.get_tick_rate(timept)
-                        timept    = self.add_duration(timept, tick_rate)
-                    # Long enough holds become lenient at the end
-                    if cur_hold_ticks > 5:
-                        cur_hold_ticks -= 1
-                    if cur_hold_ticks > 6:
-                        cur_hold_ticks -= 1
-                    self._long_notecount += cur_hold_ticks
+        for note_type, timept, note in self.note_data.iter_buttons():
+            if note.duration == 0:
+                logger.debug(f'{note_type} chip: {self.timepoint_to_vox(timept)}')
+                self._chip_notecount += 1
+            else:
+                logger.debug(f'{note_type} long: {self.timepoint_to_vox(timept)}')
+                tick_rate  = self.get_tick_rate(timept)
+                tick_start = self.timepoint_to_fraction(timept)
+                hold_end   = self.add_duration(timept, note.duration)
+                cur_hold_ticks = 0
+                # Round up to next tick
+                if tick_start % tick_rate != 0:
+                    cur_hold_ticks += 1
+                    timept = self.add_duration(timept, tick_rate - (tick_start % tick_rate))
+                # Add ticks
+                while timept < hold_end:
+                    cur_hold_ticks += 1
+                    tick_rate = self.get_tick_rate(timept)
+                    timept    = self.add_duration(timept, tick_rate)
+                # Long enough holds become lenient at the end
+                if cur_hold_ticks > 5:
+                    cur_hold_ticks -= 1
+                if cur_hold_ticks > 6:
+                    cur_hold_ticks -= 1
+                self._long_notecount += cur_hold_ticks
 
         # Lasers
-        for lasers in [self.note_data.vol_l, self.note_data.vol_r]:
-            laser_start, laser_end = TimePoint(), TimePoint()
-            slam_locations: list[TimePoint] = []
-            for timept, laser in lasers.items():
-                # This really should only be slams
-                if laser.point_type == SegmentFlag.POINT:
-                    self._vol_notecount += 1
-                elif laser.point_type in [SegmentFlag.START, SegmentFlag.END]:
-                    if laser.start != laser.end:
-                        slam_locations.append(timept)
-                    if laser.point_type == SegmentFlag.START:
-                        laser_start = timept
-                    elif laser.point_type == SegmentFlag.END:
-                        laser_end = timept
-                        logger.debug(f'laser segment: {self.timepoint_to_vox(laser_start)} => {self.timepoint_to_vox(laser_end)}')
-                        # Process ticks
-                        tick_rate  = self.get_tick_rate(laser_start)
-                        tick_start = self.timepoint_to_fraction(laser_start)
-                        # Round up to next tick
-                        if tick_start % tick_rate != 0:
-                            laser_start = self.add_duration(laser_start, tick_rate - (tick_start % tick_rate))
-                        timept = laser_start
-                        # Get tick locations
-                        tick_locations: dict[TimePoint, bool] = {}
-                        tick_keys     : list[TimePoint]       = []
-                        while timept < laser_end:
-                            tick_locations[timept] = True
-                            tick_keys.append(timept)
-                            tick_rate = self.get_tick_rate(timept)
-                            timept    = self.add_duration(timept, tick_rate)
-                        # Mark ticks as "occupied" by slams
-                        tick_index = -1
-                        for slam in slam_locations:
-                            if not tick_keys:
-                                break
-                            while tick_index < len(tick_keys) - 1 and tick_keys[tick_index + 1] < slam:
-                                tick_index += 1
-                            if tick_index == -1:
-                                tick_locations[tick_keys[0]] = False
-                            elif tick_index == len(tick_keys) - 1:
-                                tick_rate        = self.get_tick_rate(tick_keys[tick_index])
-                                next_tick_timept = self.add_duration(tick_keys[tick_index], tick_rate)
-                                if slam < next_tick_timept:
-                                    tick_locations[tick_keys[tick_index]] = False
-                            else:
-                                tick_rate      = self.get_tick_rate(tick_keys[tick_index])
-                                halfway_timept = self.add_duration(tick_keys[tick_index], tick_rate / 2)
-                                if slam <= halfway_timept:
-                                    tick_locations[tick_keys[tick_index]] = False
-                                if slam >= halfway_timept:
-                                    tick_locations[tick_keys[tick_index + 1]] = False
-                        disabled_ticks = [k for k, v in tick_locations.items() if not v]
-                        if disabled_ticks:
-                            logger.debug(f'disabled tick: {[self.timepoint_to_vox(t) for t in disabled_ticks]}')
-                        self._vol_notecount += len(slam_locations) + sum(tick_locations.values())
-                        slam_locations = []
-                else:
-                    if laser.start != laser.end:
-                        slam_locations.append(timept)
+        laser_start, laser_end = TimePoint(), TimePoint()
+        slam_locations: list[TimePoint] = []
+        for _, timept, laser in self.note_data.iter_vols():
+            # This really should only be slams
+            if laser.point_type == SegmentFlag.POINT:
+                self._vol_notecount += 1
+            elif laser.point_type in [SegmentFlag.START, SegmentFlag.END]:
+                if laser.start != laser.end:
+                    slam_locations.append(timept)
+                if laser.point_type == SegmentFlag.START:
+                    laser_start = timept
+                elif laser.point_type == SegmentFlag.END:
+                    laser_end = timept
+                    logger.debug(f'laser segment: {self.timepoint_to_vox(laser_start)} => {self.timepoint_to_vox(laser_end)}')
+                    # Process ticks
+                    tick_rate  = self.get_tick_rate(laser_start)
+                    tick_start = self.timepoint_to_fraction(laser_start)
+                    # Round up to next tick
+                    if tick_start % tick_rate != 0:
+                        laser_start = self.add_duration(laser_start, tick_rate - (tick_start % tick_rate))
+                    timept = laser_start
+                    # Get tick locations
+                    tick_locations: dict[TimePoint, bool] = {}
+                    tick_keys     : list[TimePoint]       = []
+                    while timept < laser_end:
+                        tick_locations[timept] = True
+                        tick_keys.append(timept)
+                        tick_rate = self.get_tick_rate(timept)
+                        timept    = self.add_duration(timept, tick_rate)
+                    # Mark ticks as "occupied" by slams
+                    tick_index = -1
+                    for slam in slam_locations:
+                        if not tick_keys:
+                            break
+                        while tick_index < len(tick_keys) - 1 and tick_keys[tick_index + 1] < slam:
+                            tick_index += 1
+                        if tick_index == -1:
+                            tick_locations[tick_keys[0]] = False
+                        elif tick_index == len(tick_keys) - 1:
+                            tick_rate        = self.get_tick_rate(tick_keys[tick_index])
+                            next_tick_timept = self.add_duration(tick_keys[tick_index], tick_rate)
+                            if slam < next_tick_timept:
+                                tick_locations[tick_keys[tick_index]] = False
+                        else:
+                            tick_rate      = self.get_tick_rate(tick_keys[tick_index])
+                            halfway_timept = self.add_duration(tick_keys[tick_index], tick_rate / 2)
+                            if slam <= halfway_timept:
+                                tick_locations[tick_keys[tick_index]] = False
+                            if slam >= halfway_timept:
+                                tick_locations[tick_keys[tick_index + 1]] = False
+                    disabled_ticks = [k for k, v in tick_locations.items() if not v]
+                    if disabled_ticks:
+                        logger.debug(f'disabled tick: {[self.timepoint_to_vox(t) for t in disabled_ticks]}')
+                    self._vol_notecount += len(slam_locations) + sum(tick_locations.values())
+                    slam_locations = []
+            else:
+                if laser.start != laser.end:
+                    slam_locations.append(timept)
 
     # Figure out how long each particular BPM lasts
     # Helpful to figure out time elapsed for a particular note
@@ -397,55 +450,47 @@ class ChartInfo:
         # For total chart time
         chart_begin_timept: TimePoint | None = None
         chart_end_timept  : TimePoint        = TimePoint()
-        all_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo] | dict[TimePoint, VolInfo]]] = [
-            ('VOL_L', self.note_data.vol_l),
-            ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
-            ('BT_D', self.note_data.bt_d), ('FX_L', self.note_data.fx_l), ('FX_R', self.note_data.fx_r),
-            ('VOL_R', self.note_data.vol_r),
-        ]
-        for _, notes in all_dicts:
-            for timept in notes.keys():
-                if chart_begin_timept is None:
-                    chart_begin_timept = timept
-                chart_begin_timept = min(timept, chart_begin_timept)
-                chart_end_timept   = max(timept, chart_end_timept)
+        for _, timept, _ in self.note_data.iter_notes():
+            if chart_begin_timept is None:
+                chart_begin_timept = timept
+            chart_begin_timept = min(timept, chart_begin_timept)
+            chart_end_timept   = max(timept, chart_end_timept)
         if chart_begin_timept is None:
             chart_begin_timept = TimePoint()
         chart_begin_time = self._get_elapsed_time(chart_begin_timept)
         chart_end_time   = self._get_elapsed_time(chart_end_timept)
         total_chart_time = chart_end_time - chart_begin_time
-        # Short songs = smaller radar value, vice versa
+        # Used to scale certain radar values inversely to song length
         time_coefficient = total_chart_time / 118.5
         logger.info(f'chart span: {chart_begin_time:.3f} ~ {chart_end_time:.3f} ({total_chart_time:.3f})')
 
         # Notes + Peak
         # Higher average NPS = higher "notes" value
         # Higher peak density (over 2 seconds) = higher "peak" value
-        note_dicts: list[tuple[str, dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo]]] = [
-            ('BT_A', self.note_data.bt_a), ('BT_B', self.note_data.bt_b), ('BT_C', self.note_data.bt_c),
-            ('BT_D', self.note_data.bt_d), ('FX_L', self.note_data.fx_l), ('FX_R', self.note_data.fx_r),
-        ]
         peak_flags: dict[float, int] = {}
         notes_value = 0.0
-        for track_name, notes in note_dicts:
-            for timept in notes.keys():
-                notes_value += 1
-                # Figure out the time this particular note happens
-                note_timing = self._get_elapsed_time(timept)
-                if note_timing not in peak_flags:
-                    peak_flags[note_timing] = 0
-                peak_flags[note_timing] += NOTE_STR_FLAG_MAP[track_name]
+        for note_type, timept, _ in self.note_data.iter_buttons():
+            notes_value += 1
+            # Figure out the time this particular note happens
+            note_timing = self._get_elapsed_time(timept)
+            if note_timing not in peak_flags:
+                peak_flags[note_timing] = 0
+            peak_flags[note_timing] += NOTE_STR_FLAG_MAP[note_type]
 
         peak_values: dict[float, float] = {}
         for note_timing, flags in sorted(peak_flags.items()):
             peak_value = 0.0
             # Decrease peak value when certain chords happen
+            # LAB chord
             if flags & 0o70 == 0o70:
                 peak_value -= 1.5
+            # 2-button chord of L, A, B
             elif any(flags & mask == mask for mask in [0o60, 0o50, 0o30]):
                 peak_value -= 0.83
+            # CDR chord
             if flags & 0o07 == 0o07:
                 peak_value -= 1.5
+            # 2-button chord of C, D, R
             elif any(flags & mask == mask for mask in [0o06, 0o05, 0o03]):
                 peak_value -= 0.83
             # Only applies for exactly a BC chord
