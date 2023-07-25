@@ -335,9 +335,13 @@ class ChartInfo:
                 self._long_notecount += cur_hold_ticks
 
         # Lasers
-        laser_start, laser_end = TimePoint(), TimePoint()
-        slam_locations: list[TimePoint] = []
-        for _, timept, laser in self.note_data.iter_vols():
+        cur_note_type: NoteType | None = None
+        for note_type, timept, laser in self.note_data.iter_vols():
+            # Reset state variables when changing tracks
+            if note_type != cur_note_type:
+                cur_note_type                   = note_type
+                laser_start, laser_end          = TimePoint(), TimePoint()
+                slam_locations: list[TimePoint] = []
             # This really should only be slams
             if laser.point_type == SegmentFlag.POINT:
                 self._vol_notecount += 1
