@@ -199,27 +199,25 @@ class VOXParser:
             pass
         elif self._current_section in [VOXSection.TRACK_VOL_L, VOXSection.TRACK_VOL_R]:
             # Parse all parameters
-            timepoint = self._convert_vox_timepoint(match['timepoint'])
-            position = Fraction(match['position']) * self._laser_scale
+            timepoint        = self._convert_vox_timepoint(match['timepoint'])
+            position         = Fraction(match['position']) * self._laser_scale
             segment_type_str = match['segment_type']
-            segment_type = (SegmentFlag.START if segment_type_str == '1' else
-                            SegmentFlag.END if segment_type_str == '2' else
-                            SegmentFlag.MIDDLE)
-            spin_type_str = match['spin_type']
-            spin_type = (SpinType.SINGLE_SPIN if spin_type_str in ['1', '2', '3'] else
-                         SpinType.TRIPLE_SPIN if spin_type_str == '4' else
-                         SpinType.HALF_SPIN if spin_type_str == '5' else
-                         SpinType.NO_SPIN)
-            filter_type_str = match['filter_type']
-            filter_type = (FilterIndex(int(filter_type_str)) if '0' <= filter_type_str <= '6' else
-                           FilterIndex.CUSTOM)
-            wide_laser = match['wide_laser'] == '2'
-            ease_type_str = match['ease_type'] or '0'
-            ease_type = (EasingType.LINEAR if ease_type_str == '2' else
-                         EasingType.EASE_IN_SINE if ease_type_str == '4' else
-                         EasingType.EASE_OUT_SINE if ease_type_str == '5' else
-                         EasingType.NO_EASING)
-            spin_length = int(match['spin_length'] or 0)
+            segment_type     = (SegmentFlag.START if segment_type_str == '1' else
+                                SegmentFlag.END if segment_type_str == '2' else
+                                SegmentFlag.MIDDLE)
+            spin_type_str    = match['spin_type']
+            spin_type        = (SpinType(int(spin_type_str)) if '1' <= spin_type_str <= '5' else
+                                SpinType.NO_SPIN)
+            filter_type_str  = match['filter_type']
+            filter_type      = (FilterIndex(int(filter_type_str)) if '0' <= filter_type_str <= '6' else
+                                FilterIndex.CUSTOM)
+            wide_laser       = match['wide_laser'] == '2'
+            ease_type_str    = match['ease_type'] or '0'
+            ease_type        = (EasingType.LINEAR if ease_type_str == '2' else
+                                EasingType.EASE_IN_SINE if ease_type_str == '4' else
+                                EasingType.EASE_OUT_SINE if ease_type_str == '5' else
+                                EasingType.NO_EASING)
+            spin_length      = int(match['spin_length'] or 0)
             # Insert into the right dictionary
             vol_dict: dict[TimePoint, VolInfo]
             if self._current_section  == VOXSection.TRACK_VOL_L:
