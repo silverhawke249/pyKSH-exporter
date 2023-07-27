@@ -322,8 +322,6 @@ class KSHParser:
             else:
                 logger.warning(f'unrecognized line at line {ln_offset + line_no + 1}: "{line}"')
 
-        self._chart_info.total_measures = measure_number + 1
-
         self._handle_notechart_postprocessing()
 
         # Store note data in chart
@@ -333,6 +331,13 @@ class KSHParser:
             setattr(self._chart_info.note_data, k, v2)
         for k, v3 in self._vols.items():
             setattr(self._chart_info.note_data, k, v3)
+
+        final_note_timept = TimePoint()
+        for _, timept, _ in self._chart_info.note_data.iter_notes():
+            final_note_timept = max(timept, final_note_timept)
+
+        # TODO: See if rounding up to next measure is necessary or not
+        self._chart_info.total_measures = final_note_timept.measure + 2
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split('=', 1)
