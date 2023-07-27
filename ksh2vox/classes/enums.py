@@ -138,6 +138,8 @@ class DifficultySlot(Enum):
 class SpinType(Enum):
     NO_SPIN = 0
     SINGLE_SPIN = 1
+    SINGLE_SPIN_2 = 2
+    SINGLE_SPIN_3 = 3
     TRIPLE_SPIN = 4
     HALF_SPIN = 5
 
