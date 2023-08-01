@@ -98,6 +98,12 @@ SECTION_REGEX: dict[VOXSection, re.Pattern] = {
     VOXSection.SCRIPT          : re.compile(r'.*'),
     VOXSection.SCRIPTED_TRACK  : re.compile(r'.*'),
 }
+SEGMENT_TYPE_MAP = [
+    SegmentFlag.MIDDLE,
+    SegmentFlag.POINT,
+    SegmentFlag.START,
+    SegmentFlag.END,
+]
 WHITESPACE_REGEX = re.compile(r'\s+')
 LASER_SCALE_DEFAULT = Fraction(1)
 LASER_SCALE_OLD = Fraction(1, 127)
@@ -155,8 +161,6 @@ class VOXParser:
         timesig = self.chart_info.get_timesig(m)
         position = Fraction(c - 1, timesig.lower) + Fraction(d, 192)
         t = TimePoint(m, position.numerator, position.denominator)
-        logger.debug(f'calc. position: {position} ({timesig})')
-        logger.debug(f'{s} => {t}')
         return t
 
     def _parse_line(self, line: str) -> None:
@@ -171,8 +175,8 @@ class VOXParser:
                 self._laser_scale = LASER_SCALE_OLD
         elif self._current_section == VOXSection.TIME_SIGNATURE:
             timepoint = match['timepoint']
-            upper = int(match['upper'])
-            lower = int(match['lower'])
+            upper     = int(match['upper'])
+            lower     = int(match['lower'])
             # Not gonna bother checking multiple measure overflow
             m, c, d = map(int, timepoint.split(',', maxsplit=3))
             if (c, d) != (1, 0):
@@ -180,7 +184,7 @@ class VOXParser:
             self.chart_info.timesigs[TimePoint(m, 0, 1)] = TimeSignature(upper, lower)
         elif self._current_section == VOXSection.BPM:
             timepoint = self._convert_vox_timepoint(match['timepoint'])
-            bpm = Decimal(match['bpm'])
+            bpm       = Decimal(match['bpm'])
             # Ignoring stops because it's unnecessary (for now)
             self.chart_info.bpms[timepoint] = bpm
         elif self._current_section == VOXSection.TILT:
@@ -235,8 +239,8 @@ class VOXParser:
                 )
         elif self._current_section in [VOXSection.TRACK_FX_L, VOXSection.TRACK_FX_R]:
             timepoint = self._convert_vox_timepoint(match['timepoint'])
-            duration = int(match['duration'] or 0)
-            special = int(match['special'] or 0)
+            duration  = int(match['duration'] or 0)
+            special   = int(match['special'] or 0)
             fx_dict: dict[TimePoint, FXInfo]
             if self._current_section == VOXSection.TRACK_FX_L:
                 fx_dict = self.chart_info.note_data.fx_l
@@ -246,7 +250,7 @@ class VOXParser:
         elif self._current_section in [VOXSection.TRACK_BT_A, VOXSection.TRACK_BT_B, VOXSection.TRACK_BT_C,
                                        VOXSection.TRACK_BT_D]:
             timepoint = self._convert_vox_timepoint(match['timepoint'])
-            duration = int(match['duration'] or 0)
+            duration  = int(match['duration'] or 0)
             bt_dict: dict[TimePoint, BTInfo]
             if self._current_section == VOXSection.TRACK_BT_A:
                 bt_dict = self.chart_info.note_data.bt_a
@@ -261,9 +265,30 @@ class VOXParser:
             pass
         elif self._current_section in [VOXSection.TRACK_VOL_L_ORIG, VOXSection.TRACK_VOL_R_ORIG]:
             pass
-        # TODO: Handle SPController section
         elif self._current_section == VOXSection.SPCONTROLLER:
-            pass
+            timepoint = self._convert_vox_timepoint(match['timepoint'])
+            sp_type   = match['sp_type']
+            content   = WHITESPACE_REGEX.split(match['content'].strip())
+            _, duration_str, init_val_str, end_val_str, segment_type_str, *_ = content
+            duration      = int(duration_str)
+            init_val      = float(init_val_str)
+            end_val       = float(end_val_str)
+            if duration == 0:
+                end_val = init_val
+            if sp_type == 'CAM_RotX':
+                self.chart_info.spcontroller_data.zoom_top[timepoint] = SPControllerInfo(
+                    Decimal(init_val), Decimal(end_val), SegmentFlag.MIDDLE)
+            elif sp_type == 'CAM_Radi':
+                self.chart_info.spcontroller_data.zoom_bottom[timepoint] = SPControllerInfo(
+                    Decimal(init_val), Decimal(end_val), SegmentFlag.MIDDLE)
+            elif sp_type == 'Tilt':
+                segment_type_int = int(segment_type_str)
+                segment_type = SEGMENT_TYPE_MAP[segment_type_int]
+                self.chart_info.spcontroller_data.tilt[timepoint] = SPControllerInfo(
+                    Decimal(init_val), Decimal(end_val), segment_type)
+            # TODO: Handle center split
+            elif sp_type == 'Morphing3':
+                ...
         elif self._current_section == VOXSection.SCRIPT:
             pass
         elif self._current_section == VOXSection.SCRIPTED_TRACK:
@@ -281,6 +306,14 @@ class VOXParser:
 
             last_timept = vol_keys[-1]
             vol_data[last_timept].point_type |= SegmentFlag.END
+
+        # Fix zoom_top and zoom_bottom segment flags
+        camera_dicts = [self.chart_info.spcontroller_data.zoom_bottom, self.chart_info.spcontroller_data.zoom_top]
+        for camera_dict in camera_dicts:
+            timept_i = min(camera_dict.keys())
+            timept_f = max(camera_dict.keys())
+            camera_dict[timept_i].point_type |= SegmentFlag.START
+            camera_dict[timept_f].point_type |= SegmentFlag.END
 
     @property
     def vox_path(self):
