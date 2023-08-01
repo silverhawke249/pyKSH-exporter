@@ -11,15 +11,15 @@ U = TypeVar('U', bound=Real)
 
 def clamp(
     value: T,
-    low_bound: T,
-    high_bound: T
+    low_bound: T | None = None,
+    high_bound: T | None = None
 ) -> T:
-    """ Clamp a value to a range. """
-    if low_bound > high_bound:
+    """ Clamp a value to a range. Pass None to not clamp from that side. """
+    if low_bound is not None and high_bound is not None and low_bound > high_bound:
         raise ValueError('low bound cannot be larger than high bound')
-    if value < low_bound:
+    if low_bound is not None and value < low_bound:
         return low_bound
-    if value > high_bound:
+    if high_bound is not None and value > high_bound:
         return high_bound
     return value
 
