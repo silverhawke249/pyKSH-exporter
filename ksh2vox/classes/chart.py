@@ -282,8 +282,9 @@ class ChartInfo:
     _filter_param : dict[str, int]           = field(default_factory=dict, init=False, repr=False)
 
     # For radar calculation
-    _elapsed_time : dict[TimePoint, float] = field(default_factory=dict, init=False, repr=False)
-    _bpm_durations: dict[Decimal, float]   = field(default_factory=dict, init=False, repr=False)
+    _elapsed_time    : dict[TimePoint, float] = field(default_factory=dict, init=False, repr=False)
+    _elapsed_time_bpm: dict[TimePoint, float] = field(default_factory=dict, init=False, repr=False)
+    _bpm_durations   : dict[Decimal, float]   = field(default_factory=dict, init=False, repr=False)
 
     # Cached values
     _timesig_cache     : dict[int, TimeSignature]  = field(default_factory=dict, init=False, repr=False)
@@ -408,11 +409,12 @@ class ChartInfo:
     # Figure out how long each particular BPM lasts
     # Helpful to figure out time elapsed for a particular note
     def _populate_bpm_durations(self) -> None:
-        endpoint = TimePoint(self.total_measures, 0, 1)
+        endpoint      = TimePoint(self.total_measures, 0, 1)
+        running_total = 0.0
         for timept_i, timept_f in itertools.pairwise([*self.bpms.keys(), endpoint]):
             # First BPM point should be at 001,01,00, which means elapsed time is 0 sec.
-            if not self._elapsed_time:
-                self._elapsed_time[timept_i] = 0
+            if not self._elapsed_time_bpm:
+                self._elapsed_time_bpm[timept_i] = 0.0
             cur_bpm = self.bpms[timept_i]
             # Distance is in fractions of 4 beats -- i.e. 1 distance = 4 beats
             bpm_distance = self.get_distance(timept_i, timept_f)
@@ -422,25 +424,28 @@ class ChartInfo:
             # tl;dr: 1 / bpm (min/beat) * 60 (sec/min) * distance (dist) * 4 (beats/dist)
             bpm_duration = 4 * 60 * bpm_distance.numerator / bpm_distance.denominator / float(cur_bpm)
             if cur_bpm not in self._bpm_durations:
-                self._bpm_durations[cur_bpm] = 0
+                self._bpm_durations[cur_bpm] = 0.0
             self._bpm_durations[cur_bpm] += bpm_duration
-            self._elapsed_time[timept_f]  = bpm_duration
+            running_total                += bpm_duration
+            self._elapsed_time_bpm[timept_f]  = running_total
+
+        self._elapsed_time = dict(self._elapsed_time_bpm)
 
     def _get_elapsed_time(self, timept: TimePoint) -> float:
         """ Convert timepoint into seconds. """
         if timept not in self._elapsed_time:
-            time_in_sec     = 0.0
-            prev_timept = TimePoint()
+            prev_elapsed_time = 0.0
+            prev_timept       = TimePoint()
             for cur_timept, elapsed_time in self._elapsed_time.items():
-                if timept > cur_timept:
+                if cur_timept > timept:
                     break
-                time_in_sec += elapsed_time
-                prev_timept  = cur_timept
+                prev_elapsed_time = elapsed_time
+                prev_timept       = cur_timept
             # Similar calculation as in _populate_bpm_durations
-            note_distance_frac = self.get_distance(timept, prev_timept)
             cur_bpm            = self.get_bpm(prev_timept)
+            note_distance_frac = self.get_distance(timept, prev_timept)
             note_distance      = 4 * 60 * note_distance_frac.numerator / note_distance_frac.denominator / float(cur_bpm)
-            self._elapsed_time[timept] = time_in_sec + note_distance
+            self._elapsed_time[timept] = prev_elapsed_time + note_distance
 
         return self._elapsed_time[timept]
 
