@@ -23,6 +23,7 @@ from .enums import (
     FilterIndex,
     NoteType,
     SegmentFlag,
+    SegmentType,
     SpinType,
     TiltType,
 )
@@ -221,6 +222,14 @@ class SPControllerData:
     lane_split: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _LaserSegmentInfo:
+    note_type      : NoteType
+    timepoint_start: TimePoint
+    timepoint_end  : TimePoint
+    segment_type   : SegmentType
+
+
 @dataclass
 class ChartInfo:
     # Metadata stuff
@@ -310,10 +319,8 @@ class ChartInfo:
         # Chip and long notes
         for note_type, timept, note in self.note_data.iter_buttons():
             if note.duration == 0:
-                logger.debug(f'{note_type} chip: {self.timepoint_to_vox(timept)}')
                 self._chip_notecount += 1
             else:
-                logger.debug(f'{note_type} long: {self.timepoint_to_vox(timept)}')
                 tick_rate  = self.get_tick_rate(timept)
                 tick_start = self.timepoint_to_fraction(timept)
                 hold_end   = self.add_duration(timept, note.duration)
@@ -416,22 +423,22 @@ class ChartInfo:
             bpm_duration = 4 * 60 * bpm_distance.numerator / bpm_distance.denominator / float(cur_bpm)
             if cur_bpm not in self._bpm_durations:
                 self._bpm_durations[cur_bpm] = 0
-            self._bpm_durations[cur_bpm]      += bpm_duration
-            self._elapsed_time[timept_f] = bpm_duration
+            self._bpm_durations[cur_bpm] += bpm_duration
+            self._elapsed_time[timept_f]  = bpm_duration
 
     def _get_elapsed_time(self, timept: TimePoint) -> float:
         """ Convert timepoint into seconds. """
         if timept not in self._elapsed_time:
             time_in_sec     = 0.0
-            prev_bpm_timept = TimePoint()
-            for bpm_timept, elapsed_time in self._elapsed_time.items():
-                if timept > bpm_timept:
+            prev_timept = TimePoint()
+            for cur_timept, elapsed_time in self._elapsed_time.items():
+                if timept > cur_timept:
                     break
                 time_in_sec += elapsed_time
-                prev_bpm_timept = bpm_timept
+                prev_timept  = cur_timept
             # Similar calculation as in _populate_bpm_durations
-            note_distance_frac = self.get_distance(timept, prev_bpm_timept)
-            cur_bpm            = self.bpms[prev_bpm_timept]
+            note_distance_frac = self.get_distance(timept, prev_timept)
+            cur_bpm            = self.get_bpm(prev_timept)
             note_distance      = 4 * 60 * note_distance_frac.numerator / note_distance_frac.denominator / float(cur_bpm)
             self._elapsed_time[timept] = time_in_sec + note_distance
 
@@ -449,7 +456,7 @@ class ChartInfo:
 
         # This is the BPM the hi-speed setting is tuned to
         self._populate_bpm_durations()
-        standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1]
+        standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1][0]
 
         # For total chart time
         chart_begin_timept: TimePoint | None = None
@@ -466,6 +473,7 @@ class ChartInfo:
         total_chart_time = chart_end_time - chart_begin_time
         # Used to scale certain radar values inversely to song length
         time_coefficient = total_chart_time / 118.5
+        time_coefficient = 1 if time_coefficient < 1 else time_coefficient
         logger.info(f'chart span: {chart_begin_time:.3f} ~ {chart_end_time:.3f} ({total_chart_time:.3f})')
 
         # Notes + Peak
@@ -505,7 +513,6 @@ class ChartInfo:
                 peak_value += flags % 2
                 flags //= 2
             peak_values[note_timing] = peak_value
-            logger.debug(f'time: {note_timing:.2f}, flags: {bin(peak_flags[note_timing])[2:]:>06}, peakval: {peak_value:.2f}')
 
         # Calculate "notes" value
         # Number of chips + number of holds (not the chain from holds)
@@ -530,6 +537,49 @@ class ChartInfo:
 
         # Tsumami
         # More lasers = higher radar value
+        laser_segments: list[_LaserSegmentInfo]          = []
+        prev_vol_info : tuple[VolInfo, TimePoint] | None = None
+        cur_note_type : NoteType | None                  = None
+        for note_type, timept, vol in self.note_data.iter_vols():
+            # Reset state variables when changing tracks
+            if note_type != cur_note_type:
+                prev_vol_info = None
+                cur_note_type = note_type
+            # Resolve last point's segment type
+            if prev_vol_info is not None:
+                prev_timept, prev_note = prev_vol_info
+                if vol.start != prev_timept.end:
+                    laser_segments.append(_LaserSegmentInfo(note_type, prev_note, timept, SegmentType.MOVING))
+                else:
+                    laser_segments.append(_LaserSegmentInfo(note_type, prev_note, timept, SegmentType.STATIC))
+            # Add another segment if we have a slam
+            if vol.start != vol.end:
+                laser_segments.append(_LaserSegmentInfo(note_type, timept, timept, SegmentType.SLAM))
+            # Update state variables
+            if SegmentFlag.END in vol.point_type:
+                prev_vol_info = None
+            else:
+                prev_vol_info = vol, timept
+
+        moving_laser_time: float = 0.0
+        static_laser_time: float = 0.0
+        slam_laser_time  : float = 0.0
+        for segment_info in laser_segments:
+            laser_time  = self._get_elapsed_time(segment_info.timepoint_end)
+            laser_time -= self._get_elapsed_time(segment_info.timepoint_start)
+            if segment_info.segment_type == SegmentType.MOVING:
+                moving_laser_time += laser_time
+            elif segment_info.segment_type == SegmentType.STATIC:
+                static_laser_time += laser_time
+            elif segment_info.segment_type == SegmentType.SLAM:
+                slam_laser_time += 0.11
+        logger.debug(f'moving laser time: {moving_laser_time:.3f}s')
+        logger.debug(f'static laser time: {static_laser_time:.3f}s')
+        logger.debug(f'slam laser time  : {slam_laser_time:.3f}s')
+        tsumami_value  = (moving_laser_time + slam_laser_time) / total_chart_time * 191
+        tsumami_value += static_laser_time / total_chart_time * 29
+        tsumami_value *= 0.956
+        self._radar_tsumami = int(clamp(tsumami_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # One-hand
         # More buttons while laser movement happens = higher radar value
@@ -583,9 +633,16 @@ class ChartInfo:
 
         return distance
 
-    def add_duration(self, a: TimePoint, b: Fraction) -> TimePoint:
-        """ Calculate the resulting timepoint after adding an amount of time to a timepoint. """
-        modified_length = a.position + b
+    def add_duration(self, a: TimePoint, b: Fraction | int) -> TimePoint:
+        """
+        Calculate the resulting timepoint after adding an amount of time to a timepoint.
+
+        If the second argument is an integer, it is assumed to be the tick count.
+        """
+        if isinstance(b, Fraction):
+            modified_length = a.position + b
+        else:
+            modified_length = a.position + Fraction(b, 192)
 
         m_no = a.measure
         while modified_length >= (m_len := self.get_timesig(m_no).as_fraction()):
