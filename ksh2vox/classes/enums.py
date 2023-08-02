@@ -216,3 +216,9 @@ class NoteType(Flag):
         if self.name is None:
             return super().__str__()
         return self.name.replace('_', '-')
+
+
+class SegmentType(Enum):
+    STATIC = auto()
+    MOVING = auto()
+    SLAM   = auto()
