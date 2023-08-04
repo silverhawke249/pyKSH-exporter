@@ -476,6 +476,7 @@ class ChartInfo:
         # Figure out the BPM the hi-speed setting is tuned to
         self._populate_bpm_durations(chart_end_timept)
         standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1][0]
+        logger.info(f'----- GENERAL INFO -----')
         logger.info(f'standard bpm: {standard_bpm:.2f}bpm')
 
         # Calculate chart length
@@ -529,6 +530,8 @@ class ChartInfo:
         # Calculate "notes" value
         # Number of chips + number of holds (not the chain from holds)
         # All these values are gonna have some adjustment coefficient that's obtained experimentally (oof)
+        logger.info('----- NOTES INFO -----')
+        logger.info(f'keypress count: {int(notes_value)}')
         notes_value *= 200 / 12.521 / total_chart_time
         self._radar_notes = int(clamp(notes_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
@@ -539,11 +542,14 @@ class ChartInfo:
                                for tn in peak_values.keys()]
         ranged_peak_values += [(tn, sum(v for tr, v in peak_values.items() if 0 <= (tn - tr) <= 2))
                                for tn in peak_values.keys()]
-        peak_value = 0
+        peak_value = 0.0
+        peak_time  = 0.0
         for t, v in ranged_peak_values:
             if v > peak_value:
                 peak_value = v
-                logger.debug(f'peak value at {t:.3f}s = {v:.2f}')
+                peak_time  = t
+        logger.info(f'----- PEAK INFO -----')
+        logger.info(f'peak value at {peak_time:.3f}s: {peak_value:.2f}')
         peak_value /= 0.24
         self._radar_peak = int(clamp(peak_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
@@ -585,9 +591,10 @@ class ChartInfo:
                 static_laser_time += laser_time
             elif segment_info.segment_type == SegmentType.SLAM:
                 slam_laser_time += 0.11
-        logger.debug(f'moving laser time: {moving_laser_time:.3f}s')
-        logger.debug(f'static laser time: {static_laser_time:.3f}s')
-        logger.debug(f'slam laser time  : {slam_laser_time:.3f}s')
+        logger.info(f'----- TSUMAMI INFO -----')
+        logger.info(f'moving laser time: {moving_laser_time:.3f}s')
+        logger.info(f'static laser time: {static_laser_time:.3f}s')
+        logger.info(f'slam laser time: {slam_laser_time:.3f}s')
         tsumami_value  = (moving_laser_time + slam_laser_time) / total_chart_time * 191
         tsumami_value += static_laser_time / total_chart_time * 29
         tsumami_value *= 0.956
