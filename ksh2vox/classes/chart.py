@@ -408,8 +408,7 @@ class ChartInfo:
 
     # Figure out how long each particular BPM lasts
     # Helpful to figure out time elapsed for a particular note
-    def _populate_bpm_durations(self) -> None:
-        endpoint      = TimePoint(self.total_measures, 0, 1)
+    def _populate_bpm_durations(self, endpoint: TimePoint) -> None:
         running_total = 0.0
         for timept_i, timept_f in itertools.pairwise([*self.bpms.keys(), endpoint]):
             # First BPM point should be at 001,01,00, which means elapsed time is 0 sec.
@@ -459,27 +458,35 @@ class ChartInfo:
         self._radar_handtrip = 0
         self._radar_tricky   = 0
 
-        # This is the BPM the hi-speed setting is tuned to
-        self._populate_bpm_durations()
-        standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1][0]
-
-        # For total chart time
+        # Figure out start/endpoint
         chart_begin_timept: TimePoint | None = None
         chart_end_timept  : TimePoint        = TimePoint()
-        for _, timept, _ in self.note_data.iter_notes():
+        for _, timept, note in self.note_data.iter_notes():
             if chart_begin_timept is None:
                 chart_begin_timept = timept
             chart_begin_timept = min(timept, chart_begin_timept)
-            chart_end_timept   = max(timept, chart_end_timept)
+            if isinstance(note, VolInfo):
+                end_timept = timept
+            else:
+                end_timept = self.add_duration(timept, note.duration)
+            chart_end_timept = max(end_timept, chart_end_timept)
         if chart_begin_timept is None:
             chart_begin_timept = TimePoint()
+
+        # Figure out the BPM the hi-speed setting is tuned to
+        self._populate_bpm_durations(chart_end_timept)
+        standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1][0]
+        logger.info(f'standard bpm: {standard_bpm:.2f}bpm')
+
+        # Calculate chart length
         chart_begin_time = self._get_elapsed_time(chart_begin_timept)
         chart_end_time   = self._get_elapsed_time(chart_end_timept)
         total_chart_time = chart_end_time - chart_begin_time
         # Used to scale certain radar values inversely to song length
         time_coefficient = total_chart_time / 118.5
         time_coefficient = 1 if time_coefficient < 1 else time_coefficient
-        logger.info(f'chart span: {chart_begin_time:.3f} ~ {chart_end_time:.3f} ({total_chart_time:.3f})')
+        logger.info(f'chart span: {self.timepoint_to_vox(chart_begin_timept)} ~ {self.timepoint_to_vox(chart_end_timept)}')
+        logger.info(f'chart span: {chart_begin_time:.3f}s ~ {chart_end_time:.3f}s ({total_chart_time:.3f}s)')
 
         # Notes + Peak
         # Higher average NPS = higher "notes" value
