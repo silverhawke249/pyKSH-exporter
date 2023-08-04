@@ -3,6 +3,7 @@ import logging
 import re
 
 from decimal import Decimal
+from itertools import pairwise
 from fractions import Fraction
 from pathlib import Path
 from typing import TextIO
@@ -127,6 +128,9 @@ class VOXParser:
 
     def __post_init__(self, file: TextIO):
         self._chart_info = ChartInfo()
+        del self._chart_info.spcontroller_data.zoom_bottom[TimePoint()]
+        del self._chart_info.spcontroller_data.zoom_top[TimePoint()]
+
         self._vox_path = Path(file.name).resolve()
 
         for lineno, line in enumerate(file):
@@ -270,25 +274,30 @@ class VOXParser:
             sp_type   = match['sp_type']
             content   = WHITESPACE_REGEX.split(match['content'].strip())
             _, duration_str, init_val_str, end_val_str, segment_type_str, *_ = content
-            duration      = int(duration_str)
-            init_val      = float(init_val_str)
-            end_val       = float(end_val_str)
-            if duration == 0:
-                end_val = init_val
+            duration = int(duration_str)
+            init_val = Decimal(init_val_str)
+            end_val  = Decimal(end_val_str)
+            sp_dict: dict[TimePoint, SPControllerInfo]
             if sp_type == 'CAM_RotX':
-                self.chart_info.spcontroller_data.zoom_top[timepoint] = SPControllerInfo(
-                    Decimal(init_val), Decimal(end_val), SegmentFlag.MIDDLE)
+                sp_dict = self.chart_info.spcontroller_data.zoom_top
             elif sp_type == 'CAM_Radi':
-                self.chart_info.spcontroller_data.zoom_bottom[timepoint] = SPControllerInfo(
-                    Decimal(init_val), Decimal(end_val), SegmentFlag.MIDDLE)
+                sp_dict = self.chart_info.spcontroller_data.zoom_bottom
             elif sp_type == 'Tilt':
-                segment_type_int = int(segment_type_str)
-                segment_type = SEGMENT_TYPE_MAP[segment_type_int]
-                self.chart_info.spcontroller_data.tilt[timepoint] = SPControllerInfo(
-                    Decimal(init_val), Decimal(end_val), segment_type)
-            # TODO: Handle center split
+                sp_dict = self.chart_info.spcontroller_data.tilt
             elif sp_type == 'Morphing3':
-                ...
+                sp_dict = self.chart_info.spcontroller_data.lane_split
+            else:
+                return
+            if duration == 0:
+                sp_dict[timepoint] = SPControllerInfo(init_val, end_val, SegmentFlag.END)
+            else:
+                if timepoint in sp_dict:
+                    sp_dict[timepoint].end        = init_val
+                    sp_dict[timepoint].point_type = SegmentFlag.MIDDLE
+                else:
+                    sp_dict[timepoint] = SPControllerInfo(init_val, init_val, SegmentFlag.MIDDLE)
+                timepoint = self.chart_info.add_duration(timepoint, duration)
+                sp_dict[timepoint] = SPControllerInfo(end_val, end_val, SegmentFlag.END)
         elif self._current_section == VOXSection.SCRIPT:
             pass
         elif self._current_section == VOXSection.SCRIPTED_TRACK:
@@ -297,6 +306,12 @@ class VOXParser:
             pass
 
     def _post_process(self) -> None:
+        # Get final measure
+        final_note_timept = TimePoint()
+        for _, timept, _ in self.chart_info.note_data.iter_notes():
+            final_note_timept = max(timept, final_note_timept)
+        self.chart_info.total_measures = final_note_timept.measure + 2
+
         # Fix when last vol segment isn't properly indicated
         for vol_data in [self.chart_info.note_data.vol_l, self.chart_info.note_data.vol_r]:
             vol_keys = list(vol_data.keys())
@@ -311,9 +326,16 @@ class VOXParser:
         camera_dicts = [self.chart_info.spcontroller_data.zoom_bottom, self.chart_info.spcontroller_data.zoom_top]
         for camera_dict in camera_dicts:
             timept_i = min(camera_dict.keys())
-            timept_f = max(camera_dict.keys())
             camera_dict[timept_i].point_type |= SegmentFlag.START
-            camera_dict[timept_f].point_type |= SegmentFlag.END
+
+        # Fix the remaining SPController data segment flags
+        timept_i = min(self.chart_info.spcontroller_data.tilt.keys())
+        self.chart_info.spcontroller_data.tilt[timept_i].point_type |= SegmentFlag.START
+        for timept_i, timept_f in pairwise(self.chart_info.spcontroller_data.tilt):
+            data_i = self.chart_info.spcontroller_data.tilt[timept_i]
+            data_f = self.chart_info.spcontroller_data.tilt[timept_f]
+            if SegmentFlag.END in data_i.point_type:
+                data_f.point_type |= SegmentFlag.START
 
     @property
     def vox_path(self):
