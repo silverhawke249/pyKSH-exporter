@@ -23,7 +23,6 @@ from .enums import (
     FilterIndex,
     NoteType,
     SegmentFlag,
-    SegmentType,
     SpinType,
     TiltType,
 )
@@ -228,14 +227,6 @@ class SPControllerData:
     tilt: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
 
     lane_split: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class _LaserSegmentInfo:
-    note_type      : NoteType
-    timepoint_start: TimePoint
-    timepoint_end  : TimePoint
-    segment_type   : SegmentType
 
 
 @dataclass
@@ -563,42 +554,28 @@ class ChartInfo:
 
         # Tsumami
         # More lasers = higher radar value
-        laser_segments: list[_LaserSegmentInfo]          = []
-        prev_vol_info : tuple[VolInfo, TimePoint] | None = None
-        cur_note_type : NoteType | None                  = None
-        for note_type, timept, vol in self.note_data.iter_vols():
-            # Reset state variables when changing tracks
-            if note_type != cur_note_type:
-                prev_vol_info = None
-                cur_note_type = note_type
-            # Resolve last point's segment type
-            if prev_vol_info is not None:
-                prev_timept, prev_note = prev_vol_info
-                if vol.start != prev_timept.end:
-                    laser_segments.append(_LaserSegmentInfo(note_type, prev_note, timept, SegmentType.MOVING))
-                else:
-                    laser_segments.append(_LaserSegmentInfo(note_type, prev_note, timept, SegmentType.STATIC))
-            # Add another segment if we have a slam
-            if vol.start != vol.end:
-                laser_segments.append(_LaserSegmentInfo(note_type, timept, timept, SegmentType.SLAM))
-            # Update state variables
-            if SegmentFlag.END in vol.point_type:
-                prev_vol_info = None
-            else:
-                prev_vol_info = vol, timept
-
-        moving_laser_time: float = 0.0
-        static_laser_time: float = 0.0
-        slam_laser_time  : float = 0.0
-        for segment_info in laser_segments:
-            laser_time  = self._get_elapsed_time(segment_info.timepoint_end)
-            laser_time -= self._get_elapsed_time(segment_info.timepoint_start)
-            if segment_info.segment_type == SegmentType.MOVING:
-                moving_laser_time += laser_time
-            elif segment_info.segment_type == SegmentType.STATIC:
-                static_laser_time += laser_time
-            elif segment_info.segment_type == SegmentType.SLAM:
+        moving_laser_time = 0.0
+        static_laser_time = 0.0
+        slam_laser_time   = 0.0
+        for vol_tuple_i, vol_tuple_f in itertools.pairwise(self.note_data.iter_vols()):
+            note_type_i, timept_i, vol_data_i = vol_tuple_i
+            note_type_f, timept_f, vol_data_f = vol_tuple_f
+            # Add slam first before skipping
+            if vol_data_i.start != vol_data_i.end:
                 slam_laser_time += 0.11
+            # Skip if different tracks
+            if note_type_i != note_type_f:
+                continue
+            # Skip if these segments aren't connected
+            if SegmentFlag.END in vol_data_i.point_type:
+                continue
+            # Figure out laser duration otherwise
+            vol_duration = self._get_elapsed_time(timept_f) - self._get_elapsed_time(timept_i)
+            logger.debug(f'vol duration at {timept_i}: {vol_duration:.3f}s')
+            if vol_data_i.end != vol_data_f.start:
+                moving_laser_time += vol_duration
+            else:
+                static_laser_time += vol_duration
         logger.info(f'----- TSUMAMI INFO -----')
         logger.info(f'moving laser time: {moving_laser_time:.3f}s')
         logger.info(f'static laser time: {static_laser_time:.3f}s')
