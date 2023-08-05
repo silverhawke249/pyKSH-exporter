@@ -326,10 +326,13 @@ class KSHParser:
 
         # Store note data in chart
         for k, v1 in self._bts.items():
+            v1 = dict(sorted(v1.items()))
             setattr(self._chart_info.note_data, k, v1)
         for k, v2 in self._fxs.items():
+            v2 = dict(sorted(v2.items()))
             setattr(self._chart_info.note_data, k, v2)
         for k, v3 in self._vols.items():
+            v3 = dict(sorted(v3.items()))
             setattr(self._chart_info.note_data, k, v3)
 
         final_note_timept = TimePoint()
@@ -627,7 +630,7 @@ class KSHParser:
                     self._recent_vol[vol].duration <= KSH_SLAM_DISTANCE and
                     self._recent_vol[vol].prev_vol.start != vol_position):
                     last_vol_info = self._recent_vol[vol]
-                    logger.debug(f'{vol}: making a slam at {last_vol_info.when} because distance is {last_vol_info.duration}')
+                    logger.debug(f'{vol}: slam at {last_vol_info.when}, distance={last_vol_info.duration}')
                     self._vols[vol][last_vol_info.when] = VolInfo(
                         last_vol_info.prev_vol.start, vol_position,
                         ease_type=last_vol_info.prev_vol.ease_type,
@@ -1014,7 +1017,7 @@ class KSHParser:
                 '  </music>\n')
 
     def _write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
-        for timept, vol in sorted(notedata.items()):
+        for timept, vol in notedata.items():
             if not apply_ease and vol.interpolated:
                 continue
             wide_indicator = 2 if vol.wide_laser else 1
