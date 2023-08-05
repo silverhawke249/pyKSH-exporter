@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
+from abc import ABC
+from decimal import Decimal
 from math import pi, sin
 from numbers import Real
 from typing import TypeVar
 
 from .classes.enums import EasingType
 
-T = TypeVar('T', int, float, Real)
+T = TypeVar('T', int, float, Real, Decimal)
 U = TypeVar('U', bound=Real)
 
 
