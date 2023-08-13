@@ -626,7 +626,9 @@ class ChartInfo:
         # Camera changes
         camera_dicts = [self.spcontroller_data.zoom_bottom, self.spcontroller_data.zoom_top]
         for camera_dict in camera_dicts:
+            is_empty_loop = True
             for timept_i, timept_f in itertools.pairwise(camera_dict):
+                is_empty_loop = False
                 cam_data_i = camera_dict[timept_i]
                 cam_data_f = camera_dict[timept_f]
                 # Add tricky value for instant changes
@@ -644,6 +646,8 @@ class ChartInfo:
                     cam_val = ((cam_data_f.start - cam_data_i.end) * (note_s - time_i) / (time_f - time_i) +
                                (cam_data_i.end))
                     tricky['notes'] += abs(float(cam_val) * 100) ** 2.5 / 2_100_000
+            if not is_empty_loop and cam_data_f.is_snap():
+                tricky['camera'] += 0.103
         # Lane tilts
         tricky['camera'] += 0.002 * len(self.spcontroller_data.tilt)
         # Jacks
