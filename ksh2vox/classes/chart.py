@@ -242,7 +242,7 @@ class ChartInfo:
     music_offset  : int = 0
     preview_start : int = 0
     jacket_path   : str = ''
-    total_measures: int = 0
+    end_measure: int = 0
 
     # Calculated data
     _chip_notecount: int = -1

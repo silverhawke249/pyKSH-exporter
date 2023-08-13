@@ -336,11 +336,13 @@ class KSHParser:
             setattr(self._chart_info.note_data, k, v3)
 
         final_note_timept = TimePoint()
-        for _, timept, _ in self._chart_info.note_data.iter_notes():
+        for _, timept, note_data in self._chart_info.note_data.iter_notes():
+            if not isinstance(note_data, VolInfo) and note_data.duration != 0:
+                timept = self._chart_info.add_duration(timept, note_data.duration)
             final_note_timept = max(timept, final_note_timept)
 
         # TODO: See if rounding up to next measure is necessary or not
-        self._chart_info.total_measures = final_note_timept.measure + 2
+        self._chart_info.end_measure = final_note_timept.measure + 2
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split('=', 1)
@@ -803,7 +805,7 @@ class KSHParser:
             vol_data.update(new_points)
 
         # Add final point for zooms
-        end_point = TimePoint(self._chart_info.total_measures, 0, 1)
+        end_point = TimePoint(self._chart_info.end_measure, 0, 1)
         zt_end = self._chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint].duplicate()
         zt_end.start = zt_end.end
         self._chart_info.spcontroller_data.zoom_top[end_point] = zt_end
@@ -1130,7 +1132,7 @@ class KSHParser:
 
         # End position
         f.write('#END POSITION\n'
-               f'{self._chart_info.total_measures:03},01,00\n'
+               f'{self._chart_info.end_measure:03},01,00\n'
                 '#END\n')
         f.write('\n')
 

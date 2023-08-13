@@ -310,7 +310,7 @@ class VOXParser:
         final_note_timept = TimePoint()
         for _, timept, _ in self.chart_info.note_data.iter_notes():
             final_note_timept = max(timept, final_note_timept)
-        self.chart_info.total_measures = final_note_timept.measure + 2
+        self.chart_info.end_measure = final_note_timept.measure + 2
 
         # Fix when last vol segment isn't properly indicated
         for vol_data in [self.chart_info.note_data.vol_l, self.chart_info.note_data.vol_r]:
