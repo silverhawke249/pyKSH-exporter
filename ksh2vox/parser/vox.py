@@ -325,17 +325,20 @@ class VOXParser:
         # Fix zoom_top and zoom_bottom segment flags
         camera_dicts = [self.chart_info.spcontroller_data.zoom_bottom, self.chart_info.spcontroller_data.zoom_top]
         for camera_dict in camera_dicts:
+            if not camera_dict:
+                continue
             timept_i = min(camera_dict.keys())
             camera_dict[timept_i].point_type |= SegmentFlag.START
 
         # Fix the remaining SPController data segment flags
-        timept_i = min(self.chart_info.spcontroller_data.tilt.keys())
-        self.chart_info.spcontroller_data.tilt[timept_i].point_type |= SegmentFlag.START
-        for timept_i, timept_f in pairwise(self.chart_info.spcontroller_data.tilt):
-            data_i = self.chart_info.spcontroller_data.tilt[timept_i]
-            data_f = self.chart_info.spcontroller_data.tilt[timept_f]
-            if SegmentFlag.END in data_i.point_type:
-                data_f.point_type |= SegmentFlag.START
+        if self.chart_info.spcontroller_data.tilt:
+            timept_i = min(self.chart_info.spcontroller_data.tilt.keys())
+            self.chart_info.spcontroller_data.tilt[timept_i].point_type |= SegmentFlag.START
+            for timept_i, timept_f in pairwise(self.chart_info.spcontroller_data.tilt):
+                data_i = self.chart_info.spcontroller_data.tilt[timept_i]
+                data_f = self.chart_info.spcontroller_data.tilt[timept_f]
+                if SegmentFlag.END in data_i.point_type:
+                    data_f.point_type |= SegmentFlag.START
 
     @property
     def vox_path(self):
