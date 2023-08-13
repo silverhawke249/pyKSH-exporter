@@ -211,6 +211,7 @@ class NoteType(Flag):
     BT_D  = auto()
     FX_R  = auto()
     VOL_R = auto()
+    DUMMY = auto()
 
     def __str__(self) -> str:
         if self.name is None:
