@@ -45,13 +45,13 @@ NOTE_STR_FLAG_MAP = {
     NoteType.BT_D: 0o02,
     NoteType.FX_R: 0o01,
 }
-SPIN_TYPE_MAP: dict[SpinType, tuple[float, int]] = {
-    SpinType.NO_SPIN      : (0.0,   0),
-    SpinType.SINGLE_SPIN  : (1.1, 152),
-    SpinType.SINGLE_SPIN_2: (0.7, 104),
-    SpinType.SINGLE_SPIN_3: (0.9, 128),
-    SpinType.TRIPLE_SPIN  : (3.0, 392),
-    SpinType.HALF_SPIN    : (0.5, 128),
+SPIN_TYPE_MAP: dict[SpinType, tuple[Decimal, int]] = {
+    SpinType.NO_SPIN      : (Decimal('0.0'),   0),
+    SpinType.SINGLE_SPIN  : (Decimal('1.1'), 152),
+    SpinType.SINGLE_SPIN_2: (Decimal('0.7'), 104),
+    SpinType.SINGLE_SPIN_3: (Decimal('0.9'), 128),
+    SpinType.TRIPLE_SPIN  : (Decimal('3.0'), 392),
+    SpinType.HALF_SPIN    : (Decimal('0.5'), 128),
 }
 ONEHAND_CHIPS_MAP = {
     0: Decimal(),
@@ -67,6 +67,9 @@ ONEHAND_HOLDS_MAP = {
     3: Decimal('0.5180'),
 }
 ONEHAND_HOLDS_DEFAULT = Decimal('0.5649')
+TRICKY_CAM_FLAT_INC   = Decimal('0.103')
+# 15 / 130 ~= 0.115s between consecutive buttons (130bpm 16ths)
+TRICKY_JACK_DISTANCE  = (Decimal() + 15) / 130
 
 logger = logging.getLogger(__name__)
 
@@ -693,11 +696,11 @@ class ChartInfo:
         # Tricky
         # BPM change, camera change, tilts, spins, jacks = higher radar value
         tricky = {
-            'camera'    : 0.0,
-            'notes'     : 0.0,
-            'bpm_change': 0.0,
-            'bpm_dev'   : 0.0,
-            'jacks'     : 0.0,
+            'camera'    : Decimal('0.0'),
+            'notes'     : Decimal('0.0'),
+            'bpm_change': Decimal('0.0'),
+            'bpm_dev'   : Decimal('0.0'),
+            'jacks'     : Decimal('0.0'),
         }
         # Lane spins
         for note_type, spin_start_t, vol in self.note_data.iter_vols():
@@ -706,7 +709,7 @@ class ChartInfo:
                 continue
             # This is in ticks
             tricky_increment, spin_duration = SPIN_TYPE_MAP[vol.spin_type]
-            camera_value                    = 0.82 if vol.spin_type == SpinType.HALF_SPIN else 2.2
+            camera_value = Decimal('0.82') if vol.spin_type == SpinType.HALF_SPIN else Decimal('2.2')
             # Tricky increment from spin
             tricky['camera'] += tricky_increment
             if vol.spin_duration != 0:
@@ -726,9 +729,9 @@ class ChartInfo:
                 cam_data_f = camera_dict[timept_f]
                 # Add tricky value for instant changes
                 if cam_data_i.is_snap():
-                    tricky['camera'] += 0.103
+                    tricky['camera'] += TRICKY_CAM_FLAT_INC
                 # Camera changes also add tricky value
-                tricky['camera'] += 0.103
+                tricky['camera'] += TRICKY_CAM_FLAT_INC
                 time_i = self._get_elapsed_time(timept_i)
                 time_f = self._get_elapsed_time(timept_f)
                 # Every note adds tricky depending on camera value
@@ -739,11 +742,11 @@ class ChartInfo:
                     note_s  = self._get_elapsed_time(note_t)
                     cam_val = ((cam_data_f.start - cam_data_i.end) * (note_s - time_i) / (time_f - time_i) +
                                (cam_data_i.end))
-                    tricky['notes'] += abs(float(cam_val) * 100) ** 2.5 / 2_100_000
+                    tricky['notes'] += abs(cam_val * 100) ** Decimal('2.5') / 2_100_000
             if not is_empty_loop and cam_data_f.is_snap():
-                tricky['camera'] += 0.103
+                tricky['camera'] += TRICKY_CAM_FLAT_INC
         # Lane tilts
-        tricky['camera'] += 0.002 * len(self.spcontroller_data.tilt)
+        tricky['camera'] += Decimal('0.002') * len(self.spcontroller_data.tilt)
         # Jacks
         last_note_type: NoteType | None = None
         last_time     : Decimal | None  = None
@@ -759,8 +762,7 @@ class ChartInfo:
                 jack_count = 1
             cur_time = self._get_elapsed_time(timept)
             if last_time is not None:
-                # 15 / 130 ~= 0.115s between consecutive buttons (130bpm 16ths)
-                if cur_time - last_time <= 15 / 130:
+                if cur_time - last_time <= TRICKY_JACK_DISTANCE:
                     jack_count += 1
                 else:
                     if jack_count >= 3:
@@ -770,24 +772,25 @@ class ChartInfo:
         # Check for the last track
         if jack_count >= 3:
             jacks.append(jack_count)
-        tricky['jacks'] += sum((v ** 1.85) * 5 / 13 for v in jacks)
+        tricky['jacks'] += sum((v ** Decimal('1.85')) / Decimal('2.6') for v in jacks)
         # BPM changes
-        tricky['bpm_change'] += 0.8 * (len(self.bpms) - 1) + (len(self.bpms) - 1) ** 1.155 / float(time_coefficient)
+        tricky['bpm_change'] += Decimal('0.8') * (len(self.bpms) - 1)
+        tricky['bpm_change'] += ((len(self.bpms) - 1) ** Decimal('1.155')) / time_coefficient
         for bpm_value, bpm_duration in self._bpm_durations.items():
             bpm_ratio = standard_bpm / bpm_value
             if bpm_ratio < 1:
                 bpm_ratio = 1 / bpm_ratio
             elif bpm_ratio == 1:
                 continue
-            tricky['bpm_dev'] += 2 * (float(bpm_ratio) ** 1.25) * (float(bpm_duration) ** 0.5)
+            tricky['bpm_dev'] += 2 * (bpm_ratio ** Decimal('1.25')) * (bpm_duration ** Decimal('0.5'))
         logger.info(f'----- TRICKY INFO -----')
         logger.info(f'bpm change tricky: {tricky["bpm_change"]:.3f}')
         logger.info(f'bpm deviation tricky: {tricky["bpm_dev"]:.3f}')
         logger.info(f'baseline camera tricky: {tricky["camera"]:.3f}')
         logger.info(f'note + lane change tricky: {tricky["notes"]:.3f}')
         logger.info(f'jacks tricky: {tricky["jacks"]:.3f}')
-        tricky_value = sum(tricky.values()) / float(time_coefficient)
-        self._radar_tricky = int(clamp(tricky_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
+        tricky_value = sum(tricky.values()) / time_coefficient
+        self._radar_tricky = int(clamp(float(tricky_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
 
     def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
