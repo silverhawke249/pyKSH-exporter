@@ -297,7 +297,7 @@ class ChartInfo:
 
     def __post_init__(self):
         # Default values
-        self.bpms[TimePoint()]          = Decimal(120)
+        self.bpms[TimePoint()]          = Decimal('120')
         self.timesigs[TimePoint()]      = TimeSignature()
         self.tilt_type[TimePoint()]     = TiltType.NORMAL
         self.active_filter[TimePoint()] = 0
@@ -489,8 +489,8 @@ class ChartInfo:
         chart_end_time   = self._get_elapsed_time(chart_end_timept)
         total_chart_time = chart_end_time - chart_begin_time
         # Used to scale certain radar values inversely to song length
-        time_coefficient = total_chart_time / Decimal(118.5)
-        time_coefficient = clamp(time_coefficient, Decimal(1))
+        time_coefficient = total_chart_time / Decimal('118.5')
+        time_coefficient = clamp(time_coefficient, Decimal('1'))
         logger.info(f'chart span: {self.timepoint_to_vox(chart_begin_timept)} ~ {self.timepoint_to_vox(chart_end_timept)}')
         logger.info(f'chart span: {chart_begin_time:.3f}s ~ {chart_end_time:.3f}s ({total_chart_time:.3f}s)')
 
@@ -513,19 +513,19 @@ class ChartInfo:
             # Decrease peak value when certain chords happen
             # LAB chord
             if flags & 0o70 == 0o70:
-                peak_value -= Decimal(1.5)
+                peak_value -= Decimal('1.5')
             # 2-button chord of L, A, B
             elif any(flags & mask == mask for mask in [0o60, 0o50, 0o30]):
-                peak_value -= Decimal(0.83)
+                peak_value -= Decimal('0.83')
             # CDR chord
             if flags & 0o07 == 0o07:
-                peak_value -= Decimal(1.5)
+                peak_value -= Decimal('1.5')
             # 2-button chord of C, D, R
             elif any(flags & mask == mask for mask in [0o06, 0o05, 0o03]):
-                peak_value -= Decimal(0.83)
+                peak_value -= Decimal('0.83')
             # Only applies for exactly a BC chord
             if flags == 0o14:
-                peak_value -= Decimal(0.83)
+                peak_value -= Decimal('0.83')
             # Increase peak value by 1 for each note
             while flags:
                 peak_value += flags % 2
@@ -555,7 +555,7 @@ class ChartInfo:
                 peak_time  = t
         logger.info(f'----- PEAK INFO -----')
         logger.info(f'peak value at {peak_time:.3f}s: {peak_value:.2f}')
-        peak_value /= Decimal(0.24)
+        peak_value /= Decimal('0.24')
         self._radar_peak = int(clamp(float(peak_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tsumami
@@ -568,7 +568,7 @@ class ChartInfo:
             note_type_f, timept_f, vol_data_f = vol_tuple_f
             # Add slam first before skipping
             if vol_data_i.start != vol_data_i.end:
-                slam_laser_time += Decimal(0.11)
+                slam_laser_time += Decimal('0.11')
             # Skip if different tracks
             if note_type_i != note_type_f:
                 continue
@@ -588,7 +588,7 @@ class ChartInfo:
         logger.info(f'slam laser time: {slam_laser_time:.3f}s')
         tsumami_value  = (moving_laser_time + slam_laser_time) / total_chart_time * 191
         tsumami_value += static_laser_time / total_chart_time * 29
-        tsumami_value *= Decimal(0.956)
+        tsumami_value *= Decimal('0.956')
         self._radar_tsumami = int(clamp(float(tsumami_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # One-hand + Hand-trip
@@ -709,7 +709,7 @@ class ChartInfo:
 
     def get_bpm(self, timepoint: TimePoint) -> Decimal:
         if timepoint not in self._bpm_cache:
-            prev_bpm = Decimal(0)
+            prev_bpm = Decimal()
             for timept, bpm in self.bpms.items():
                 if timept > timepoint:
                     break

@@ -80,10 +80,10 @@ STOP_CONVERSION_RATE        = Fraction(1, 192)
 # KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
 # change and distance change... basically, polar coordinates for the camera. This
 # means that the mapping between KSM and SDVX isn't as clean-cut as we'd like.
-ZOOM_BOTTOM_CONVERSION_RATE = Decimal(-0.006667)
-ZOOM_TOP_CONVERSION_RATE    = Decimal(0.002222)
-TILT_CONVERSION_RATE        = Decimal(-0.420000)
-LANE_SPLIT_CONVERSION_RATE  = Decimal(0.006667)
+ZOOM_BOTTOM_CONVERSION_RATE = Decimal('-0.006667')
+ZOOM_TOP_CONVERSION_RATE    = Decimal('0.002222')
+TILT_CONVERSION_RATE        = Decimal('-0.420000')
+LANE_SPLIT_CONVERSION_RATE  = Decimal('0.006667')
 
 logger = logging.getLogger(__name__)
 
