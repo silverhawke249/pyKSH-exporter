@@ -1,6 +1,7 @@
 import itertools
 import logging
 
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field, InitVar
 from decimal import Decimal
@@ -52,6 +53,20 @@ SPIN_TYPE_MAP: dict[SpinType, tuple[float, int]] = {
     SpinType.TRIPLE_SPIN  : (3.0, 392),
     SpinType.HALF_SPIN    : (0.5, 128),
 }
+ONEHAND_CHIPS_MAP = {
+    0: Decimal(),
+    1: Decimal('1.2132'),
+    2: Decimal('1.3343'),
+    3: Decimal('1.6246'),
+}
+ONEHAND_CHIPS_DEFAULT = Decimal('1.6365')
+ONEHAND_HOLDS_MAP = {
+    0: Decimal(),
+    1: Decimal('0.2205'),
+    2: Decimal('0.3530'),
+    3: Decimal('0.5180'),
+}
+ONEHAND_HOLDS_DEFAULT = Decimal('0.5649')
 
 logger = logging.getLogger(__name__)
 
@@ -498,9 +513,9 @@ class ChartInfo:
         # Higher average NPS = higher "notes" value
         # Higher peak density (over 2 seconds) = higher "peak" value
         peak_flags: dict[Decimal, int] = {}
-        notes_value = 0.0
+        button_count = 0
         for note_type, timept, _ in self.note_data.iter_buttons():
-            notes_value += 1
+            button_count += 1
             # Figure out the time this particular note happens
             note_timing = self._get_elapsed_time(timept)
             if note_timing not in peak_flags:
@@ -536,8 +551,8 @@ class ChartInfo:
         # Number of chips + number of holds (not the chain from holds)
         # All these values are gonna have some adjustment coefficient that's obtained experimentally (oof)
         logger.info('----- NOTES INFO -----')
-        logger.info(f'keypress count: {int(notes_value)}')
-        notes_value *= 200 / 12.521 / float(total_chart_time)
+        logger.info(f'keypress count: {button_count}')
+        notes_value = button_count * 200 / 12.521 / float(total_chart_time)
         self._radar_notes = int(clamp(notes_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Calculate "peak" value
@@ -563,12 +578,14 @@ class ChartInfo:
         moving_laser_time = Decimal()
         static_laser_time = Decimal()
         slam_laser_time   = Decimal()
-        for vol_tuple_i, vol_tuple_f in itertools.pairwise(self.note_data.iter_vols()):
+        pre_laser_ranges: list[tuple[NoteType, TimePoint, TimePoint]] = []
+        for vol_tuple_i, vol_tuple_f in itertools.pairwise(self.note_data.iter_vols(add_dummy=True)):
             note_type_i, timept_i, vol_data_i = vol_tuple_i
             note_type_f, timept_f, vol_data_f = vol_tuple_f
             # Add slam first before skipping
             if vol_data_i.start != vol_data_i.end:
                 slam_laser_time += Decimal('0.11')
+                pre_laser_ranges.append((note_type_i, timept_i, timept_i))
             # Skip if different tracks
             if note_type_i != note_type_f:
                 continue
@@ -580,8 +597,24 @@ class ChartInfo:
             logger.debug(f'vol duration at {timept_i}: {vol_duration:.3f}s')
             if vol_data_i.end != vol_data_f.start:
                 moving_laser_time += vol_duration
+                pre_laser_ranges.append((note_type_i, timept_i, timept_f))
             else:
                 static_laser_time += vol_duration
+        # Merge coincident endpoints
+        laser_ranges: list[tuple[NoteType, TimePoint, TimePoint]]  = []
+        prev_info   : tuple[NoteType, TimePoint, TimePoint] | None = None
+        for note_type, timept_i, timept_f in pre_laser_ranges:
+            if prev_info is not None:
+                # If current segment is coincident, extend the previous segment
+                if note_type == prev_info[0] and timept_i == prev_info[2]:
+                    prev_info = prev_info[0], prev_info[1], timept_f
+                    continue
+                # Else, previous segment is disjoint from current one
+                else:
+                    laser_ranges.append(prev_info)
+            prev_info = note_type, timept_i, timept_f
+        if prev_info is not None:
+            laser_ranges.append(prev_info)
         logger.info(f'----- TSUMAMI INFO -----')
         logger.info(f'moving laser time: {moving_laser_time:.3f}s')
         logger.info(f'static laser time: {static_laser_time:.3f}s')
@@ -594,8 +627,68 @@ class ChartInfo:
         # One-hand + Hand-trip
         # More buttons while laser movement happens = higher "one-hand" value
         # More opposite side buttons while one-handing = higher "hand-trip" value
-        for info_i, info_f in itertools.pairwise(self.note_data.iter_vols()):
-            ...
+        onehand  = {
+            'chip': Decimal(),
+            'long': Decimal(),
+        }
+        handtrip = {
+            'flat': Decimal(),
+        }
+        for laser_note_type, timept_i, timept_f in laser_ranges:
+            # One-hand check
+            timept_counter: Counter[TimePoint]                = Counter()
+            chip_timepts  : list[tuple[NoteType, TimePoint]]  = []
+            hold_timepts  : list[tuple[TimePoint, TimePoint]] = []
+            for note_type, hold_timept_i, note_data in self.note_data.iter_buttons():
+                if timept_i <= hold_timept_i <= timept_f:
+                    timept_counter.update([hold_timept_i])
+                    chip_timepts.append((note_type, hold_timept_i))
+                if note_data.duration != 0:
+                    hold_timept_f = self.add_duration(hold_timept_i, note_data.duration)
+                    # Hold happens at least partially within the laser segment
+                    if hold_timept_i <= timept_f or timept_i <= hold_timept_f:
+                        hold_timepts.append((hold_timept_i, hold_timept_f))
+            timept_check = {t for t, _ in hold_timepts if timept_i <= t <= timept_f}
+            timept_check.add(timept_i)
+            for count in timept_counter.values():
+                onehand['chip'] += ONEHAND_CHIPS_MAP.get(count, ONEHAND_CHIPS_DEFAULT)
+            logger.debug(f'holds at {laser_note_type} range {self.timepoint_to_vox(timept_i)} ~ {self.timepoint_to_vox(timept_f)}:')
+            for timept in timept_check:
+                # Count holds that are happening
+                count = sum(1 for ti, tf in hold_timepts if ti <= timept < tf)
+                onehand['long'] += ONEHAND_HOLDS_MAP.get(count, ONEHAND_HOLDS_DEFAULT)
+                logger.debug(f'{self.timepoint_to_vox(timept)}: {count}')
+            # TODO: Hand-trip check (probably can be optimized)
+            timept_set: set[TimePoint] = set()
+            for note_type, timept, note_data in self.note_data.iter_buttons():
+                # These aren't hand-trip
+                if ((laser_note_type == NoteType.VOL_L and
+                        note_type in [NoteType.FX_L, NoteType.BT_A, NoteType.BT_B]) or
+                    (laser_note_type == NoteType.VOL_R and
+                        note_type in [NoteType.FX_R, NoteType.BT_C, NoteType.BT_D])):
+                    continue
+                # Notes out of range
+                if timept >= timept_f:
+                    continue
+                # Notes in range
+                if timept_i <= timept < timept_f:
+                    timept_set.add(timept)
+                    break
+                # Hold continues past the slam, or ends right at the slam
+                elif note_data.duration != 0:
+                    hold_end = self.add_duration(timept, note_data.duration)
+                    if timept_i <= hold_end < timept_f:
+                        timept_set.add(timept)
+                    break
+                handtrip['flat'] += Decimal('0.64') * len(timept_set)
+        logger.info(f'----- ONE-HAND INFO -----')
+        logger.info(f'button tap value: {onehand["chip"]:.3f}')
+        logger.info(f'button hold value: {onehand["long"]:.3f}')
+        onehand_factor  = (onehand['chip'] + onehand['long']) / button_count - Decimal('0.16')
+        onehand_factor /= Decimal('0.34')
+        onehand_factor  = clamp(onehand_factor, Decimal(), Decimal('1')) + 2
+        onehand_value   = (onehand['chip'] + onehand['long']) / Decimal('5.55') * onehand_factor / time_coefficient
+        self._radar_onehand = int(clamp(float(onehand_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tricky
         # BPM change, camera change, tilts, spins, jacks = higher radar value
@@ -639,6 +732,7 @@ class ChartInfo:
                 time_i = self._get_elapsed_time(timept_i)
                 time_f = self._get_elapsed_time(timept_f)
                 # Every note adds tricky depending on camera value
+                # TODO: Optimize this
                 note_timepts = [note_t for _, note_t, _ in self.note_data.iter_buttons()
                                 if timept_i <= note_t < timept_f]
                 for note_t in note_timepts:
