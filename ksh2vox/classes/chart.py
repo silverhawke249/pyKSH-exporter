@@ -168,14 +168,18 @@ class NoteData:
             for key, value in note_dict.items():
                 yield note_type, key, value
 
-    def iter_vols(self) -> Iterable[tuple[NoteType, TimePoint, VolInfo]]:
+    def iter_vols(self, *, add_dummy=False) -> Iterable[tuple[NoteType, TimePoint, VolInfo]]:
         dicts: list[tuple[NoteType, dict]] = [
             (NoteType.VOL_L, self.vol_l),
             (NoteType.VOL_R, self.vol_r),
         ]
+        is_empty_loop = True
         for note_type, note_dict in dicts:
             for key, value in note_dict.items():
+                is_empty_loop = False
                 yield note_type, key, value
+        if not is_empty_loop and add_dummy:
+            yield NoteType.DUMMY, key, value
 
     def iter_buttons(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo | FXInfo]]:
         dicts: list[tuple[NoteType, dict]] = [
