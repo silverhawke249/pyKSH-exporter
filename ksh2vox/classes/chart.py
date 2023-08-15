@@ -67,6 +67,16 @@ ONEHAND_HOLDS_MAP = {
     3: Decimal('0.5180'),
 }
 ONEHAND_HOLDS_DEFAULT = Decimal('0.5649')
+HANDTRIP_VALUE_MAP = {
+    0: Decimal(),
+    1: Decimal('1.2486'),
+    2: Decimal('1.4250'),
+    3: Decimal('1.5113'),
+}
+HANDTRIP_NOTETYPES_MAP = {
+    NoteType.VOL_L: {NoteType.BT_A, NoteType.BT_B, NoteType.FX_L},
+    NoteType.VOL_R: {NoteType.BT_C, NoteType.BT_D, NoteType.FX_R},
+}
 TRICKY_CAM_FLAT_INC   = Decimal('0.103')
 # 15 / 130 ~= 0.115s between consecutive buttons (130bpm 16ths)
 TRICKY_JACK_DISTANCE  = (Decimal() + 15) / 130
@@ -635,55 +645,39 @@ class ChartInfo:
             'long': Decimal(),
         }
         handtrip = {
-            'flat': Decimal(),
+            'chip': Decimal(),
+            'long': Decimal(),
         }
         for laser_note_type, timept_i, timept_f in laser_ranges:
             # One-hand check
-            timept_counter: Counter[TimePoint]                = Counter()
-            chip_timepts  : list[tuple[NoteType, TimePoint]]  = []
-            hold_timepts  : list[tuple[TimePoint, TimePoint]] = []
-            for note_type, hold_timept_i, note_data in self.note_data.iter_buttons():
-                if timept_i <= hold_timept_i <= timept_f:
-                    timept_counter.update([hold_timept_i])
-                    chip_timepts.append((note_type, hold_timept_i))
+            chip_timepts  : dict[TimePoint, list[NoteType]] = {}
+            hold_timepts  : list[tuple[NoteType, TimePoint, TimePoint]] = []
+            for note_type, btn_timept_i, note_data in self.note_data.iter_buttons():
+                if timept_i <= btn_timept_i <= timept_f:
+                    if btn_timept_i not in chip_timepts:
+                        chip_timepts[btn_timept_i] = []
+                    chip_timepts[btn_timept_i].append(note_type)
                 if note_data.duration != 0:
-                    hold_timept_f = self.add_duration(hold_timept_i, note_data.duration)
+                    btn_timept_f = self.add_duration(btn_timept_i, note_data.duration)
                     # Hold happens at least partially within the laser segment
-                    if hold_timept_i <= timept_f or timept_i <= hold_timept_f:
-                        hold_timepts.append((hold_timept_i, hold_timept_f))
-            timept_check = {t for t, _ in hold_timepts if timept_i <= t <= timept_f}
+                    if btn_timept_i <= timept_f or timept_i <= btn_timept_f:
+                        hold_timepts.append((note_type, btn_timept_i, btn_timept_f))
+            timept_check = {t for _, t, _ in hold_timepts if timept_i <= t <= timept_f}
             timept_check.add(timept_i)
-            for count in timept_counter.values():
-                onehand['chip'] += ONEHAND_CHIPS_MAP.get(count, ONEHAND_CHIPS_DEFAULT)
-            logger.debug(f'holds at {laser_note_type} range {self.timepoint_to_vox(timept_i)} ~ {self.timepoint_to_vox(timept_f)}:')
+            for note_list in chip_timepts.values():
+                onehand_count     = len(note_list)
+                handtrip_count    = sum(1 for nt in note_list
+                                        if nt in HANDTRIP_NOTETYPES_MAP[laser_note_type])
+                onehand['chip']  += ONEHAND_CHIPS_MAP.get(onehand_count, ONEHAND_CHIPS_DEFAULT)
+                handtrip['chip'] += HANDTRIP_VALUE_MAP[handtrip_count]
             for timept in timept_check:
                 # Count holds that are happening
-                count = sum(1 for ti, tf in hold_timepts if ti <= timept < tf)
-                onehand['long'] += ONEHAND_HOLDS_MAP.get(count, ONEHAND_HOLDS_DEFAULT)
-                logger.debug(f'{self.timepoint_to_vox(timept)}: {count}')
-            # TODO: Hand-trip check (probably can be optimized)
-            timept_set: set[TimePoint] = set()
-            for note_type, timept, note_data in self.note_data.iter_buttons():
-                # These aren't hand-trip
-                if ((laser_note_type == NoteType.VOL_L and
-                        note_type in [NoteType.FX_L, NoteType.BT_A, NoteType.BT_B]) or
-                    (laser_note_type == NoteType.VOL_R and
-                        note_type in [NoteType.FX_R, NoteType.BT_C, NoteType.BT_D])):
-                    continue
-                # Notes out of range
-                if timept >= timept_f:
-                    continue
-                # Notes in range
-                if timept_i <= timept < timept_f:
-                    timept_set.add(timept)
-                    break
-                # Hold continues past the slam, or ends right at the slam
-                elif note_data.duration != 0:
-                    hold_end = self.add_duration(timept, note_data.duration)
-                    if timept_i <= hold_end < timept_f:
-                        timept_set.add(timept)
-                    break
-                handtrip['flat'] += Decimal('0.64') * len(timept_set)
+                onehand_count     = sum(1 for _, ti, tf in hold_timepts
+                                        if ti <= timept < tf)
+                handtrip_count    = sum(1 for nt, ti, tf in hold_timepts
+                                        if ti <= timept < tf and nt in HANDTRIP_NOTETYPES_MAP[laser_note_type])
+                onehand['long']  += ONEHAND_HOLDS_MAP.get(onehand_count, ONEHAND_HOLDS_DEFAULT)
+                handtrip['long'] += HANDTRIP_VALUE_MAP[handtrip_count]
         logger.info(f'----- ONE-HAND INFO -----')
         logger.info(f'button tap value: {onehand["chip"]:.3f}')
         logger.info(f'button hold value: {onehand["long"]:.3f}')
@@ -692,6 +686,11 @@ class ChartInfo:
         onehand_factor  = clamp(onehand_factor, Decimal(), Decimal('1')) + 2
         onehand_value   = (onehand['chip'] + onehand['long']) / Decimal('5.55') * onehand_factor / time_coefficient
         self._radar_onehand = int(clamp(float(onehand_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
+        logger.info(f'----- HAND-TRIP INFO -----')
+        logger.info(f'button tap value: {handtrip["chip"]:.3f}')
+        logger.info(f'button hold value: {handtrip["long"]:.3f}')
+        handtrip_value  = (handtrip['chip'] + handtrip['long']) / time_coefficient
+        self._radar_handtrip = int(clamp(float(handtrip_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tricky
         # BPM change, camera change, tilts, spins, jacks = higher radar value
