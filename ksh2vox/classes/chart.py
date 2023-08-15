@@ -35,8 +35,8 @@ from .filters import (
 )
 from ..utils import clamp
 
-MIN_RADAR_VAL = 0.0
-MAX_RADAR_VAL = 200.0
+MIN_RADAR_VAL = Decimal()
+MAX_RADAR_VAL = Decimal('200')
 NOTE_STR_FLAG_MAP = {
     NoteType.FX_L: 0o40,
     NoteType.BT_A: 0o20,
@@ -565,7 +565,7 @@ class ChartInfo:
         # All these values are gonna have some adjustment coefficient that's obtained experimentally (oof)
         logger.info('----- NOTES INFO -----')
         logger.info(f'keypress count: {button_count}')
-        notes_value = button_count * 200 / 12.521 / float(total_chart_time)
+        notes_value = button_count * 200 / Decimal('12.521') / total_chart_time
         self._radar_notes = int(clamp(notes_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Calculate "peak" value
@@ -584,7 +584,7 @@ class ChartInfo:
         logger.info(f'----- PEAK INFO -----')
         logger.info(f'peak value at {peak_time:.3f}s: {peak_value:.2f}')
         peak_value /= Decimal('0.24')
-        self._radar_peak = int(clamp(float(peak_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
+        self._radar_peak = int(clamp(peak_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tsumami
         # More lasers = higher radar value
@@ -635,7 +635,7 @@ class ChartInfo:
         tsumami_value  = (moving_laser_time + slam_laser_time) / total_chart_time * 191
         tsumami_value += static_laser_time / total_chart_time * 29
         tsumami_value *= Decimal('0.956')
-        self._radar_tsumami = int(clamp(float(tsumami_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
+        self._radar_tsumami = int(clamp(tsumami_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # One-hand + Hand-trip
         # More buttons while laser movement happens = higher "one-hand" value
@@ -685,12 +685,12 @@ class ChartInfo:
         onehand_factor /= Decimal('0.34')
         onehand_factor  = clamp(onehand_factor, Decimal(), Decimal('1')) + 2
         onehand_value   = (onehand['chip'] + onehand['long']) / Decimal('5.55') * onehand_factor / time_coefficient
-        self._radar_onehand = int(clamp(float(onehand_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
+        self._radar_onehand = int(clamp(onehand_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
         logger.info(f'----- HAND-TRIP INFO -----')
         logger.info(f'button tap value: {handtrip["chip"]:.3f}')
         logger.info(f'button hold value: {handtrip["long"]:.3f}')
         handtrip_value  = (handtrip['chip'] + handtrip['long']) / time_coefficient
-        self._radar_handtrip = int(clamp(float(handtrip_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
+        self._radar_handtrip = int(clamp(handtrip_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
         # Tricky
         # BPM change, camera change, tilts, spins, jacks = higher radar value
@@ -789,7 +789,7 @@ class ChartInfo:
         logger.info(f'note + lane change tricky: {tricky["notes"]:.3f}')
         logger.info(f'jacks tricky: {tricky["jacks"]:.3f}')
         tricky_value = sum(tricky.values()) / time_coefficient
-        self._radar_tricky = int(clamp(float(tricky_value), MIN_RADAR_VAL, MAX_RADAR_VAL))
+        self._radar_tricky = int(clamp(tricky_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
     def get_timesig(self, measure: int) -> TimeSignature:
         """ Return the prevailing time signature at the given measure. """
