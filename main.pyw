@@ -73,14 +73,18 @@ class KSH2VOXApp():
     gmbg_image_index  : int = 0
     popup_result      : bool = False
 
+    logger            : logging.Logger
+
     def __init__(self):
         self.gmbg_data = get_game_backgrounds()
 
         logging.basicConfig(format='[%(levelname)s %(asctime)s] %(name)s: %(message)s', level=logging.DEBUG)
 
-        warning_handler = FunctionHandler(self.log_warning)
+        self.logger = logging.getLogger('main')
+
+        warning_handler = FunctionHandler(self.log)
         warning_handler.setLevel(logging.WARNING)
-        warning_handler.setFormatter(logging.Formatter('%(message)s'))
+        warning_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
         logging.getLogger('').addHandler(warning_handler)
 
         dpg.create_context()
@@ -304,9 +308,6 @@ class KSH2VOXApp():
 
         return self.reverse_ui_map[uuid]
 
-    def log_warning(self, message):
-        self.log(f'Warning: {message}')
-
     def log(self, message):
         self.ui['log_last_line'] = dpg.add_text(
             f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}',
@@ -413,19 +414,19 @@ class KSH2VOXApp():
     def validate_metadata(self):
         title_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.title_yomigana)
         if title_check is None:
-            self.log('Warning: Title yomigana is not a valid yomigana string or is empty')
+            self.logger.warning('Title yomigana is not a valid yomigana string or is empty')
 
         artist_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.artist_yomigana)
         if artist_check is None:
-            self.log('Warning: Artist yomigana is not a valid yomigana string or is empty')
+            self.logger.warning('Artist yomigana is not a valid yomigana string or is empty')
 
         if not (self.parser.song_info.ascii_label and self.parser.song_info.ascii_label.isascii()):
-            self.log('Warning: ASCII label is not an ASCII string or is empty')
+            self.logger.warning('ASCII label is not an ASCII string or is empty')
 
         try:
             time.strptime(self.parser.song_info.release_date, '%Y%m%d')
         except ValueError:
-            self.log('Warning: Release date is not a valid YYYYMMDD date string')
+            self.logger.warning('Release date is not a valid YYYYMMDD date string')
 
     def export_vox(self):
         with disable_buttons(self), show_throbber(self):
