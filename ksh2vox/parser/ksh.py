@@ -623,30 +623,21 @@ class KSHParser:
                 self._wide_segment[vol] = False
                 if vol in self._recent_vol:
                     del self._recent_vol[vol]
-                # Warn if curve special command extends beyond current laser segment
-                if self._cur_easing[vol] != EasingType.NO_EASING:
+                # Warn if curve special command is issued outside of laser segments
+                if vol in self._cur_easing and self._cur_easing[vol] != EasingType.NO_EASING:
                     self._cur_easing[vol] = EasingType.NO_EASING
-                    if self._ease_start[vol] == cur_time:
-                        logger.warning(f'curve command for {vol} exists outside of laser segment at {cur_time}')
-                    else:
-                        logger.warning(f'curve command not closed after {vol} segment at {cur_time}')
-                    del self._ease_start[vol]
+                    logger.warning(f'curve command for {vol} exists outside of laser segment at {cur_time}')
+                # Warn if curve special command extends beyond current laser segment
+                elif vol not in self._cur_easing:
+                    self._cur_easing[vol] = EasingType.NO_EASING
+                    logger.error(f'curve command not closed after {vol} segment at {cur_time}')
             elif state == ':':
                 # Add (linearly) interpolated laser point when curve command does not coincide with a laser point
-                # This obsoletes the warning implemented below
-                if vol in self._ease_start:
-                    if cur_time == self._ease_start[vol]:
-                        self._ease_midpoints[vol].append((cur_time, self._cur_easing[vol]))
-                    del self._ease_start[vol]
+                # This obsoletes the warning that was implemented below
+                if vol in self._cur_easing and cur_time == self._ease_start[vol]:
+                    self._ease_midpoints[vol].append((cur_time, self._cur_easing[vol]))
+                    del self._cur_easing[vol]
             else:
-                if vol in self._ease_start:
-                    """
-                    if self._ease_start[vol] != cur_time:
-                        logger.warning(
-                            f'curve command at {self._ease_start[vol]} for {vol} was not placed on a laser point',
-                            ParserWarning)
-                    """
-                    del self._ease_start[vol]
                 vol_position = convert_laser_pos(state)
                 # This handles the case of short laser segment being treated as a slam
                 if (vol in self._recent_vol and
