@@ -129,6 +129,7 @@ class KSHParser:
     # Stateful data for notechart parsing
     _cur_timesig: TimeSignature         = dataclasses.field(default=TimeSignature(), init=False, repr=False)
     _cur_filter : FilterIndex           = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
+    # When a key is missing from this dict, it means that easing is currently active on that volume track
     _cur_easing : dict[str, EasingType] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _filter_changed : bool                    = dataclasses.field(default=False, init=False, repr=False)
@@ -145,8 +146,9 @@ class KSHParser:
     _spins : dict[TimePoint, str]      = dataclasses.field(default_factory=dict, init=False, repr=False)
     _stops : dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
-    _ease_start : dict[str, TimePoint]                 = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _ease_ranges: dict[TimePoint, tuple[float, float]] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _ease_start    : dict[str, TimePoint]                          = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _ease_ranges   : dict[TimePoint, tuple[float, float]]          = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _ease_midpoints: dict[str, list[tuple[TimePoint, EasingType]]] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _filter_names    : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _filter_to_effect: dict[str, int]       = dataclasses.field(default_factory=dict, init=False, repr=False)
@@ -261,6 +263,10 @@ class KSHParser:
                 logger.warning(str(e))
 
     def _initialize_stateful_data(self) -> None:
+        self._ease_midpoints = {
+            'vol_l': [],
+            'vol_r': [],
+        }
         self._cur_easing = {
             'vol_l': EasingType.NO_EASING,
             'vol_r': EasingType.NO_EASING,
@@ -617,14 +623,29 @@ class KSHParser:
                 self._wide_segment[vol] = False
                 if vol in self._recent_vol:
                     del self._recent_vol[vol]
+                # Warn if curve special command extends beyond current laser segment
+                if self._cur_easing[vol] != EasingType.NO_EASING:
+                    self._cur_easing[vol] = EasingType.NO_EASING
+                    if self._ease_start[vol] == cur_time:
+                        logger.warning(f'curve command for {vol} exists outside of laser segment at {cur_time}')
+                    else:
+                        logger.warning(f'curve command not closed after {vol} segment at {cur_time}')
+                    del self._ease_start[vol]
             elif state == ':':
-                pass
+                # Add (linearly) interpolated laser point when curve command does not coincide with a laser point
+                # This obsoletes the warning implemented below
+                if vol in self._ease_start:
+                    if cur_time == self._ease_start[vol]:
+                        self._ease_midpoints[vol].append((cur_time, self._cur_easing[vol]))
+                    del self._ease_start[vol]
             else:
                 if vol in self._ease_start:
+                    """
                     if self._ease_start[vol] != cur_time:
                         logger.warning(
                             f'curve command at {self._ease_start[vol]} for {vol} was not placed on a laser point',
                             ParserWarning)
+                    """
                     del self._ease_start[vol]
                 vol_position = convert_laser_pos(state)
                 # This handles the case of short laser segment being treated as a slam
@@ -735,6 +756,37 @@ class KSHParser:
             stop_end = self._chart_info.add_duration(cur_time, duration)
             self._chart_info.stops[stop_end] = False
 
+        # Insert points where easing change happens without a laser point
+        new_ease_points: dict[str, list[tuple[TimePoint, VolInfo]]] = {
+            'vol_l': [],
+            'vol_r': [],
+        }
+        for vol_name, ease_data in self._ease_midpoints.items():
+            vol_data = self._vols[vol_name]
+            for timept, easing_type in ease_data:
+                # Get timepoints for laser points exactly before and after the ease timepoint
+                time_i = TimePoint()
+                for time_f in vol_data:
+                    if time_f > timept:
+                        break
+                    time_i = time_f
+                # Linearly interpolate
+                part_dist = self._chart_info.get_distance(time_i, timept)
+                total_dist = self._chart_info.get_distance(time_i, time_f)
+                position = interpolate(
+                    EasingType.LINEAR, part_dist, total_dist,
+                    vol_data[time_i].end, vol_data[time_f].start)
+                new_ease_points[vol_name].append((timept, VolInfo(
+                    position, position,
+                    ease_type=easing_type,
+                    filter_index=vol_data[time_i].filter_index,
+                    point_type=SegmentFlag.MIDDLE,
+                    wide_laser=vol_data[time_i].wide_laser)))
+        # Append and sort
+        for vol_name in ['vol_l', 'vol_r']:
+            self._vols[vol_name] = dict(sorted(itertools.chain(
+                self._vols[vol_name].items(), new_ease_points[vol_name])))
+
         for vol_name, vol_data in self._vols.items():
             if not vol_data:
                 continue
@@ -774,13 +826,13 @@ class KSHParser:
             new_points: dict[TimePoint, VolInfo] = {}
             for timept, filter_index in self._chart_info.active_filter.items():
                 if timept not in vol_data:
-                    time_i = TimePoint(0, 0, 1)
+                    time_i = TimePoint()
                     for time_f in vol_data:
                         if time_f > timept:
                             break
                         time_i = time_f
                     # Ignore filter changes before the start of the chart
-                    if time_i == TimePoint(0, 0, 1):
+                    if time_i == TimePoint():
                         continue
                     # Ignore filter changes after there's no more lasers
                     if time_i == time_f:
