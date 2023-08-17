@@ -83,6 +83,22 @@ Valid `filter` values are: `lpf`, `hpf`, `bitc`, `1`, `2`, `3`, `4`, `5`.
 
 ## Version history
 
+- v1.3 (2023/08/17)
+  - Add preliminary calculation of notecounts, in order to calculate maximum ex score.
+    - LONG and VOL calculation is known to be inaccurate for certain situations, this is a to-do.
+  - Add radar calculation, most of which is based on ZR147654's code.
+    - However, ONE-HAND and HAND-TRIP is calculated slightly differently, resulting in differences.
+  - Multiple custom commands can now be issued in a single timepoint by delimiting them with `;`.
+  - Add simple VOX parser.
+  - Add helper script for calculating notecounts and radar values.
+  - Emit an error in logs when encountering problematic curve sections.
+  - Allow curve commands to be issued on a laser segment, not just laser endpoints.
+  - Bug fixes:
+    - Fixed incorrect handling with tilt sections.
+    - Short laser segments in certain positions no longer converts to a slam.
+    - Audio offset is no longer ignored when exporting 2DX files.
+    - Hold lengths are now factored in when calculating chart end point.
+    - Logs no longer displays incorrect filename when filename is changed from default.
 - v1.2 (2023/05/09)
   - `applyFilter` command added.
   - Lane splits are converted.
@@ -114,3 +130,4 @@ The following are features/improvements that are being considered for implementa
 - [x] Show a preview of the selected background.
 - [ ] Release a standalone binary, possibly compiled with Nuitka.
 - [x] Allow custom filters to overlap with non-peak filters.
+- [ ] Fix notecount (long/vol) calculation.
