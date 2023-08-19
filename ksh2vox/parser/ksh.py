@@ -506,7 +506,6 @@ class KSHParser:
                 self._ease_start['vol_r'] = cur_time
                 self._cur_easing['vol_r'] = EasingType(int(value))
             elif name == 'curveBeginLR':
-                self._ease_start['vol_l'] = cur_time
                 if ',' in value:
                     value_l, value_r = value.split(',')[:2]
                 else:
@@ -634,9 +633,11 @@ class KSHParser:
             elif state == ':':
                 # Add (linearly) interpolated laser point when curve command does not coincide with a laser point
                 # This obsoletes the warning that was implemented below
-                if vol in self._cur_easing and cur_time == self._ease_start[vol]:
-                    self._ease_midpoints[vol].append((cur_time, self._cur_easing[vol]))
-                    del self._cur_easing[vol]
+                if vol in self._cur_easing:
+                    if vol in self._ease_start and cur_time == self._ease_start[vol]:
+                        self._ease_midpoints[vol].append((cur_time, self._cur_easing[vol]))
+                        if self._cur_easing[vol] != EasingType.NO_EASING:
+                            del self._cur_easing[vol]
             else:
                 vol_position = convert_laser_pos(state)
                 # This handles the case of short laser segment being treated as a slam
