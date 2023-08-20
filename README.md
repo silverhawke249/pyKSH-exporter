@@ -83,6 +83,8 @@ Valid `filter` values are: `lpf`, `hpf`, `bitc`, `1`, `2`, `3`, `4`, `5`.
 
 ## Version history
 
+- v1.3-hotfix.1 (2023/08/20)
+  - Fix issue with inserting interpolated laser points due to curve commands mid-segment.
 - v1.3 (2023/08/17)
   - Add preliminary calculation of notecounts, in order to calculate maximum ex score.
     - LONG and VOL calculation is known to be inaccurate for certain situations, this is a to-do.
@@ -120,6 +122,10 @@ Valid `filter` values are: `lpf`, `hpf`, `bitc`, `1`, `2`, `3`, `4`, `5`.
   - Initial release.
 
 ## Future additions?
+
+Known issues:
+- [ ] Autotab duration is not calculated correctly if custom filter lasts past the end of a laser segment.
+  - To work around this, ensure that custom filters are changed immediately to standard filters at the end of the laser segment.
 
 The following are features/improvements that are being considered for implementation -- some more important than others:
 - [x] Convert lane splits.
