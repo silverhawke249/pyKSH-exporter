@@ -105,9 +105,7 @@ class KSH2VOXApp():
         # WINDOW/APP LAYOUT #
         #===================#
 
-        with dpg.window(label='KSH Exporter') as primary_window:
-            self.ui['primary_window'] = primary_window
-
+        with dpg.window(label='KSH Exporter') as self.ui['primary_window']:
             self.ui['throbber'] = dpg.add_loading_indicator(show=False, pos=(550, 20), style=1, radius=4, color=(15, 86, 135))
 
             with dpg.group() as main_buttons:
@@ -117,9 +115,7 @@ class KSH2VOXApp():
 
                 dpg.add_spacer(height=1)
 
-                with dpg.group(horizontal=True) as save_group:
-                    self.ui['save_group'] = save_group
-
+                with dpg.group(horizontal=True) as self.ui['save_group']:
                     self.ui['vox_button'] = dpg.add_button(label='Save VOX...', callback=self.export_vox, enabled=False)
                     self.ui['xml_button'] = dpg.add_button(label='Save XML...', callback=self.export_xml, enabled=False)
                     self.ui['2dx_button'] = dpg.add_button(label='Export 2DX...', callback=self.export_2dx, enabled=False)
@@ -127,12 +123,9 @@ class KSH2VOXApp():
 
             dpg.add_spacer(height=1)
 
-            with dpg.child_window(height=510, width=-1, border=False) as info_container:
-                self.ui['info_container'] = info_container
+            with dpg.child_window(height=510, width=-1, border=False) as self.ui['info_container']:
                 with dpg.tab_bar():
-                    with dpg.tab(label='Song info') as section_song_info:
-                        self.ui['section_song_info'] = section_song_info
-
+                    with dpg.tab(label='Song info') as self.ui['section_song_info']:
                         self.ui['id']              = dpg.add_input_int(
                             label='Song ID', min_clamped=True, callback=self.update_and_validate)
                         self.ui['title']           = dpg.add_input_text(
@@ -166,13 +159,10 @@ class KSH2VOXApp():
                             list(InfVer), label='Infinite version', default_value=InfVer.INFINITE,
                             callback=self.update_and_validate)
 
-                        with dpg.tooltip(self.ui['background']) as bg_tooltip:
-                            self.ui['bg_tooltip'] = bg_tooltip
+                        with dpg.tooltip(self.ui['background']) as self.ui['bg_tooltip']:
                             self.ui['bg_preview'] = dpg.add_image(self.ui['gmbg_texture'])
 
-                    with dpg.tab(label='Chart info') as section_chart_info:
-                        self.ui['section_chart_info'] = section_chart_info
-
+                    with dpg.tab(label='Chart info') as self.ui['section_chart_info']:
                         self.ui['level'] = dpg.add_slider_int(
                             label='Level', clamped=True, min_value=1, max_value=20, callback=self.update_and_validate)
                         self.ui['difficulty'] = dpg.add_combo(
@@ -182,46 +172,23 @@ class KSH2VOXApp():
                         self.ui['illustrator'] = dpg.add_input_text(
                             label='Illustrator', callback=self.update_and_validate)
 
-                    with dpg.tab(label='Effects') as section_effect_info:
-                        self.ui['section_effect_info'] = section_effect_info
-
+                    with dpg.tab(label='Effects') as self.ui['section_effect_info']:
                         dpg.add_text('Coming soon!')
+
                         # self.ui['effect_table'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-                    with dpg.tab(label='Filter mapping') as section_filter_info:
-                        self.ui['section_filter_info'] = section_filter_info
-
+                    with dpg.tab(label='Filter mapping') as self.ui['section_filter_info']:
                         dpg.add_text('Coming soon!')
+
                         # self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-                    with dpg.tab(label='Track autotab') as section_autotab_info:
-                        self.ui['section_autotab_info'] = section_autotab_info
-
+                    with dpg.tab(label='Track autotab') as self.ui['section_autotab_info']:
                         dpg.add_text('Coming soon!')
+
                         # self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
 
-            with dpg.child_window(label='Logs', width=-1, height=-1, horizontal_scrollbar=True) as log_window:
-                self.ui['log'] = log_window
+            with dpg.child_window(label='Logs', width=-1, height=-1, horizontal_scrollbar=True) as self.ui['log']:
                 self.ui['log_last_line'] = 0
-
-        with dpg.window(
-            label='Error', show=False, autosize=True, no_move=True, no_close=True, modal=True
-        ) as popup_window:
-            self.ui['popup_window'] = popup_window
-            self.ui['popup_text'] = dpg.add_text()
-
-            with dpg.table(header_row=False):
-                dpg.add_table_column(width_stretch=True)
-                dpg.add_table_column(width_fixed=True)
-                dpg.add_table_column(width_stretch=True)
-
-                with dpg.table_row():
-                    dpg.add_spacer()
-
-                    with dpg.group(horizontal=True):
-                        dpg.add_button(label='OK', user_data=True, callback=self.hide_popup)
-
-                    dpg.add_spacer()
 
         #================#
         # EVENT HANDLERS #
@@ -258,7 +225,7 @@ class KSH2VOXApp():
                 dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 0, category=dpg.mvThemeCat_Core)
                 dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 0, category=dpg.mvThemeCat_Core)
 
-        dpg.bind_item_theme(log_window, log_theme)
+        dpg.bind_item_theme(self.ui['log'], log_theme)
 
         with dpg.theme() as primary_window_theme:
             with dpg.theme_component(dpg.mvAll):
@@ -288,12 +255,11 @@ class KSH2VOXApp():
             with dpg.theme_component(dpg.mvButton, enabled_state=True):
                 dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
 
-        dpg.bind_item_theme(primary_window, primary_window_theme)
-        dpg.bind_item_theme(popup_window, sub_window_theme)
+        dpg.bind_item_theme(self.ui['primary_window'], primary_window_theme)
 
         #================================
 
-        dpg.set_primary_window(primary_window, True)
+        dpg.set_primary_window(self.ui['primary_window'], True)
 
         dpg.show_viewport()
         dpg.start_dearpygui()
@@ -312,14 +278,6 @@ class KSH2VOXApp():
         self.ui['log_last_line'] = dpg.add_text(
             f'[{time.strftime("%H:%M:%S", time.localtime())}] {message}',
             parent=self.ui['log'], before=self.ui['log_last_line'])
-
-    def show_popup(self, message):
-        dpg.set_value(self.ui['popup_text'], message)
-        dpg.show_item(self.ui['popup_window'])
-
-    def hide_popup(self, sender: ObjectID, app_data, user_data: bool):
-        self.popup_result = user_data
-        dpg.hide_item(self.ui['popup_window'])
 
     def change_image_texture(self):
         if self.gmbg_available and not dpg.get_item_configuration(self.ui['bg_tooltip'])['show']:
