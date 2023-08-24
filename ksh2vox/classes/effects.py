@@ -12,29 +12,35 @@ logger = logging.getLogger(__name__)
 _enumToEffect: dict = {}
 
 
-class FXType(Enum):
-    NO_EFFECT    = 0
-    RETRIGGER    = 1
-    GATE         = 2
-    FLANGER      = 3
-    TAPESTOP     = 4
-    SIDECHAIN    = 5
-    WOBBLE       = 6
-    BITCRUSH     = 7
-    RETRIGGER_EX = 8
-    PITCH_SHIFT  = 9
-    TAPESCRATCH  = 10
-    LPF          = 11
-    HPF          = 12
+class _StringifiableEnum(Enum):
+    def __str__(self) -> str:
+        name_parts = [s.capitalize() for s in self.name.split('_')]
+        return ''.join(name_parts)
 
 
-class PassFilterType(Enum):
-    LPF = 0
-    HPF = 1
-    BANDPASS = 2
+class FXType(_StringifiableEnum):
+    NO_EFFECT        = 0
+    RETRIGGER        = 1
+    GATE             = 2
+    FLANGER          = 3
+    TAPESTOP         = 4
+    SIDECHAIN        = 5
+    WOBBLE           = 6
+    BITCRUSH         = 7
+    RETRIGGER_EX     = 8
+    PITCH_SHIFT      = 9
+    TAPESCRATCH      = 10
+    LOW_PASS_FILTER  = 11
+    HIGH_PASS_FILTER = 12
 
 
-class WaveShape(Enum):
+class PassFilterType(_StringifiableEnum):
+    LOW_PASS = 0
+    HIGH_PASS = 1
+    BAND_PASS = 2
+
+
+class WaveShape(_StringifiableEnum):
     SAW = 0
     SQUARE = 1
     LINEAR = 2
@@ -43,6 +49,10 @@ class WaveShape(Enum):
 
 @dataclass
 class Effect(VoxEntity):
+    @property
+    def effect_name(self) -> str:
+        return str(self.effect_index)
+
     @abstractproperty
     def effect_index(self) -> FXType:
         pass
@@ -285,7 +295,7 @@ class Sidechain(Effect):
 @dataclass
 class Wobble(Effect):
     mix: float = 80.00
-    filter_type: PassFilterType = PassFilterType.LPF
+    filter_type: PassFilterType = PassFilterType.LOW_PASS
     wave_shape: WaveShape = WaveShape.SINE
     low_cutoff: float = 500.00
     hi_cutoff: float = 18000.00
@@ -476,7 +486,7 @@ class LowpassFilter(Effect):
 
     @property
     def effect_index(self) -> FXType:
-        return FXType.LPF
+        return FXType.LOW_PASS_FILTER
 
     @staticmethod
     def from_dict(s: Mapping[str, str]):
@@ -503,7 +513,7 @@ class HighpassFilter(Effect):
 
     @property
     def effect_index(self) -> FXType:
-        return FXType.HPF
+        return FXType.HIGH_PASS_FILTER
 
     @staticmethod
     def from_dict(s: Mapping[str, str]):
@@ -525,6 +535,8 @@ class EffectEntry(VoxEntity):
     effect1: Effect = field(default_factory=NoEffect)
     effect2: Effect = field(default_factory=NoEffect)
 
+    def __str__(self) -> str:
+        return f'{self.effect1.effect_name}, {self.effect2.effect_name}'
 
     def to_vox_string(self) -> str:
         return (f'{self.effect1.to_vox_string()}\n'
