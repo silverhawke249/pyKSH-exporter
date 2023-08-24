@@ -64,14 +64,14 @@ class Effect(VoxEntity):
 
 
 @dataclass
-class NullEffect(Effect):
+class NoEffect(Effect):
     @property
     def effect_index(self) -> FXType:
         return FXType.NO_EFFECT
 
     @staticmethod
     def from_dict(s: Mapping[str, str]):
-        return NullEffect()
+        return NoEffect()
 
     def map_params(self, s: Sequence[int]) -> None:
         return
@@ -501,8 +501,9 @@ class HighpassFilter(Effect):
 
 @dataclass
 class EffectEntry(VoxEntity):
-    effect1: Effect = field(default_factory=NullEffect)
-    effect2: Effect = field(default_factory=NullEffect)
+    effect1: Effect = field(default_factory=NoEffect)
+    effect2: Effect = field(default_factory=NoEffect)
+
 
     def to_vox_string(self) -> str:
         return (f'{self.effect1.to_vox_string()}\n'
@@ -569,5 +570,5 @@ def from_definition(definition: MutableMapping[str, str]) -> Effect:
         effect_class = Sidechain
     else:
         logger.warning(f'custom fx not parsed: "{definition}"')
-        return NullEffect()
+        return NoEffect()
     return effect_class.from_dict(definition)
