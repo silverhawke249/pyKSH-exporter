@@ -9,6 +9,7 @@ from .base import VoxEntity
 from ..utils import parse_decibel, parse_frequency, parse_length, parse_time
 
 logger = logging.getLogger(__name__)
+_enumToEffect: dict = {}
 
 
 class FXType(Enum):
@@ -63,6 +64,14 @@ class Effect(VoxEntity):
         return replace(self)
 
 
+def _register_effect(cls):
+    global _enumToEffect
+    _enumToEffect[cls().effect_index] = cls
+
+    return cls
+
+
+@_register_effect
 @dataclass
 class NoEffect(Effect):
     @property
@@ -81,6 +90,7 @@ class NoEffect(Effect):
                             '0', '0', '0', '0', '0', '0'])
 
 
+@_register_effect
 @dataclass
 class Retrigger(Effect):
     mix: float = 95.00
@@ -123,6 +133,7 @@ class Retrigger(Effect):
                            f'{self.decay:.2f}'])
 
 
+@_register_effect
 @dataclass
 class Gate(Effect):
     mix: float = 98.00
@@ -155,6 +166,7 @@ class Gate(Effect):
                            f'{self.length:.2f}'])
 
 
+@_register_effect
 @dataclass
 class Flanger(Effect):
     # Parameter names yoinked off VoxCharger lol
@@ -195,6 +207,7 @@ class Flanger(Effect):
                            f'{self.hicut_gain:.2f}'])
 
 
+@_register_effect
 @dataclass
 class Tapestop(Effect):
     mix: float = 100.00
@@ -227,6 +240,7 @@ class Tapestop(Effect):
                            f'{self.rate:.2f}'])
 
 
+@_register_effect
 @dataclass
 class Sidechain(Effect):
     mix: float = 90.00
@@ -267,6 +281,7 @@ class Sidechain(Effect):
                            f'{self.release}'])
 
 
+@_register_effect
 @dataclass
 class Wobble(Effect):
     mix: float = 80.00
@@ -313,6 +328,7 @@ class Wobble(Effect):
                            f'{self.bandwidth:.2f}'])
 
 
+@_register_effect
 @dataclass
 class Bitcrush(Effect):
     mix: float = 100.00
@@ -343,6 +359,7 @@ class Bitcrush(Effect):
                            f'{self.amount}'])
 
 
+@_register_effect
 @dataclass
 class RetriggerEx(Effect):
     # Same as Retrigger, except it samples from start of effect, instead of at beginning of update period.
@@ -389,6 +406,7 @@ class RetriggerEx(Effect):
                            f'{self.decay:.2f}'])
 
 
+@_register_effect
 @dataclass
 class PitchShift(Effect):
     mix: float = 100.00
@@ -419,6 +437,7 @@ class PitchShift(Effect):
                            f'{self.amount}'])
 
 
+@_register_effect
 @dataclass
 class Tapescratch(Effect):
     mix: float = 100.00
@@ -447,6 +466,7 @@ class Tapescratch(Effect):
                            f'{self.release:.2f}'])
 
 
+@_register_effect
 @dataclass
 class LowpassFilter(Effect):
     mix: float = 75.00
@@ -473,6 +493,7 @@ class LowpassFilter(Effect):
                            f'{self.bandwidth:.2f}'])
 
 
+@_register_effect
 @dataclass
 class HighpassFilter(Effect):
     mix: float = 100.00
@@ -508,6 +529,10 @@ class EffectEntry(VoxEntity):
     def to_vox_string(self) -> str:
         return (f'{self.effect1.to_vox_string()}\n'
                 f'{self.effect2.to_vox_string()}\n')
+
+
+def enum_to_effect(val: FXType) -> type[Effect]:
+    return _enumToEffect[val]
 
 
 def get_default_effects() -> list[EffectEntry]:
