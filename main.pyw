@@ -44,6 +44,7 @@ CHART_INFO_FIELDS = [
 ]
 YOMIGANA_VALIDATION_REGEX = re.compile('^[\uFF66-\uFF9F]+')
 ENUM_REGEX = re.compile(r'\((\d+)\)')
+GREY_TEXT_COLOR = 120, 120, 120, 255
 
 
 class FunctionHandler(logging.Handler):
@@ -173,9 +174,37 @@ class KSH2VOXApp():
                             label='Illustrator', callback=self.update_and_validate)
 
                     with dpg.tab(label='Effects') as self.ui['section_effect_info']:
-                        dpg.add_text('Coming soon!')
+                        with dpg.group():
+                            self.ui['effect_def_combo'] = dpg.add_combo(
+                                label='Effect definition list', callback=self.load_effects)
 
-                        # self.ui['effect_table'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                            with dpg.group(horizontal=True) as effect_def_buttons:
+                                self.ui['effect_def_new'] = dpg.add_button(
+                                    label='New', enabled=False, callback=self.add_new_effect)
+                                self.ui['effect_def_update'] = dpg.add_button(
+                                    label='Update', enabled=False, callback=self.update_effect)
+                                self.ui['effect_def_delete'] = dpg.add_button(
+                                    label='Delete', enabled=False, callback=self.delete_effect)
+
+                        dpg.add_spacer(height=1)
+
+                        with dpg.collapsing_header(label='Effect 1', default_open=True):
+                            self.ui['effect_def_1_combo'] = dpg.add_combo(
+                                label='1st effect type', callback=self.load_effect_params)
+                            dpg.add_text('Parameters:')
+
+                            with dpg.group() as self.ui['effect_def_1_params']:
+                                dpg.add_text('No configurable parameters!', color=GREY_TEXT_COLOR)
+
+                        dpg.add_spacer(height=1)
+
+                        with dpg.collapsing_header(label='Effect 2', default_open=True):
+                            self.ui['effect_def_2_combo'] = dpg.add_combo(
+                                label='2nd effect type', callback=self.load_effect_params)
+                            dpg.add_text('Parameters:')
+
+                            with dpg.group() as self.ui['effect_def_2_params']:
+                                dpg.add_text('No configurable parameters!', color=GREY_TEXT_COLOR)
 
                     with dpg.tab(label='Filter mapping') as self.ui['section_filter_info']:
                         dpg.add_text('Coming soon!')
@@ -220,6 +249,12 @@ class KSH2VOXApp():
 
         dpg.bind_item_theme(main_buttons, button_theme)
 
+        with dpg.theme() as sub_button_theme:
+            with dpg.theme_component(dpg.mvAll):
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 10, 4, category=dpg.mvThemeCat_Core)
+
+        dpg.bind_item_theme(effect_def_buttons, sub_button_theme)
+
         with dpg.theme() as log_theme:
             with dpg.theme_component(dpg.mvText):
                 dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 4, 0, category=dpg.mvThemeCat_Core)
@@ -246,14 +281,10 @@ class KSH2VOXApp():
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (65, 65, 65, 255), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (65, 65, 65, 255), category=dpg.mvThemeCat_Core)
 
-        with dpg.theme() as sub_window_theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5, category=dpg.mvThemeCat_Core)
-                dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 5, category=dpg.mvThemeCat_Core)
-                dpg.add_theme_color(dpg.mvThemeCol_Border, (15, 86, 135, 255), category=dpg.mvThemeCat_Core)
-
-            with dpg.theme_component(dpg.mvButton, enabled_state=True):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
+            with dpg.theme_component(dpg.mvCollapsingHeader):
+                dpg.add_theme_color(dpg.mvThemeCol_Header, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (53, 174, 255, 255), category=dpg.mvThemeCat_Core)
+                dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (0, 119, 200, 255), category=dpg.mvThemeCat_Core)
 
         dpg.bind_item_theme(self.ui['primary_window'], primary_window_theme)
 
@@ -271,6 +302,7 @@ class KSH2VOXApp():
             for obj_name, c_uuid in self.ui.items():
                 if uuid == c_uuid:
                     self.reverse_ui_map[uuid] = obj_name
+                    break
 
         return self.reverse_ui_map[uuid]
 
@@ -333,6 +365,29 @@ class KSH2VOXApp():
         except AttributeError:
             pass
 
+    def populate_effects_list(self, list_index: int = 0):
+        ...
+
+    def load_effects(self, sender: ObjectID):
+        ...
+
+    def load_effect_params(self, sender: ObjectID):
+        ...
+
+    def update_effect_def_button_state(self):
+        button_state = bool(self.parser.chart_info.effect_list)
+        dpg.configure_item(self.ui['effect_def_update'], enabled=button_state)
+        dpg.configure_item(self.ui['effect_def_delete'], enabled=button_state)
+
+    def add_new_effect(self):
+        ...
+
+    def update_effect(self):
+        ...
+
+    def delete_effect(self):
+        ...
+
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
             file_path = filedialog.askopenfilename(
@@ -364,10 +419,15 @@ class KSH2VOXApp():
             self.background_id = self.parser.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
 
+        # Main buttons
         dpg.configure_item(self.ui['vox_button'], enabled=True)
         dpg.configure_item(self.ui['xml_button'], enabled=True)
         dpg.configure_item(self.ui['2dx_button'], enabled=True)
         dpg.configure_item(self.ui['jackets_button'], enabled=True)
+
+        # Effect definition buttons
+        dpg.configure_item(self.ui['effect_def_new'], enabled=True)
+        self.update_effect_def_button_state()
 
     def validate_metadata(self):
         title_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.title_yomigana)
@@ -578,7 +638,12 @@ class disable_buttons():
 
     def __init__(self, app: KSH2VOXApp):
         self.app = app
-        self.buttons = ['open_button', 'vox_button', 'xml_button', '2dx_button', 'jackets_button']
+        self.buttons = [
+            # Main buttons
+            'open_button', 'vox_button', 'xml_button', '2dx_button', 'jackets_button',
+            # Effect definition buttons
+            'effect_def_new', 'effect_def_update', 'effect_def_delete',
+        ]
         self.button_state = {}
 
     def __enter__(self):
