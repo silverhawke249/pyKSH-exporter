@@ -5,10 +5,13 @@ import time
 
 import dearpygui.dearpygui as dpg
 
+from dataclasses import Field
+from enum import Enum
 from pathlib import Path
 from tkinter import filedialog
 from typing import Any, Callable
 
+from ksh2vox.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
 from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
 from ksh2vox.media.audio import get_2dxs
 from ksh2vox.media.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
@@ -74,10 +77,13 @@ class KSH2VOXApp():
     gmbg_image_index  : int = 0
     popup_result      : bool = False
 
+    effect_params     : dict[ObjectID, dict[str, ObjectID]]
+
     logger            : logging.Logger
 
     def __init__(self):
         self.gmbg_data = get_game_backgrounds()
+        self.effect_params = {}
 
         logging.basicConfig(format='[%(levelname)s %(asctime)s] %(name)s: %(message)s', level=logging.DEBUG)
 
@@ -191,6 +197,7 @@ class KSH2VOXApp():
                         with dpg.collapsing_header(label='Effect 1', default_open=True):
                             self.ui['effect_def_1_combo'] = dpg.add_combo(
                                 label='1st effect type', callback=self.load_effect_params)
+                            self.effect_params[self.ui['effect_def_1_combo']] = {}
                             dpg.add_text('Parameters:')
 
                             with dpg.group() as self.ui['effect_def_1_params']:
@@ -201,6 +208,7 @@ class KSH2VOXApp():
                         with dpg.collapsing_header(label='Effect 2', default_open=True):
                             self.ui['effect_def_2_combo'] = dpg.add_combo(
                                 label='2nd effect type', callback=self.load_effect_params)
+                            self.effect_params[self.ui['effect_def_2_combo']] = {}
                             dpg.add_text('Parameters:')
 
                             with dpg.group() as self.ui['effect_def_2_params']:
@@ -335,6 +343,13 @@ class KSH2VOXApp():
         else:
             self.gmbg_visible = False
 
+    def get_combo_index(self, obj: ObjectID) -> int:
+        item_config : dict = dpg.get_item_configuration(obj)
+        item_list   : list = item_config['items']
+        choice_index: int  = item_list.index(dpg.get_value(obj))
+
+        return choice_index
+
     def update_and_validate(self, sender: ObjectID, app_data: Any):
         # Validation
         if sender == self.ui['min_bpm']:
@@ -366,27 +381,114 @@ class KSH2VOXApp():
             pass
 
     def populate_effects_list(self, list_index: int = 0):
-        ...
+        effect_list = [f'FX {i + 1}: {fx}' for i, fx in enumerate(self.parser.chart_info.effect_list)]
+        dpg.configure_item(self.ui['effect_def_combo'], items=effect_list)
+        dpg.set_value(self.ui['effect_def_combo'], effect_list[list_index])
+
+        self.load_effects(self.ui['effect_def_combo'])
+        self.load_effect_params(self.ui['effect_def_1_combo'])
+        self.load_effect_params(self.ui['effect_def_2_combo'])
 
     def load_effects(self, sender: ObjectID):
-        ...
+        choice_index = self.get_combo_index(sender)
+        current_effect = self.parser.chart_info.effect_list[choice_index]
+
+        dpg.set_value(self.ui['effect_def_1_combo'], current_effect.effect1.effect_name)
+        dpg.set_value(self.ui['effect_def_2_combo'], current_effect.effect2.effect_name)
+
+        self.load_effect_params(self.ui['effect_def_1_combo'])
+        self.load_effect_params(self.ui['effect_def_2_combo'])
 
     def load_effect_params(self, sender: ObjectID):
-        ...
+        effect_index = self.get_combo_index(self.ui['effect_def_combo'])
+        choice_index = self.get_combo_index(sender)
 
-    def update_effect_def_button_state(self):
+        target: ObjectID | None = None
+        if sender == self.ui['effect_def_1_combo']:
+            target = self.ui['effect_def_1_params']
+            reference_fx = self.parser.chart_info.effect_list[effect_index].effect1
+        elif sender == self.ui['effect_def_2_combo']:
+            target = self.ui['effect_def_2_params']
+            reference_fx = self.parser.chart_info.effect_list[effect_index].effect2
+        else:
+            return
+
+        self.effect_params[sender] = {}
+        dpg.delete_item(target, children_only=True)
+
+        effect_type = FXType(choice_index)
+        if effect_type == FXType.NO_EFFECT:
+            dpg.add_text('No configurable parameters!', parent=target, color=GREY_TEXT_COLOR)
+            return
+
+        if effect_type != reference_fx.effect_index:
+            reference_fx = enum_to_effect(effect_type)()
+
+        # Dataclass field magic for inspection
+        params: dict[str, Field] = reference_fx.__dataclass_fields__
+        for param_name, field_data in params.items():
+            display_param_name = param_name.replace('_', ' ')
+            if field_data.type == float:
+                obj_id = dpg.add_input_float(
+                    label=display_param_name, parent=target, default_value=getattr(reference_fx, param_name),
+                    format="%.2f", step=0.01)
+            elif field_data.type == int:
+                obj_id = dpg.add_input_int(
+                    label=display_param_name, parent=target, default_value=getattr(reference_fx, param_name))
+            elif issubclass(field_data.type, Enum):
+                obj_id = dpg.add_combo(
+                    label=display_param_name, parent=target, default_value=getattr(reference_fx, param_name),
+                    items=list(field_data.type))
+            else:
+                pass
+            self.effect_params[sender][param_name] = obj_id
+
+    def update_effect_def_button_state(self) -> None:
         button_state = bool(self.parser.chart_info.effect_list)
         dpg.configure_item(self.ui['effect_def_update'], enabled=button_state)
         dpg.configure_item(self.ui['effect_def_delete'], enabled=button_state)
 
-    def add_new_effect(self):
-        ...
+    def add_new_effect(self) -> None:
+        effect_index = self.get_combo_index(self.ui['effect_def_combo'])
 
-    def update_effect(self):
-        ...
+        self.parser.chart_info.effect_list.insert(effect_index, EffectEntry())
 
-    def delete_effect(self):
-        ...
+        self.populate_effects_list(effect_index)
+
+    def update_effect(self) -> None:
+        effect_index = self.get_combo_index(self.ui['effect_def_combo'])
+        effect_1_index = self.get_combo_index(self.ui['effect_def_1_combo'])
+        effect_2_index = self.get_combo_index(self.ui['effect_def_2_combo'])
+
+        effect_1 = enum_to_effect(FXType(effect_1_index))()
+        effect_2 = enum_to_effect(FXType(effect_2_index))()
+
+        pairs: list[tuple[Effect, str]] = [(effect_1, 'effect_def_1_combo'), (effect_2, 'effect_def_2_combo')]
+        for effect_obj, ui_key in pairs:
+            for param_name, obj_id in self.effect_params[self.ui[ui_key]].items():
+                field_data: Field = effect_1.__dataclass_fields__[param_name]
+                param_value = dpg.get_value(obj_id)
+                param_type = field_data.type
+                # If it's an enum, it needs to be converted to the underlying value
+                if issubclass(param_type, Enum):
+                    param_value = self.get_combo_index(obj_id)
+                setattr(effect_obj, param_name, param_type(param_value))
+
+        self.parser.chart_info.effect_list[effect_index] = EffectEntry(effect_1, effect_2)
+
+        self.populate_effects_list(effect_index)
+
+    def delete_effect(self) -> None:
+        effect_index = self.get_combo_index(self.ui['effect_def_combo'])
+
+        self.parser.chart_info.effect_list.pop(effect_index)
+
+        # Don't allow effect list to be empty
+        if not self.parser.chart_info.effect_list:
+            self.parser.chart_info.effect_list.append(EffectEntry())
+
+        self.populate_effects_list(effect_index)
+        self.update_effect_def_button_state()
 
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
@@ -415,6 +517,11 @@ class KSH2VOXApp():
                 dpg.set_value(self.ui[field], getattr(self.parser.song_info, field))
             for field in CHART_INFO_FIELDS:
                 dpg.set_value(self.ui[field], getattr(self.parser.chart_info, field))
+
+            dpg.configure_item(self.ui['effect_def_1_combo'], items=list(FXType))
+            dpg.configure_item(self.ui['effect_def_2_combo'], items=list(FXType))
+
+            self.populate_effects_list()
 
             self.background_id = self.parser.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
