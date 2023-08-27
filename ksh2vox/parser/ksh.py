@@ -31,6 +31,7 @@ from ..classes.enums import (
     DifficultySlot,
     EasingType,
     FilterIndex,
+    NoteType,
     SegmentFlag,
     SpinType,
     TiltType,
@@ -71,6 +72,16 @@ KSH_EFFECT_MAP: dict[str, effects.Effect] = {
     'TapeStop'  : effects.Tapestop(),
     'Echo'      : effects.RetriggerEx(mix=100, wavelength=4, update_period=4, feedback=0.6, amount=1, decay=0.8),
     'SideChain' : effects.Sidechain(),
+}
+NOTE_TYPE_TRACK_MAP = {
+    NoteType.VOL_L: 1,
+    NoteType.FX_L: 2,
+    NoteType.BT_A: 3,
+    NoteType.BT_B: 4,
+    NoteType.BT_C: 5,
+    NoteType.BT_D: 6,
+    NoteType.FX_R: 7,
+    NoteType.VOL_R: 8,
 }
 NO_EFFECT_INDEX             = 0
 KSH_SLAM_DISTANCE           = Fraction(1, 32)
@@ -152,6 +163,8 @@ class KSHParser:
 
     _filter_names    : dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _filter_to_effect: dict[str, int]       = dataclasses.field(default_factory=dict, init=False, repr=False)
+
+    _script_ids: dict[NoteType, dict[TimePoint, list[int]]] = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _bts : dict[str, dict[TimePoint, BTInfo]]  = dataclasses.field(init=False, repr=False)
     _fxs : dict[str, dict[TimePoint, FXInfo]]  = dataclasses.field(init=False, repr=False)
@@ -508,7 +521,7 @@ class KSHParser:
             elif name == 'curveBeginSpL':
                 values = value.split(',')
                 if len(values) != 3:
-                    raise ValueError('incorrect number of args supplied to curveBeginSpL')
+                    raise ValueError(f'incorrect number of args supplied to {name}')
                 ease, init_str, final_str = value.split(',')
                 init, final = float(init_str), float(final_str)
                 if init > final:
@@ -521,7 +534,7 @@ class KSHParser:
             elif name == 'curveBeginSpR':
                 values = value.split(',')
                 if len(values) != 3:
-                    raise ValueError('incorrect number of args supplied to curveBeginSpR')
+                    raise ValueError(f'incorrect number of args supplied to {name}')
                 ease, init_str, final_str = value.split(',')
                 init, final = float(init_str), float(final_str)
                 if init > final:
@@ -558,6 +571,24 @@ class KSHParser:
                 self._cur_filter = filter_now
                 if cur_time in self._chart_info.active_filter:
                     self._chart_info.active_filter[cur_time] = filter_now
+            elif name == 'scriptBegin':
+                values = value.split(',')
+                if len(values) < 2:
+                    raise ValueError(f'incorrect number of args supplied to {name}')
+                flags = NoteType(int(values[0], 16) % 0x100)
+                script_ids = [int(v) for v in values[1:]]
+                for note_type in NoteType:
+                    if note_type in flags:
+                        if note_type not in self._script_ids:
+                            self._script_ids[note_type] = {}
+                        self._script_ids[note_type][cur_time] = script_ids
+            elif name == 'scriptEnd':
+                flags = NoteType(int(value, 16) % 0x100)
+                for note_type in NoteType:
+                    if note_type in flags:
+                        if note_type not in self._script_ids:
+                            self._script_ids[note_type] = {}
+                        self._script_ids[note_type][cur_time] = []
             else:
                 # Silently ignoring all other metadata
                 pass
@@ -940,6 +971,10 @@ class KSHParser:
                 continue
             self._chart_info.autotab_infos[time_i] = AutoTabInfo(
                 self._filter_to_effect[filter_i], self._chart_info.get_distance(time_i, time_f))
+
+        # Properly terminate script segments, if any
+        for script_dict in self._script_ids.values():
+            script_dict[TimePoint(self.chart_info.end_measure)] = []
 
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
@@ -1406,6 +1441,61 @@ class KSHParser:
         f.write('\n')
 
         f.write('//====================================\n')
+
+        if self._script_ids:
+            f.write('\n')
+            f.write('#SCRIPT_DEFINE\n')
+            f.write('\n')
+            f.write('// Define your scripts here!\n')
+
+            all_script_ids: set[int] = set()
+            for script_dict in self._script_ids.values():
+                all_script_ids.update(*script_dict.values())
+
+            for sid in sorted(all_script_ids):
+                f.write(f'@SCRIPTSTART {sid}\n'
+                        f'\n'
+                        f'@SCRIPTEND\n\n')
+
+            f.write('#END\n')
+            f.write('\n')
+
+            for note_type in NoteType:
+                if note_type == NoteType.DUMMY:
+                    continue
+                script_dict = self._script_ids[note_type]
+                f.write(f'#SCRIPTED_TRACK{NOTE_TYPE_TRACK_MAP[note_type]}\n')
+                for timept_i, timept_f in itertools.pairwise(script_dict):
+                    if not script_dict[timept_i]:
+                        continue
+                    # TODO: Handle lasers
+                    match note_type:
+                        case NoteType.VOL_L:
+                            note_dict = self.chart_info.note_data.vol_l
+                            continue
+                        case NoteType.FX_L:
+                            note_dict = self.chart_info.note_data.fx_l
+                        case NoteType.BT_A:
+                            note_dict = self.chart_info.note_data.bt_a
+                        case NoteType.BT_B:
+                            note_dict = self.chart_info.note_data.bt_b
+                        case NoteType.BT_C:
+                            note_dict = self.chart_info.note_data.bt_c
+                        case NoteType.BT_D:
+                            note_dict = self.chart_info.note_data.bt_d
+                        case NoteType.FX_R:
+                            note_dict = self.chart_info.note_data.fx_r
+                        case NoteType.VOL_R:
+                            note_dict = self.chart_info.note_data.vol_r
+                            continue
+                    timepts = [t for t in note_dict.keys() if timept_i <= t < timept_f]
+                    script_ids = ' '.join(str(v) for v in script_dict[timept_i])
+                    for timept in timepts:
+                        f.write(f'{self.chart_info.timepoint_to_vox(timept)} {script_ids}\n')
+                f.write(f'#END\n')
+                f.write(f'\n')
+
+            f.write('//====================================\n')
 
     @property
     def ksh_path(self):
