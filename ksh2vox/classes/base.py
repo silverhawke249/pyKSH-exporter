@@ -44,10 +44,13 @@ class TimePoint:
     ):
         if measure is None:
             measure = 1
-        if count is None:
+        if count is None and subdivision is None:
             count = 0
-        if subdivision is None:
             subdivision = 1
+        elif count is not None and subdivision is not None:
+            pass
+        else:
+            raise ValueError(f'count and division must be both given or not given')
         self.validate(measure, count, subdivision)
         object.__setattr__(self, 'measure', measure)
         object.__setattr__(self, 'position', Fraction(count, subdivision))
