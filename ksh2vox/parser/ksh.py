@@ -576,7 +576,13 @@ class KSHParser:
                 values = value.split(',')
                 if len(values) < 2:
                     raise ValueError(f'incorrect number of args supplied to {name}')
-                flags = NoteType(int(values[0], 16) % 0x100)
+                if values[0].lower().startswith('0x'):
+                    flag_value = int(values[0], 16)
+                elif values[0].lower().startswith('0b'):
+                    flag_value = int(values[0], 2)
+                else:
+                    flag_value = int(values[0])
+                flags = NoteType(flag_value % 0x100)
                 script_ids = [int(v) for v in values[1:]]
                 for note_type in NoteType:
                     if note_type in flags:
@@ -584,7 +590,13 @@ class KSHParser:
                             self._script_ids[note_type] = {}
                         self._script_ids[note_type][cur_time] = script_ids
             elif name == 'scriptEnd':
-                flags = NoteType(int(value, 16) % 0x100)
+                if value.lower().startswith('0x'):
+                    flag_value = int(value, 16)
+                elif value.lower().startswith('0b'):
+                    flag_value = int(value, 2)
+                else:
+                    flag_value = int(value)
+                flags = NoteType(flag_value % 0x100)
                 for note_type in NoteType:
                     if note_type in flags:
                         if note_type not in self._script_ids:
