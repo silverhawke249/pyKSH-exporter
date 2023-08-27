@@ -341,15 +341,6 @@ class KSHParser:
             v3 = dict(sorted(v3.items()))
             setattr(self._chart_info.note_data, k, v3)
 
-        final_note_timept = TimePoint()
-        for _, timept, note_data in self._chart_info.note_data.iter_notes():
-            if not isinstance(note_data, VolInfo) and note_data.duration != 0:
-                timept = self._chart_info.add_duration(timept, note_data.duration)
-            final_note_timept = max(timept, final_note_timept)
-
-        # TODO: See if rounding up to next measure is necessary or not
-        self._chart_info.end_measure = final_note_timept.measure + 2
-
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split('=', 1)
         try:
@@ -572,26 +563,31 @@ class KSHParser:
                 pass
 
     def _handle_notechart_notedata(self, line: str, cur_time: TimePoint, subdivision: Fraction) -> None:
+        update_measure_end = False
         bts, fxs, vols_and_spin = line.split('|')
         vols = vols_and_spin[:2]
         spin = vols_and_spin[2:]
         # BTs
         for bt, state in zip(INPUT_BT, bts):
             if state == '0' and bt in self._holds:
+                update_measure_end = True
                 self._bts[bt][self._holds[bt].start] = BTInfo(self._holds[bt].duration)
                 del self._holds[bt]
             if state == '1':
+                update_measure_end = True
                 if bt in self._holds:
                     logger.warning(f'improperly terminated hold at {cur_time}')
                     del self._holds[bt]
                 self._bts[bt][cur_time] = BTInfo(0)
             if state == '2':
+                update_measure_end = True
                 if bt not in self._holds:
                     self._holds[bt] = _HoldInfo(cur_time)
                 self._holds[bt].duration += subdivision
         # FXs
         for fx, state in zip(INPUT_FX, fxs):
             if state == '0' and fx in self._holds:
+                update_measure_end = True
                 fx_effect = self._set_fx.get(fx, None)
                 if fx in self._set_fx:
                     del self._set_fx[fx]
@@ -602,10 +598,12 @@ class KSHParser:
                 self._fxs[fx][self._holds[fx].start] = FXInfo(self._holds[fx].duration, fx_index)
                 del self._holds[fx]
             if state == '1':
+                update_measure_end = True
                 if fx not in self._holds:
                     self._holds[fx] = _HoldInfo(cur_time)
                 self._holds[fx].duration += subdivision
             if state == '2':
+                update_measure_end = True
                 if fx in self._holds:
                     logger.warning(f'improperly terminated hold at {cur_time}')
                     del self._holds[fx]
@@ -631,6 +629,7 @@ class KSHParser:
                     self._cur_easing[vol] = EasingType.NO_EASING
                     logger.error(f'curve command not closed after {vol} segment at {cur_time}')
             elif state == ':':
+                update_measure_end = True
                 # Add (linearly) interpolated laser point when curve command does not coincide with a laser point
                 # This obsoletes the warning that was implemented below
                 if vol in self._cur_easing:
@@ -639,6 +638,7 @@ class KSHParser:
                         if self._cur_easing[vol] != EasingType.NO_EASING:
                             del self._cur_easing[vol]
             else:
+                update_measure_end = True
                 vol_position = convert_laser_pos(state)
                 # This handles the case of short laser segment being treated as a slam
                 if (vol in self._recent_vol and
@@ -683,6 +683,10 @@ class KSHParser:
                     del self._recent_vol[vol]
         if spin:
             self._spins[cur_time] = spin
+        if update_measure_end:
+            # TODO: See if rounding up to next measure is necessary or not
+            self._chart_info.end_measure = cur_time.measure + 2
+
 
     def _handle_notechart_postprocessing(self) -> None:
         # Equalize FX effects and SE
