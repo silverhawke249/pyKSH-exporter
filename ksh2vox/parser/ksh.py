@@ -1495,7 +1495,7 @@ class KSHParser:
             f.write('#END\n')
             f.write('\n')
 
-            for note_type in NoteType:
+            for note_type in reversed(NoteType):
                 if note_type == NoteType.DUMMY:
                     continue
                 script_dict = self._script_ids[note_type]

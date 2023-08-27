@@ -203,14 +203,14 @@ class VOXSection(Enum):
 
 
 class NoteType(Flag):
-    VOL_L = auto()
-    FX_L  = auto()
-    BT_A  = auto()
-    BT_B  = auto()
-    BT_C  = auto()
-    BT_D  = auto()
-    FX_R  = auto()
     VOL_R = auto()
+    FX_R  = auto()
+    BT_D  = auto()
+    BT_C  = auto()
+    BT_B  = auto()
+    BT_A  = auto()
+    FX_L  = auto()
+    VOL_L = auto()
     DUMMY = auto()
 
     def __str__(self) -> str:
