@@ -783,6 +783,9 @@ class KSHParser:
             if not vol_data:
                 continue
             time_list = list(vol_data.keys())
+            if len(time_list) == 1:
+                time_f = time_list[0]
+                vol_f = vol_data[time_f]
             for time_i, time_f in itertools.pairwise(time_list):
                 vol_i, vol_f = vol_data[time_i], vol_data[time_f]
                 # Mark laser points as end of segment
