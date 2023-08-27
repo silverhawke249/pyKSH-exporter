@@ -150,6 +150,7 @@ class KSHParser:
     _recent_vol     : dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
     _cont_segment   : dict[str, bool]         = dataclasses.field(init=False, repr=False)
     _wide_segment   : dict[str, bool]         = dataclasses.field(init=False, repr=False)
+    _hidden_bars    : dict[TimePoint, bool]   = dataclasses.field(default_factory=dict, init=False, repr=False)
 
     _holds : dict[str, _HoldInfo]      = dataclasses.field(default_factory=dict, init=False, repr=False)
     _set_fx: dict[str, str]            = dataclasses.field(default_factory=dict, init=False, repr=False)
@@ -589,6 +590,12 @@ class KSHParser:
                         if note_type not in self._script_ids:
                             self._script_ids[note_type] = {}
                         self._script_ids[note_type][cur_time] = []
+            elif name == 'hideBars':
+                match value:
+                    case 'on' | '1':
+                        self._hidden_bars[cur_time] = True
+                    case 'off' | '0':
+                        self._hidden_bars[cur_time] = False
             else:
                 # Silently ignoring all other metadata
                 pass
@@ -1436,6 +1443,22 @@ class KSHParser:
                     f'{point_flag:.2f}',
                     '0.00\n',
                 ]))
+
+        # BAROFF data
+        bars_hidden = False
+        for timept, hide_bars in self._hidden_bars.items():
+            if hide_bars != bars_hidden:
+                f.write('\t'.join([
+                    f'{self.chart_info.timepoint_to_vox(timept)}',
+                    'BAROFF',
+                    '0',
+                    '0',
+                    'ON' if hide_bars else 'OFF',
+                    '0.00',
+                    '0.00',
+                    '0.00\n',
+                ]))
+                bars_hidden = hide_bars
 
         f.write('#END\n')
         f.write('\n')
