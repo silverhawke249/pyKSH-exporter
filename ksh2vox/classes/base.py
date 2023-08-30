@@ -23,9 +23,9 @@ class TimeSignature:
 
     def validate(self):
         if self.upper <= 0:
-            raise ValueError(f'upper number must be positive (got {self.upper})')
+            raise ValueError(f"upper number must be positive (got {self.upper})")
         if self.lower <= 0:
-            raise ValueError(f'lower number must be positive (got {self.lower})')
+            raise ValueError(f"lower number must be positive (got {self.lower})")
 
     def as_fraction(self) -> Fraction:
         return Fraction(self.upper, self.lower)
@@ -33,15 +33,10 @@ class TimeSignature:
 
 @dataclass(frozen=True, order=True)
 class TimePoint:
-    measure : int
+    measure: int
     position: Fraction
 
-    def __init__(
-        self,
-        measure: int | None = None,
-        count: int | None = None,
-        subdivision: int | None = None, /
-    ):
+    def __init__(self, measure: int | None = None, count: int | None = None, subdivision: int | None = None, /):
         if measure is None:
             measure = 1
         if count is None and subdivision is None:
@@ -50,21 +45,21 @@ class TimePoint:
         elif count is not None and subdivision is not None:
             pass
         else:
-            raise ValueError(f'count and division must be both given or not given')
+            raise ValueError(f"count and division must be both given or not given")
         self.validate(measure, count, subdivision)
-        object.__setattr__(self, 'measure', measure)
-        object.__setattr__(self, 'position', Fraction(count, subdivision))
+        object.__setattr__(self, "measure", measure)
+        object.__setattr__(self, "position", Fraction(count, subdivision))
 
     def validate(self, measure: int, count: int, subdivision: int):
         if measure < 0:
-            raise ValueError(f'measure cannot be negative (got {measure})')
+            raise ValueError(f"measure cannot be negative (got {measure})")
         if subdivision <= 0:
-            raise ValueError(f'subdivision must be positive (got {subdivision})')
+            raise ValueError(f"subdivision must be positive (got {subdivision})")
         if count < 0:
-            raise ValueError(f'count cannot be negative (got {count})')
+            raise ValueError(f"count cannot be negative (got {count})")
 
 
 @dataclass
 class AutoTabInfo:
-    which   : int
+    which: int
     duration: Fraction

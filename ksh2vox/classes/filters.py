@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 
@@ -6,15 +6,16 @@ from .base import VoxEntity
 
 
 class FilterType(Enum):
-    PEAK      = 0
-    LPF       = 1
-    HPF       = 2
-    BITCRUSH  = 3
+    PEAK = 0
+    LPF = 1
+    HPF = 2
+    BITCRUSH = 3
 
 
 @dataclass
-class Filter(VoxEntity):
-    @abstractproperty
+class Filter(VoxEntity, ABC):
+    @property
+    @abstractmethod
     def filter_index(self) -> FilterType:
         pass
 
@@ -35,11 +36,15 @@ class LowpassFilter(Filter):
         return FilterType.LPF
 
     def to_vox_string(self) -> str:
-        return ',\t'.join([f'{self.filter_index.value}',
-                           f'{self.mix:.2f}',
-                           f'{self.min_cutoff:.2f}',
-                           f'{self.max_cutoff:.2f}',
-                           f'{self.bandwidth:.2f}'])
+        return ",\t".join(
+            [
+                f"{self.filter_index.value}",
+                f"{self.mix:.2f}",
+                f"{self.min_cutoff:.2f}",
+                f"{self.max_cutoff:.2f}",
+                f"{self.bandwidth:.2f}",
+            ]
+        )
 
 
 @dataclass
@@ -54,11 +59,15 @@ class HighpassFilter(Filter):
         return FilterType.HPF
 
     def to_vox_string(self) -> str:
-        return ',\t'.join([f'{self.filter_index.value}',
-                           f'{self.mix:.2f}',
-                           f'{self.min_cutoff:.2f}',
-                           f'{self.max_cutoff:.2f}',
-                           f'{self.bandwidth:.2f}'])
+        return ",\t".join(
+            [
+                f"{self.filter_index.value}",
+                f"{self.mix:.2f}",
+                f"{self.min_cutoff:.2f}",
+                f"{self.max_cutoff:.2f}",
+                f"{self.bandwidth:.2f}",
+            ]
+        )
 
 
 @dataclass
@@ -71,9 +80,7 @@ class BitcrushFilter(Filter):
         return FilterType.BITCRUSH
 
     def to_vox_string(self) -> str:
-        return ',\t'.join([f'{self.filter_index.value}',
-                           f'{self.mix:.2f}',
-                           f'{self.max_amount}'])
+        return ",\t".join([f"{self.filter_index.value}", f"{self.mix:.2f}", f"{self.max_amount}"])
 
 
 def get_default_filters() -> list[Filter]:
@@ -82,7 +89,7 @@ def get_default_filters() -> list[Filter]:
         LowpassFilter(min_cutoff=600.00, max_cutoff=15000.00, bandwidth=5.00),
         HighpassFilter(),
         HighpassFilter(max_cutoff=2000.00, bandwidth=3.00),
-        BitcrushFilter()
+        BitcrushFilter(),
     ]
 
 
@@ -94,10 +101,9 @@ class AutoTabSetting(VoxEntity):
     max_value: float = 0.00
 
     def to_vox_string(self) -> str:
-        return ',\t'.join([f'{self.effect_index}',
-                           f'{self.param_index}',
-                           f'{self.min_value:.2f}',
-                           f'{self.max_value:.2f}'])
+        return ",\t".join(
+            [f"{self.effect_index}", f"{self.param_index}", f"{self.min_value:.2f}", f"{self.max_value:.2f}"]
+        )
 
 
 @dataclass
@@ -106,8 +112,7 @@ class AutoTabEntry(VoxEntity):
     effect2: AutoTabSetting
 
     def to_vox_string(self) -> str:
-        return (f'{self.effect1.to_vox_string()}\n'
-                f'{self.effect1.to_vox_string()}\n')
+        return f"{self.effect1.to_vox_string()}\n" f"{self.effect1.to_vox_string()}\n"
 
 
 def get_default_autotab() -> list[AutoTabEntry]:
