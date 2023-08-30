@@ -180,7 +180,9 @@ class KSH2VOXApp():
                             label='Illustrator', callback=self.update_and_validate)
 
                     with dpg.tab(label='Effects') as self.ui['section_effect_info']:
-                        with dpg.group():
+                        self.ui['section_effect_placeholder_text'] = dpg.add_text('No chart loaded!')
+
+                        with dpg.group(show=False) as self.ui['section_effect_group']:
                             self.ui['effect_def_combo'] = dpg.add_combo(
                                 label='Effect definition list', callback=self.load_effects)
 
@@ -192,37 +194,39 @@ class KSH2VOXApp():
                                 self.ui['effect_def_delete'] = dpg.add_button(
                                     label='Delete', enabled=False, callback=self.delete_effect)
 
-                        dpg.add_spacer(height=1)
+                            dpg.add_spacer(height=1)
 
-                        with dpg.collapsing_header(label='Effect 1', default_open=True):
-                            self.ui['effect_def_1_combo'] = dpg.add_combo(
-                                label='1st effect type', callback=self.load_effect_params)
-                            self.effect_params[self.ui['effect_def_1_combo']] = {}
-                            dpg.add_text('Parameters:')
+                            with dpg.collapsing_header(label='Effect 1', default_open=True):
+                                self.ui['effect_def_1_combo'] = dpg.add_combo(
+                                    label='1st effect type', callback=self.load_effect_params)
+                                self.effect_params[self.ui['effect_def_1_combo']] = {}
+                                dpg.add_text('Parameters:')
 
-                            with dpg.group() as self.ui['effect_def_1_params']:
-                                dpg.add_text('No configurable parameters!', color=GREY_TEXT_COLOR)
+                                with dpg.group() as self.ui['effect_def_1_params']:
+                                    dpg.add_text('No configurable parameters!', color=GREY_TEXT_COLOR)
 
-                        dpg.add_spacer(height=1)
+                            dpg.add_spacer(height=1)
 
-                        with dpg.collapsing_header(label='Effect 2', default_open=True):
-                            self.ui['effect_def_2_combo'] = dpg.add_combo(
-                                label='2nd effect type', callback=self.load_effect_params)
-                            self.effect_params[self.ui['effect_def_2_combo']] = {}
-                            dpg.add_text('Parameters:')
+                            with dpg.collapsing_header(label='Effect 2', default_open=True):
+                                self.ui['effect_def_2_combo'] = dpg.add_combo(
+                                    label='2nd effect type', callback=self.load_effect_params)
+                                self.effect_params[self.ui['effect_def_2_combo']] = {}
+                                dpg.add_text('Parameters:')
 
-                            with dpg.group() as self.ui['effect_def_2_params']:
-                                dpg.add_text('No configurable parameters!', color=GREY_TEXT_COLOR)
+                                with dpg.group() as self.ui['effect_def_2_params']:
+                                    dpg.add_text('No configurable parameters!', color=GREY_TEXT_COLOR)
 
                     with dpg.tab(label='Filter mapping') as self.ui['section_filter_info']:
-                        dpg.add_text('Coming soon!')
+                        self.ui['section_filter_placeholder_text'] = dpg.add_text('No chart loaded!')
 
-                        # self.ui['filter_mapping'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                        with dpg.group(show=False) as self.ui['section_filter_group']:
+                            pass
 
                     with dpg.tab(label='Track autotab') as self.ui['section_autotab_info']:
-                        dpg.add_text('Coming soon!')
+                        self.ui['section_autotab_placeholder_text'] = dpg.add_text('No chart loaded!')
 
-                        # self.ui['autotab_info'] = dpg.add_table(header_row=False, borders_innerH=True, borders_innerV=True)
+                        with dpg.group(show=False) as self.ui['section_autotab_group']:
+                            pass
 
             with dpg.child_window(label='Logs', width=-1, height=-1, horizontal_scrollbar=True) as self.ui['log']:
                 self.ui['log_last_line'] = 0
@@ -535,6 +539,14 @@ class KSH2VOXApp():
         # Effect definition buttons
         dpg.configure_item(self.ui['effect_def_new'], enabled=True)
         self.update_effect_def_button_state()
+
+        # Remove placeholder text and show hidden parts
+        dpg.delete_item(self.ui['section_effect_placeholder_text'])
+        dpg.delete_item(self.ui['section_filter_placeholder_text'])
+        dpg.delete_item(self.ui['section_autotab_placeholder_text'])
+        dpg.show_item(self.ui['section_effect_group'])
+        dpg.show_item(self.ui['section_filter_group'])
+        dpg.show_item(self.ui['section_autotab_group'])
 
     def validate_metadata(self):
         title_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.title_yomigana)
