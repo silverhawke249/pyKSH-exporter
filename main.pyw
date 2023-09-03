@@ -80,6 +80,7 @@ class KSH2VOXApp:
     popup_result: bool = False
 
     effect_params: dict[ObjectID, dict[str, ObjectID]]
+    filter_mappings: dict[str, ObjectID]
 
     logger: logging.Logger
 
@@ -222,7 +223,7 @@ class KSH2VOXApp:
                         )
 
                     with dpg.tab(label="Effects") as self.ui["section_effect_info"]:
-                        self.ui["section_effect_placeholder_text"] = dpg.add_text("No chart loaded!")
+                        self.ui["section_effect_placeholder_text"] = dpg.add_text("No chart loaded yet!")
 
                         with dpg.group(show=False) as self.ui["section_effect_group"]:
                             self.ui["effect_def_combo"] = dpg.add_combo(
@@ -265,13 +266,13 @@ class KSH2VOXApp:
                                     dpg.add_text("No configurable parameters!", color=GREY_TEXT_COLOR)
 
                     with dpg.tab(label="Filter mapping") as self.ui["section_filter_info"]:
-                        self.ui["section_filter_placeholder_text"] = dpg.add_text("No chart loaded!")
+                        self.ui["section_filter_placeholder_text"] = dpg.add_text("No chart loaded yet!")
 
                         with dpg.group(show=False) as self.ui["section_filter_group"]:
                             pass
 
                     with dpg.tab(label="Track autotab") as self.ui["section_autotab_info"]:
-                        self.ui["section_autotab_placeholder_text"] = dpg.add_text("No chart loaded!")
+                        self.ui["section_autotab_placeholder_text"] = dpg.add_text("No chart loaded yet!")
 
                         with dpg.group(show=False) as self.ui["section_autotab_group"]:
                             pass
@@ -443,6 +444,8 @@ class KSH2VOXApp:
         self.load_effect_params(self.ui["effect_def_1_combo"])
         self.load_effect_params(self.ui["effect_def_2_combo"])
 
+        self.update_effect_def_button_state()
+
     def load_effects(self, sender: ObjectID):
         choice_index = self.get_combo_index(sender)
         current_effect = self.parser.chart_info.effect_list[choice_index]
@@ -512,10 +515,15 @@ class KSH2VOXApp:
 
     def add_new_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
+        for filter_name, filter_index in self.parser._filter_to_effect.items():
+            if filter_index < effect_index:
+                continue
+            self.parser._filter_to_effect[filter_name] += 1
 
         self.parser.chart_info.effect_list.insert(effect_index, EffectEntry())
 
         self.populate_effects_list(effect_index)
+        self.update_filter_combo_box()
 
     def update_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
@@ -539,9 +547,16 @@ class KSH2VOXApp:
         self.parser.chart_info.effect_list[effect_index] = EffectEntry(effect_1, effect_2)
 
         self.populate_effects_list(effect_index)
+        self.update_filter_combo_box()
 
     def delete_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
+        for filter_name, filter_index in self.parser._filter_to_effect.items():
+            if filter_index < effect_index:
+                continue
+            if filter_index == effect_index:
+                self.logger.warning(f"effect corresponding to filter {filter_name} was deleted")
+            self.parser._filter_to_effect[filter_name] -= 1
 
         self.parser.chart_info.effect_list.pop(effect_index)
 
@@ -550,7 +565,38 @@ class KSH2VOXApp:
             self.parser.chart_info.effect_list.append(EffectEntry())
 
         self.populate_effects_list(effect_index)
-        self.update_effect_def_button_state()
+        self.update_filter_combo_box()
+
+    def populate_filters_list(self) -> None:
+        parent = self.ui["section_filter_group"]
+
+        self.filter_mappings = {}
+        dpg.delete_item(parent, children_only=True)
+        
+        dpg.add_text("Custom filter to effect definition mapping:", parent=parent)
+        for filter_name in self.parser._filter_to_effect:
+            self.filter_mappings[filter_name] = dpg.add_combo(
+                label=filter_name,
+                parent=parent,
+                callback=self.update_filter_mapping,
+            )
+
+        self.update_filter_combo_box()
+
+    def update_filter_combo_box(self) -> None:
+        combo_items = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.parser.chart_info.effect_list)]
+
+        for filter_name, obj_id in self.filter_mappings.items():
+            dpg.configure_item(obj_id, items=combo_items)
+            dpg.set_value(obj_id, combo_items[self.parser._filter_to_effect[filter_name]])
+
+    def update_filter_mapping(self, sender: ObjectID) -> None:
+        filter_name = dpg.get_item_label(sender)
+        if filter_name is None:
+            return
+
+        effect_index = self.get_combo_index(sender)
+        self.parser._filter_to_effect[filter_name] = effect_index
 
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
@@ -586,9 +632,18 @@ class KSH2VOXApp:
             dpg.configure_item(self.ui["effect_def_2_combo"], items=list(FXType))
 
             self.populate_effects_list()
+            self.populate_filters_list()
 
             self.background_id = self.parser.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
+
+        # Remove placeholder text and show hidden parts
+        dpg.hide_item(self.ui["section_effect_placeholder_text"])
+        dpg.hide_item(self.ui["section_filter_placeholder_text"])
+        dpg.hide_item(self.ui["section_autotab_placeholder_text"])
+        dpg.show_item(self.ui["section_effect_group"])
+        dpg.show_item(self.ui["section_filter_group"])
+        dpg.show_item(self.ui["section_autotab_group"])
 
         # Main buttons
         dpg.configure_item(self.ui["vox_button"], enabled=True)
@@ -599,14 +654,6 @@ class KSH2VOXApp:
         # Effect definition buttons
         dpg.configure_item(self.ui["effect_def_new"], enabled=True)
         self.update_effect_def_button_state()
-
-        # Remove placeholder text and show hidden parts
-        dpg.delete_item(self.ui["section_effect_placeholder_text"])
-        dpg.delete_item(self.ui["section_filter_placeholder_text"])
-        dpg.delete_item(self.ui["section_autotab_placeholder_text"])
-        dpg.show_item(self.ui["section_effect_group"])
-        dpg.show_item(self.ui["section_filter_group"])
-        dpg.show_item(self.ui["section_autotab_group"])
 
     def validate_metadata(self):
         title_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.title_yomigana)
