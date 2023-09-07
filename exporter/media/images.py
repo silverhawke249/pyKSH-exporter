@@ -1,8 +1,8 @@
+import construct as cs
+
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
-
-import construct as cs
 
 from PIL import Image
 

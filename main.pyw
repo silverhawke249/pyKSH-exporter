@@ -11,11 +11,11 @@ from pathlib import Path
 from tkinter import filedialog
 from typing import Any, Callable
 
-from ksh2vox.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
-from ksh2vox.classes.enums import DifficultySlot, GameBackground, InfVer
-from ksh2vox.media.audio import get_2dxs
-from ksh2vox.media.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
-from ksh2vox.parser.ksh import KSHParser
+from exporter.media.audio import get_2dxs
+from exporter.media.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
+from sdvxparser.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
+from sdvxparser.classes.enums import DifficultySlot, GameBackground, InfVer
+from sdvxparser.parser.ksh import KSHParser
 
 ObjectID = int | str
 # fmt: off
@@ -572,7 +572,7 @@ class KSH2VOXApp:
 
         self.filter_mappings = {}
         dpg.delete_item(parent, children_only=True)
-        
+
         dpg.add_text("Custom filter to effect definition mapping:", parent=parent)
         for filter_name in self.parser._filter_to_effect:
             self.filter_mappings[filter_name] = dpg.add_combo(
@@ -617,7 +617,7 @@ class KSH2VOXApp:
             with open(file_path, "r", encoding="utf-8-sig") as f:
                 self.parser = KSHParser(f)
 
-            self.current_path = self.parser.ksh_path.parent
+            self.current_path = self.parser.file_path.parent
             self.log(
                 f"Chart loaded: {self.parser.song_info.title} / {self.parser.song_info.artist} "
                 f"({SLOT_MAPPING[self.parser.chart_info.difficulty]} {self.parser.chart_info.level})"
@@ -732,7 +732,7 @@ class KSH2VOXApp:
 
     def export_2dx(self):
         with disable_buttons(self), show_throbber(self):
-            audio_path = (self.parser.ksh_path.parent / self.parser.chart_info.music_path).resolve()
+            audio_path = (self.parser.file_path.parent / self.parser.chart_info.music_path).resolve()
             if not audio_path.exists():
                 self.log(f'Cannot open "{audio_path}".')
                 return
@@ -787,7 +787,7 @@ class KSH2VOXApp:
 
     def export_jacket(self):
         with disable_buttons(self), show_throbber(self):
-            jacket_path = (self.parser.ksh_path.parent / self.parser.chart_info.jacket_path).resolve()
+            jacket_path = (self.parser.file_path.parent / self.parser.chart_info.jacket_path).resolve()
             if not jacket_path.exists():
                 self.log(f'Cannot open "{jacket_path}".')
                 return

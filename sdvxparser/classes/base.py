@@ -3,6 +3,14 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 
+@dataclass
+class AbstractDataclass(ABC):
+    def __new__(cls, *args, **kwargs):
+        if cls == AbstractDataclass or cls.__bases__[0] == AbstractDataclass:
+            raise TypeError("Cannot instantiate abstract class.")
+        return super().__new__(cls)
+
+
 class VoxEntity(ABC):
     @abstractmethod
     def to_vox_string(self) -> str:
@@ -57,9 +65,3 @@ class TimePoint:
             raise ValueError(f"subdivision must be positive (got {subdivision})")
         if count < 0:
             raise ValueError(f"count cannot be negative (got {count})")
-
-
-@dataclass
-class AutoTabInfo:
-    which: int
-    duration: Fraction

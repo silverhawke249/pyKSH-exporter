@@ -1,7 +1,6 @@
 import itertools
 import logging
 
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field, InitVar
 from decimal import Decimal
@@ -9,7 +8,6 @@ from fractions import Fraction
 from typing import Any
 
 from .base import (
-    AutoTabInfo,
     TimePoint,
     TimeSignature,
 )
@@ -258,10 +256,16 @@ class SPControllerInfo:
 class SPControllerData:
     zoom_top: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
     zoom_bottom: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
-
     tilt: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
-
     lane_split: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
+
+    hidden_bars: dict[TimePoint, bool] = field(default_factory=dict)
+
+
+@dataclass
+class AutoTabInfo:
+    which: int
+    duration: Fraction
 
 
 @dataclass
@@ -310,10 +314,13 @@ class ChartInfo:
     # SPController data
     spcontroller_data: SPControllerData = field(default_factory=SPControllerData)
 
+    # Scripting assist
+    script_ids: dict[NoteType, dict[TimePoint, list[int]]] = field(default_factory=dict)
+
     # Private data
+    # Name to effect object mapping
     _custom_effect: dict[str, Effect] = field(default_factory=dict, init=False, repr=False)
     _custom_filter: dict[str, Effect] = field(default_factory=dict, init=False, repr=False)
-    _filter_param: dict[str, int] = field(default_factory=dict, init=False, repr=False)
 
     # For radar calculation
     _elapsed_time: dict[TimePoint, Decimal] = field(default_factory=dict, init=False, repr=False)
@@ -886,7 +893,7 @@ class ChartInfo:
         """Convert a timepoint to a fraction representation."""
         if timepoint not in self._time_to_frac_cache:
             if timepoint == TimePoint():
-                self._time_to_frac_cache[timepoint] = Fraction(0)
+                self._time_to_frac_cache[timepoint] = Fraction()
             elif timepoint.position == 0:
                 prev_timepoint = TimePoint(timepoint.measure - 1, 0, 1)
                 prev_timesig = self.get_timesig(timepoint.measure - 1)
