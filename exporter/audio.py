@@ -1,3 +1,6 @@
+"""
+Classes and functions that handle audio processing for the GUI.
+"""
 import struct
 import wave
 
@@ -5,19 +8,21 @@ import construct as cs
 
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
-from inspect import isgenerator
 from io import BytesIO
 from pathlib import Path
-from typing import Any
 
 from pydub import AudioSegment
 
-# MS ADPCM code adapted (heh) off FFmpeg's libavcodec/adpcmenc.c
+__all__ = [
+    "get_2dxs",
+]
+
 # fmt: off
 ADPCM_ADAPTATION_TABLE = [
     230, 230, 230, 230, 307, 409, 512, 614,
     768, 614, 512, 409, 307, 230, 230, 230,
 ]
+"""MS ADPCM code adapted (heh) off FFmpeg's `libavcodec/adpcmenc.c`."""
 # fmt: on
 
 MSADPCMWaveStruct = cs.Struct(
@@ -55,7 +60,7 @@ MSADPCMWaveStruct = cs.Struct(
 )
 
 
-def getOffsets(this) -> list[int]:
+def _get_offsets(this) -> list[int]:
     offsets = []
     for i in range(this.fileCount):
         if i == 0:
@@ -72,7 +77,7 @@ TwoDXFileStruct = cs.Struct(
         "headerSize" / cs.Rebuild(cs.Int32ul, 72 + 4 * cs.len_(cs.this._.files)),
         "fileCount" / cs.Rebuild(cs.Int32ul, cs.len_(cs.this._.files)),
         cs.Padding(48),
-        "offsets" / cs.Rebuild(cs.Int32ul[cs.this.fileCount], getOffsets),
+        "offsets" / cs.Rebuild(cs.Int32ul[cs.this.fileCount], _get_offsets),
     ),
     "files"
     / cs.Struct(
@@ -91,6 +96,8 @@ TwoDXFileStruct = cs.Struct(
 
 @dataclass
 class MSADPCMChannelStatus:
+    """Stateful channel data needed by the compression algorithm."""
+
     predictor: int = 0
     step_index: int = 0
     step: int = 0
@@ -108,7 +115,7 @@ class MSADPCMChannelStatus:
 
 @dataclass
 class MSADPCMWave:
-    """Converts a wave object of the correct specs to Microsoft ADPCM WAV."""
+    """Container class for Microsoft ADPCM WAV audio."""
 
     # For fmt chunk
     wFormat: int = 2
@@ -164,6 +171,13 @@ class MSADPCMWave:
         wave_in.close()
 
     def compress_sample(self, status: MSADPCMChannelStatus, sample: int) -> int:
+        """
+        Compress an audio sample within a frame.
+
+        :param status:
+        :type status: :class:``
+        :param sample:
+        """
         if not -32_768 <= sample <= 32_767:
             raise ValueError(f"sample out of range (got {sample})")
 
@@ -194,6 +208,7 @@ class MSADPCMWave:
         return nibble
 
     def encode_frame(self, sample_iter: Iterator[int]):
+        """Encode a frame, represented as an iterable of samples, into the MS ADPCM WAV format."""
         for i in range(self.nChannels):
             predictor = 0
             self.waveData.write(struct.pack("<B", predictor))
@@ -221,6 +236,7 @@ class MSADPCMWave:
             self.waveData.write(struct.pack("<B", nibble))
 
     def serialize(self) -> bytes:
+        """Serialize the object to a byte string."""
         if not self._serialized_self:
             self._serialized_self = MSADPCMWaveStruct.build({"wave": asdict(self)})
 
@@ -229,11 +245,14 @@ class MSADPCMWave:
 
 @dataclass
 class Container2DX:
+    """Container class for 2DX file format."""
+
     filename: str
     waves: list[MSADPCMWave] = field(default_factory=list, init=False)
     _serialized_self: bytes = field(default=b"", init=False)
 
     def serialize(self) -> bytes:
+        """Serialize the object to a byte string."""
         if not self._serialized_self:
             filename_bytes = self.filename.encode()[:16]
             if len(filename_bytes) < 16:
@@ -250,6 +269,14 @@ class Container2DX:
 
 # Preview start must be in ms
 def prepare_audio(file_path: Path, preview_start: int, offset: int) -> tuple[wave.Wave_read, wave.Wave_read]:
+    """
+    Convert an audio file to the correct WAV format and generate a song preview as well.
+
+    :param file_path: Path to audio file. Conversion is handled by ffmpeg.
+    :param preview_start: Time at which the 10s preview should start, given in milliseconds.
+    :param offset: Offset for the audio file in milliseconds.
+    :returns: 2-tuple of :class:`~wave.Wave_read` objects containing the prepared audio and the preview audio.
+    """
     audio: AudioSegment = AudioSegment.from_file(str(file_path))
     audio = audio.set_frame_rate(44100)
     audio = audio.set_channels(2)
@@ -284,7 +311,13 @@ def get_2dxs(file_path: Path, song_label: str, preview_start: int, offset: int =
 
     Positive offset means audio starts later, which means silence will be added to the start.
     Negative offset means audio starts earlier, which is implemented by trimming the start.
-    It is the charter's responsibility to ensure that the song will not be cut off by this processing.
+    This function will not warn users if meaningful audio gets cut off by negative offset.
+
+    :param file_path: Path to audio file. Conversion is handled by ffmpeg.
+    :param song_label: Song label, as required by the 2DX file format.
+    :param preview_start: Time at which the 10s preview should start, given in milliseconds.
+    :param offset: Offset for the audio file in milliseconds.
+    :returns: 2-tuple of the prepared audio and the preview audio in 2DX format as byte strings.
     """
     song_wave, preview_wave = prepare_audio(file_path, preview_start, offset)
 

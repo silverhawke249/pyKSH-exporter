@@ -1,3 +1,6 @@
+"""
+Classes and functions that handle images and image processing for the GUI.
+"""
 import construct as cs
 
 from dataclasses import dataclass, field
@@ -6,7 +9,18 @@ from pathlib import Path
 
 from PIL import Image
 
-BG_WIDTH, BG_HEIGHT = 134, 236
+__all__ = [
+    "BG_HEIGHT",
+    "BG_WIDTH",
+    "GMBGHandler",
+    "get_game_backgrounds",
+    "get_jacket_images",
+]
+
+BG_WIDTH = 134
+"""Width of the packed image file."""
+BG_HEIGHT = 236
+"""Height of the packed image file."""
 PackedGMBGStruct = cs.Struct(
     "info"
     / cs.Struct(
@@ -32,13 +46,28 @@ PackedGMBGStruct = cs.Struct(
 
 @dataclass
 class GMBGHandler:
+    """Handler class for game background images."""
+
     redirects: dict[int, int] = field(default_factory=dict)
     images: dict[int, list[Image.Image]] = field(default_factory=dict)
 
     def has_image(self, bg_no: int) -> bool:
+        """
+        Check if a given background ID is present.
+
+        :param bg_no: Background ID, as an `int`.
+        :returns: `True` if the background image with that ID is present, `False` otherwise.
+        """
         return bg_no in self.redirects or bg_no in self.images
 
     def get_images(self, bg_no: int) -> list[list[float]]:
+        """
+        Fetch a preloaded background image.
+
+        :param bg_no: Background ID, as an `int`.
+        :returns: The background image data, as a flattened list of pixel color values.
+            Returns a black image if that ID is not present.
+        """
         if bg_no in self.redirects:
             image_blobs = self.images[self.redirects[bg_no]]
         elif bg_no in self.images:
@@ -54,6 +83,13 @@ class GMBGHandler:
 
 
 def get_game_backgrounds() -> GMBGHandler:
+    """
+    Load game backgrounds from packed data.
+
+    This function should only be called once.
+
+    :returns: A :class:`~exporter.images.GMBGHandler` instance.
+    """
     handler = GMBGHandler()
 
     parsed_struct = PackedGMBGStruct.parse_file("resources/gmbg.dat")
@@ -74,7 +110,17 @@ def get_game_backgrounds() -> GMBGHandler:
 
 
 def get_jacket_images(file_path: Path) -> tuple[bytes, bytes, bytes]:
-    """Return jacket images as PNG blobs at regular, big, small sizes, in that order."""
+    """
+    Return jacket images as PNG blobs at regular, big, small sizes, in that order.
+
+    Specifically:
+     - Big size: 676x676
+     - Regular size: 300x300
+     - Small size: 108x108
+
+    :param file_path: Path to image file.
+    :returns: 3-tuple of bytes buffer, each containing a PNG-encoded image.
+    """
     image = Image.open(str(file_path))
 
     image_r = image.resize((300, 300), Image.BICUBIC)

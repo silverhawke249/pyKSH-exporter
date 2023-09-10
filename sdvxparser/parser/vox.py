@@ -1,3 +1,6 @@
+"""
+Parser class for VOX file format and its supporting classes and functions.
+"""
 import dataclasses
 import logging
 import re
@@ -8,7 +11,10 @@ from fractions import Fraction
 from pathlib import Path
 from typing import TextIO
 
-from .base import Parser, SongChartContainer
+from .base import (
+    Parser,
+    SongChartContainer,
+)
 from ..classes.base import (
     TimePoint,
     TimeSignature,
@@ -26,6 +32,11 @@ from ..classes.enums import (
     SpinType,
     VOXSection,
 )
+
+__all__ = [
+    "VOXSongChartContainer",
+    "VOXParser",
+]
 
 SECTION_MAP: dict[str, VOXSection] = {
     "END": VOXSection.NONE,
@@ -116,15 +127,21 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass
 class VOXSongChartContainer(SongChartContainer):
+    """Implementation of :class:`~sdvxparser.parser.base.SongChartContainer` for the VOX format."""
+
     def write_vox(self, f: TextIO) -> None:
+        """Method stub. This is a no-op."""
         pass
 
     def write_xml(self, f: TextIO) -> None:
+        """Method stub. This is a no-op."""
         pass
 
 
 @dataclasses.dataclass(eq=False)
 class VOXParser(Parser):
+    """A parser for the VOX file format."""
+
     # Intrinsic data
     _vox_version: int = dataclasses.field(default=0, init=False)
     _laser_scale: Fraction = dataclasses.field(default=LASER_SCALE_DEFAULT, init=False)

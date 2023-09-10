@@ -1,12 +1,21 @@
+"""
+Classes that encapsulate song metadata.
+"""
 from dataclasses import dataclass
 from decimal import Decimal
 from time import strftime
 
 from .enums import GameBackground, InfVer
 
+__all__ = [
+    "SongInfo",
+]
+
 
 @dataclass
 class SongInfo:
+    """A class that contains all song metadata, which applies to all charts of it."""
+
     id: int = 0
     title: str = ""
     title_yomigana: str = ""

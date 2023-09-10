@@ -1,10 +1,23 @@
+"""
+Base, generic classes supporting other more specialized classes.
+"""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from fractions import Fraction
 
+__all__ = [
+    "AbstractDataclass",
+    "VoxEntity",
+    "ParserWarning",
+    "TimeSignature",
+    "TimePoint",
+]
+
 
 @dataclass
 class AbstractDataclass(ABC):
+    """An abstract base class for dataclasses."""
+
     def __new__(cls, *args, **kwargs):
         if cls == AbstractDataclass or cls.__bases__[0] == AbstractDataclass:
             raise TypeError("Cannot instantiate abstract class.")
@@ -12,17 +25,37 @@ class AbstractDataclass(ABC):
 
 
 class VoxEntity(ABC):
+    """An abstract base class for objects that directly represent an entity in VOX file format."""
+
     @abstractmethod
     def to_vox_string(self) -> str:
+        """Convert the object to its string representation in VOX file format."""
+        pass
+
+
+class Validateable(ABC):
+    """An abstract base class for classes that require validation."""
+
+    @abstractmethod
+    def validate(self):
+        """
+        Perform validation on the object.
+
+        :raises ValueError: if any of the input is invalid.
+        """
         pass
 
 
 class ParserWarning(Warning):
+    """Warning class for parser-related issues."""
+
     pass
 
 
 @dataclass(frozen=True)
-class TimeSignature:
+class TimeSignature(Validateable):
+    """An immutable class that represents a time signature."""
+
     upper: int = 4
     lower: int = 4
 
@@ -36,11 +69,18 @@ class TimeSignature:
             raise ValueError(f"lower number must be positive (got {self.lower})")
 
     def as_fraction(self) -> Fraction:
+        """
+        Convert the time signature to a fraction.
+
+        :returns: A :class:`~fractions.Fraction` object.
+        """
         return Fraction(self.upper, self.lower)
 
 
 @dataclass(frozen=True, order=True)
-class TimePoint:
+class TimePoint(Validateable):
+    """An immutable, ordered class that represents a point in time, subject to the prevailing time signature."""
+
     measure: int
     position: Fraction
 

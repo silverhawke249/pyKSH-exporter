@@ -11,8 +11,8 @@ from pathlib import Path
 from tkinter import filedialog
 from typing import Any, Callable
 
-from exporter.media.audio import get_2dxs
-from exporter.media.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
+from exporter.audio import get_2dxs
+from exporter.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
 from sdvxparser.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
 from sdvxparser.classes.enums import DifficultySlot, GameBackground, InfVer
 from sdvxparser.parser.ksh import KSHParser

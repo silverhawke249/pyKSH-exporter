@@ -3,3 +3,6 @@
 
 # VSCode settings
 .vscode/
+
+# Sphinx
+docs/_build/

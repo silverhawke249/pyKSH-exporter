@@ -4,7 +4,8 @@ import logging
 import pathlib
 import sys
 
-from sdvxparser.parser import KSHParser, VOXParser
+from sdvxparser.parser.ksh import KSHParser
+from sdvxparser.parser.vox import VOXParser
 
 
 def main() -> int:

@@ -1,3 +1,6 @@
+"""
+Classes and functions that represent and handle audio effects.
+"""
 import logging
 
 from abc import ABC, abstractmethod
@@ -7,6 +10,30 @@ from enum import Enum
 
 from .base import VoxEntity
 from ..utils import parse_decibel, parse_frequency, parse_length, parse_time
+
+__all__ = [
+    "FXType",
+    "PassFilterType",
+    "WaveShape",
+    "Effect",
+    "NoEffect",
+    "Retrigger",
+    "Gate",
+    "Flanger",
+    "Tapestop",
+    "Sidechain",
+    "Wobble",
+    "Bitcrush",
+    "RetriggerEx",
+    "PitchShift",
+    "Tapescratch",
+    "LowpassFilter",
+    "HighpassFilter",
+    "EffectEntry",
+    "enum_to_effect",
+    "from_definition",
+    "get_default_effects",
+]
 
 logger = logging.getLogger(__name__)
 _enumToEffect: dict = {}
@@ -19,6 +46,8 @@ class _StringifiableEnum(Enum):
 
 
 class FXType(_StringifiableEnum):
+    """Enumeration for effect types."""
+
     NO_EFFECT = 0
     RETRIGGER = 1
     GATE = 2
@@ -35,12 +64,16 @@ class FXType(_StringifiableEnum):
 
 
 class PassFilterType(_StringifiableEnum):
+    """Enumeration for pass filter type."""
+
     LOW_PASS = 0
     HIGH_PASS = 1
     BAND_PASS = 2
 
 
 class WaveShape(_StringifiableEnum):
+    """Enumeration for filter wave shape."""
+
     SAW = 0
     SQUARE = 1
     LINEAR = 2
@@ -49,22 +82,32 @@ class WaveShape(_StringifiableEnum):
 
 @dataclass
 class Effect(VoxEntity, ABC):
+    """Abstract base class for effects."""
+
     @property
     def effect_name(self) -> str:
+        """Return the effect name."""
         return str(self.effect_index)
 
     @property
     @abstractmethod
     def effect_index(self) -> FXType:
+        """Return the enumeration value corresponding to this effect."""
         pass
 
     @staticmethod
     @abstractmethod
     def from_dict(s: Mapping[str, str]):
+        """Create an instance of this effect from a :py:class:`dict` of parameters."""
         pass
 
     @abstractmethod
     def map_params(self, s: Sequence[int]) -> None:
+        """
+        Replace some of this instance's attributes with a sequence of parameters.
+
+        Not all effects implement this method. If unimplemented, this method is a no-op.
+        """
         pass
 
     @abstractmethod
@@ -72,6 +115,7 @@ class Effect(VoxEntity, ABC):
         pass
 
     def duplicate(self):
+        """Create a copy of this object."""
         return replace(self)
 
 
@@ -85,6 +129,8 @@ def _register_effect(cls):
 @_register_effect
 @dataclass
 class NoEffect(Effect):
+    """A class representing a null effect."""
+
     @property
     def effect_index(self) -> FXType:
         return FXType.NO_EFFECT
@@ -103,6 +149,8 @@ class NoEffect(Effect):
 @_register_effect
 @dataclass
 class Retrigger(Effect):
+    """A class representing a retrigger effect."""
+
     mix: float = 95.00
     wavelength: int = 4
     update_period: float = 2.00
@@ -150,6 +198,8 @@ class Retrigger(Effect):
 @_register_effect
 @dataclass
 class Gate(Effect):
+    """A class representing a gate effect."""
+
     mix: float = 98.00
     wavelength: int = 16
     length: float = 2.00
@@ -180,6 +230,8 @@ class Gate(Effect):
 @_register_effect
 @dataclass
 class Flanger(Effect):
+    """A class representing a flanger effect."""
+
     # Parameter names yoinked off VoxCharger lol
     mix: float = 75.00
     period: float = 2.00
@@ -225,6 +277,8 @@ class Flanger(Effect):
 @_register_effect
 @dataclass
 class Tapestop(Effect):
+    """A class representing a tapestop effect."""
+
     mix: float = 100.00
     speed: float = 8.00
     rate: float = 0.40
@@ -255,6 +309,8 @@ class Tapestop(Effect):
 @_register_effect
 @dataclass
 class Sidechain(Effect):
+    """A class representing a sidechain effect."""
+
     mix: float = 90.00
     frequency: float = 1.00
     attack: int = 45
@@ -300,6 +356,8 @@ class Sidechain(Effect):
 @_register_effect
 @dataclass
 class Wobble(Effect):
+    """A class representing a wobble effect."""
+
     mix: float = 80.00
     filter_type: PassFilterType = PassFilterType.LOW_PASS
     wave_shape: WaveShape = WaveShape.SINE
@@ -351,6 +409,8 @@ class Wobble(Effect):
 @_register_effect
 @dataclass
 class Bitcrush(Effect):
+    """A class representing a bitcrush effect."""
+
     mix: float = 100.00
     amount: int = 12
 
@@ -380,7 +440,12 @@ class Bitcrush(Effect):
 @_register_effect
 @dataclass
 class RetriggerEx(Effect):
-    # Same as Retrigger, except it samples from start of effect, instead of at beginning of update period.
+    """
+    A class representing a retrigger effect.
+
+    This effect samples from the start of the effect, instead of at the beginning of the update period.
+    """
+
     mix: float = 95.00
     wavelength: int = 8
     update_period: float = 2.00
@@ -431,6 +496,8 @@ class RetriggerEx(Effect):
 @_register_effect
 @dataclass
 class PitchShift(Effect):
+    """A class representing a pitch shift effect."""
+
     mix: float = 100.00
     amount: int = 12
 
@@ -460,6 +527,8 @@ class PitchShift(Effect):
 @_register_effect
 @dataclass
 class Tapescratch(Effect):
+    """A class representing a tapescratch effect."""
+
     mix: float = 100.00
     curve_slope: float = 5.00
     attack: float = 1.00
@@ -493,6 +562,8 @@ class Tapescratch(Effect):
 @_register_effect
 @dataclass
 class LowpassFilter(Effect):
+    """A class representing a low-pass filter effect."""
+
     mix: float = 75.00
     low_cutoff: float = 400.00
     hi_cutoff: float = 900.00
@@ -524,6 +595,8 @@ class LowpassFilter(Effect):
 @_register_effect
 @dataclass
 class HighpassFilter(Effect):
+    """A class representing a high-pass filter effect."""
+
     mix: float = 100.00
     cutoff: float = 2000.00
     curve_slope: float = 5.00
@@ -554,6 +627,12 @@ class HighpassFilter(Effect):
 
 @dataclass
 class EffectEntry(VoxEntity):
+    """
+    A class representing a single effect setting.
+
+    A single effect setting consists of two effects rendered together.
+    """
+
     effect1: Effect = field(default_factory=NoEffect)
     effect2: Effect = field(default_factory=NoEffect)
 
@@ -565,10 +644,12 @@ class EffectEntry(VoxEntity):
 
 
 def enum_to_effect(val: FXType) -> type[Effect]:
+    """Return the class corresponding to an enumeration member."""
     return _enumToEffect[val]
 
 
 def get_default_effects() -> list[EffectEntry]:
+    """Get the default effect settings."""
     return [
         # Re8
         EffectEntry(Retrigger()),
@@ -598,6 +679,7 @@ def get_default_effects() -> list[EffectEntry]:
 
 
 def from_definition(definition: MutableMapping[str, str]) -> Effect:
+    """Construct an effect object from a parameter-value map."""
     effect_class: type[Effect]
     if definition["type"] in ["Retrigger", "Echo"]:
         effect_class = Retrigger

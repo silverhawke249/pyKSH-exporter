@@ -1,3 +1,6 @@
+"""
+Classes that represent chart-related entities.
+"""
 import itertools
 import logging
 
@@ -10,6 +13,7 @@ from typing import Any
 from .base import (
     TimePoint,
     TimeSignature,
+    Validateable,
 )
 from .effects import (
     Effect,
@@ -32,6 +36,17 @@ from .filters import (
     get_default_filters,
 )
 from ..utils import clamp
+
+__all__ = [
+    "BTInfo",
+    "FXInfo",
+    "VolInfo",
+    "NoteData",
+    "SPControllerInfo",
+    "SPControllerData",
+    "AutoTabInfo",
+    "ChartInfo",
+]
 
 MIN_RADAR_VAL = Decimal()
 MAX_RADAR_VAL = Decimal("200")
@@ -78,14 +93,16 @@ HANDTRIP_NOTETYPES_MAP = {
     NoteType.VOL_R: {NoteType.BT_C, NoteType.BT_D, NoteType.FX_R},
 }
 TRICKY_CAM_FLAT_INC = Decimal("0.103")
-# 15 / 130 ~= 0.115s between consecutive buttons (130bpm 16ths)
 TRICKY_JACK_DISTANCE = (Decimal() + 15) / 130
+"""Distance (in seconds) between two consecutive 1/16ths at 130bpm."""
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class BTInfo:
+class BTInfo(Validateable):
+    """A class that represents a BT object."""
+
     _duration: InitVar[Fraction | int]
     duration: Fraction = field(init=False)
 
@@ -103,11 +120,14 @@ class BTInfo:
             raise ValueError(f"duration cannot be negative (got {self.duration})")
 
     def duration_as_tick(self) -> int:
+        """Convert the button duration to tick count."""
         return round(192 * self.duration)
 
 
 @dataclass
-class FXInfo:
+class FXInfo(Validateable):
+    """A class that represents an FX object."""
+
     _duration: InitVar[Fraction | int]
     duration: Fraction = field(init=False)
     special: int
@@ -128,11 +148,14 @@ class FXInfo:
             raise ValueError(f"special must be positive (got {self.special})")
 
     def duration_as_tick(self) -> int:
+        """Convert the button duration to tick count."""
         return round(192 * self.duration)
 
 
 @dataclass
-class VolInfo:
+class VolInfo(Validateable):
+    """A class that represents a singular point on a VOL segment."""
+
     start: Fraction
     end: Fraction
     spin_type: SpinType = SpinType.NO_SPIN
@@ -162,6 +185,8 @@ class VolInfo:
 
 @dataclass
 class NoteData:
+    """A class encapsulating all the note data in a chart."""
+
     # BT
     bt_a: dict[TimePoint, BTInfo] = field(default_factory=dict)
     bt_b: dict[TimePoint, BTInfo] = field(default_factory=dict)
@@ -177,6 +202,12 @@ class NoteData:
     vol_r: dict[TimePoint, VolInfo] = field(default_factory=dict)
 
     def iter_bts(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo]]:
+        """
+        Iterate through every BT object.
+
+        :returns: A generator that emits a 3-tuple of: note type, time point of the note object, and note object
+            containing the note's data.
+        """
         dicts: list[tuple[NoteType, dict]] = [
             (NoteType.BT_A, self.bt_a),
             (NoteType.BT_B, self.bt_b),
@@ -188,6 +219,12 @@ class NoteData:
                 yield note_type, key, value
 
     def iter_fxs(self) -> Iterable[tuple[NoteType, TimePoint, FXInfo]]:
+        """
+        Iterate through every FX object.
+
+        :returns: A generator that emits a 3-tuple of: note type, time point of the note object, and note object
+            containing the note's data.
+        """
         dicts: list[tuple[NoteType, dict]] = [
             (NoteType.FX_L, self.fx_l),
             (NoteType.FX_R, self.fx_r),
@@ -197,6 +234,14 @@ class NoteData:
                 yield note_type, key, value
 
     def iter_vols(self, *, add_dummy=False) -> Iterable[tuple[NoteType, TimePoint, VolInfo]]:
+        """
+        Iterate through every VOL point.
+
+        :param add_dummy: If `True`, this method will emit a dummy point at the end. This is used for pairwise
+            iteration.
+        :returns: A generator that emits a 3-tuple of: note type, time point of the note object, and note object
+            containing the note's data.
+        """
         dicts: list[tuple[NoteType, dict]] = [
             (NoteType.VOL_L, self.vol_l),
             (NoteType.VOL_R, self.vol_r),
@@ -211,6 +256,10 @@ class NoteData:
             yield NoteType.DUMMY, key, value
 
     def iter_buttons(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo | FXInfo]]:
+        """Iterate through every BT and FX object.
+
+        :returns: A generator that emits a 3-tuple of: note type, time point of the note object, and note object
+            containing the note's data."""
         dicts: list[tuple[NoteType, dict]] = [
             (NoteType.BT_A, self.bt_a),
             (NoteType.BT_B, self.bt_b),
@@ -224,6 +273,12 @@ class NoteData:
                 yield note_type, key, value
 
     def iter_notes(self) -> Iterable[tuple[NoteType, TimePoint, BTInfo | FXInfo | VolInfo]]:
+        """
+        Iterate through every note object and VOL point.
+
+        :returns: A generator that emits a 3-tuple of: note type, time point of the note object, and note object
+            containing the note's data.
+        """
         dicts: list[tuple[NoteType, dict]] = [
             (NoteType.BT_A, self.bt_a),
             (NoteType.BT_B, self.bt_b),
@@ -241,19 +296,25 @@ class NoteData:
 
 @dataclass
 class SPControllerInfo:
+    """A class that represents a value of a SPController parameter."""
+
     start: Decimal
     end: Decimal
     point_type: SegmentFlag = SegmentFlag.START
 
-    def is_snap(self):
+    def is_snap(self) -> bool:
+        """Return `True` if this point has a snap/instantaneous change."""
         return self.start != self.end
 
-    def duplicate(self):
+    def duplicate(self) -> "SPControllerInfo":
+        """Create a copy of this object."""
         return SPControllerInfo(self.start, self.end, self.point_type)
 
 
 @dataclass
 class SPControllerData:
+    """A class that contains all configurable SPController parameters."""
+
     zoom_top: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
     zoom_bottom: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
     tilt: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
@@ -264,12 +325,20 @@ class SPControllerData:
 
 @dataclass
 class AutoTabInfo:
+    """A class for storing laser effect data."""
+
     which: int
     duration: Fraction
 
 
 @dataclass
 class ChartInfo:
+    """
+    A class that contains all chart data and metadata.
+
+    Instances of this class are not intended to be modified after created by the parser classes.
+    """
+
     # Metadata stuff
     level: int = 1
     difficulty: DifficultySlot = DifficultySlot.MAXIMUM
@@ -354,6 +423,11 @@ class ChartInfo:
 
     # TODO: Look into why sometimes this predicts wrong long/tsumami counts
     def _calculate_notecounts(self) -> None:
+        """
+        Calculate the chart's note counts.
+
+        This is called automatically when getting the note counts for the first time.
+        """
         self._chip_notecount = 0
         self._long_notecount = 0
         self._vol_notecount = 0
@@ -454,7 +528,14 @@ class ChartInfo:
 
     # Figure out how long each particular BPM lasts
     # Helpful to figure out time elapsed for a particular note
-    def _populate_bpm_durations(self, endpoint: TimePoint) -> None:
+    def _calculate_bpm_durations(self, endpoint: TimePoint) -> None:
+        """
+        Calculate the time elapsed between each BPM change.
+
+        This function is a prerequisite to :meth:`~sdvxparser.classes.chart.ChartInfo._get_elapsed_time`.
+
+        :param endpoint: The time point for the end of the chart.
+        """
         running_total = Decimal()
         for timept_i, timept_f in itertools.pairwise([*self.bpms.keys(), endpoint]):
             # First BPM point should be at 001,01,00, which means elapsed time is 0 sec.
@@ -496,7 +577,12 @@ class ChartInfo:
 
     # Radar calculation algorithm adapted from ZR147654's code, with some adjustments.
     # As such, it will not return the same values, but it should be close enough.
-    def _calculate_radar_values(self) -> None:
+    def calculate_radar_values(self) -> None:
+        """
+        Calculate the chart's radar values.
+
+        This is called automatically when getting the radar values for the first time.
+        """
         self._radar_notes = 0
         self._radar_peak = 0
         self._radar_tsumami = 0
@@ -520,7 +606,7 @@ class ChartInfo:
             chart_begin_timept = TimePoint()
 
         # Figure out the BPM the hi-speed setting is tuned to
-        self._populate_bpm_durations(chart_end_timept)
+        self._calculate_bpm_durations(chart_end_timept)
         standard_bpm = sorted(list(self._bpm_durations.items()), key=lambda t: (t[1], t[0]))[-1][0]
         logger.info(f"----- GENERAL INFO -----")
         logger.info(f"standard bpm: {standard_bpm:.2f}bpm")
@@ -819,7 +905,12 @@ class ChartInfo:
         self._radar_tricky = int(clamp(tricky_value, MIN_RADAR_VAL, MAX_RADAR_VAL))
 
     def get_timesig(self, measure: int) -> TimeSignature:
-        """Return the prevailing time signature at the given measure."""
+        """
+        Fetch the prevailing time signature at the given measure.
+
+        :param measure: The measure number (measure starts from 1).
+        :returns: The measure's time signature.
+        """
         if measure not in self._timesig_cache:
             prev_timesig = TimeSignature()
             for timept, timesig in self.timesigs.items():
@@ -831,6 +922,12 @@ class ChartInfo:
         return self._timesig_cache[measure]
 
     def get_bpm(self, timepoint: TimePoint) -> Decimal:
+        """
+        Fetch the prevailing BPM at the given time point.
+
+        :param timepoint: The time point to query.
+        :returns: The chart's BPM at that time point.
+        """
         if timepoint not in self._bpm_cache:
             prev_bpm = Decimal()
             for timept, bpm in self.bpms.items():
@@ -842,13 +939,25 @@ class ChartInfo:
         return self._bpm_cache[timepoint]
 
     def get_tick_rate(self, timepoint: TimePoint) -> Fraction:
+        """
+        Fetch the prevailing tick rate at the given time point.
+
+        :param measure: The point to query.
+        :returns: The active tick rate at that time point. Holds and lasers tick at this rate.
+        """
         if timepoint not in self._tickrate_cache:
             self._tickrate_cache[timepoint] = Fraction(1, 16) if self.get_bpm(timepoint) < 256 else Fraction(1, 8)
 
         return self._tickrate_cache[timepoint]
 
     def get_distance(self, a: TimePoint, b: TimePoint) -> Fraction:
-        """Calculate the distance between two timepoints as a fraction."""
+        """
+        Calculate the distance between two timepoints as a fraction.
+
+        :param a: The first time point.
+        :param b: The second time point.
+        :returns: The distance between two timepoints. This is always non-negative.
+        """
         if a == b:
             return Fraction()
         if b < a:
@@ -866,6 +975,10 @@ class ChartInfo:
         Calculate the resulting timepoint after adding an amount of time to a timepoint.
 
         If the second argument is an integer, it is assumed to be the tick count.
+
+        :param a: The starting time point.
+        :param b: The amount to add to the time point.
+        :returns: The resulting time point.
         """
         if isinstance(b, Fraction):
             modified_length = a.position + b
@@ -880,7 +993,14 @@ class ChartInfo:
         return TimePoint(m_no, modified_length.numerator, modified_length.denominator)
 
     def timepoint_to_vox(self, timepoint: TimePoint) -> str:
-        """Convert a timepoint to string in VOX format."""
+        """
+        Convert a timepoint to string in VOX format.
+
+        This requires the time signature data.
+
+        :param timepoint: The time point to convert.
+        :returns: A string representing the time point in VOX format.
+        """
         timesig = self.get_timesig(timepoint.measure)
 
         note_val = Fraction(1, timesig.lower)
@@ -890,7 +1010,14 @@ class ChartInfo:
         return f"{timepoint.measure:03},{div + 1:02},{subdiv:02}"
 
     def timepoint_to_fraction(self, timepoint: TimePoint) -> Fraction:
-        """Convert a timepoint to a fraction representation."""
+        """
+        Convert a timepoint to a fraction representation.
+
+        This requires the time signature data.
+
+        :param timepoint: The time point to convert.
+        :returns: A fraction representing the time point.
+        """
         if timepoint not in self._time_to_frac_cache:
             if timepoint == TimePoint():
                 self._time_to_frac_cache[timepoint] = Fraction()
@@ -908,62 +1035,73 @@ class ChartInfo:
 
     @property
     def chip_notecount(self) -> int:
+        """The number of chip notes in the chart."""
         if self._chip_notecount == -1:
             self._calculate_notecounts()
         return self._chip_notecount
 
     @property
     def long_notecount(self) -> int:
+        """The number of long notes in the chart."""
         if self._long_notecount == -1:
             self._calculate_notecounts()
         return self._long_notecount
 
     @property
     def vol_notecount(self) -> int:
+        """The number of laser notes in the chart."""
         if self._vol_notecount == -1:
             self._calculate_notecounts()
         return self._vol_notecount
 
     @property
     def max_chain(self) -> int:
+        """The total chain of the chart."""
         return self.chip_notecount + self.long_notecount + self.vol_notecount
 
     @property
     def max_ex_score(self) -> int:
+        """The total ex score of the chart."""
         return 5 * self.chip_notecount + 2 * (self.long_notecount + self.vol_notecount)
 
     @property
     def radar_notes(self) -> int:
+        """The value of the NOTES radar."""
         if self._radar_notes == -1:
-            self._calculate_radar_values()
+            self.calculate_radar_values()
         return self._radar_notes
 
     @property
     def radar_peak(self) -> int:
+        """The value of the PEAK radar."""
         if self._radar_peak == -1:
-            self._calculate_radar_values()
+            self.calculate_radar_values()
         return self._radar_peak
 
     @property
     def radar_tsumami(self) -> int:
+        """The value of the TSUMAMI radar."""
         if self._radar_tsumami == -1:
-            self._calculate_radar_values()
+            self.calculate_radar_values()
         return self._radar_tsumami
 
     @property
     def radar_onehand(self) -> int:
+        """The value of the ONE-HAND radar."""
         if self._radar_onehand == -1:
-            self._calculate_radar_values()
+            self.calculate_radar_values()
         return self._radar_onehand
 
     @property
     def radar_handtrip(self) -> int:
+        """The value of the HAND-TRIP radar."""
         if self._radar_handtrip == -1:
-            self._calculate_radar_values()
+            self.calculate_radar_values()
         return self._radar_handtrip
 
     @property
     def radar_tricky(self) -> int:
+        """The value of the TRICKY radar."""
         if self._radar_tricky == -1:
-            self._calculate_radar_values()
+            self.calculate_radar_values()
         return self._radar_tricky

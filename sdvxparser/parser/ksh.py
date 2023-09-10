@@ -1,3 +1,6 @@
+"""
+Parser for KSH file format and its supporting classes and functions.
+"""
 import dataclasses
 import itertools
 import logging
@@ -10,7 +13,10 @@ from pathlib import Path
 from typing import TextIO
 from xml.sax.saxutils import escape
 
-from .base import Parser, SongChartContainer
+from .base import (
+    Parser,
+    SongChartContainer,
+)
 from ..classes import (
     effects,
     filters,
@@ -39,7 +45,13 @@ from ..classes.enums import (
 from ..utils import (
     clamp,
     interpolate,
+    get_ease_function,
 )
+
+__all__ = [
+    "KSHSongChartContainer",
+    "KSHParser",
+]
 
 BAR_LINE = "--"
 CHART_REGEX = re.compile(r"^[012]{4}\|[012]{2}\|[0-9A-Za-o-:]{2}(?:(@(\(|\)|<|>)|S>|S<)\d+)?")
@@ -99,12 +111,16 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass
 class _HoldInfo:
+    """A wrapper for containing hold data mid-parse."""
+
     start: TimePoint
     duration: Fraction = Fraction()
 
 
 @dataclasses.dataclass
 class _LastVolInfo:
+    """A wrapper for containing recent laser information."""
+
     when: TimePoint
     duration: Fraction
     prev_vol: VolInfo
@@ -112,6 +128,8 @@ class _LastVolInfo:
 
 @dataclasses.dataclass
 class KSHSongChartContainer(SongChartContainer):
+    """Implementation of :class:`~sdvxparser.parser.base.SongChartContainer` for the KSH format."""
+
     def _write_bt(self, f: TextIO, notedata: dict[TimePoint, BTInfo]):
         for timept, bt in notedata.items():
             # What even is the last number for in BT holds?
@@ -182,6 +200,7 @@ class KSHSongChartContainer(SongChartContainer):
                 )
 
     def write_vox(self, f: TextIO):
+        """Write the chart data in VOX format."""
         # Header
         f.write(
             "//====================================\n"
@@ -560,6 +579,7 @@ class KSHSongChartContainer(SongChartContainer):
             f.write("//====================================\n")
 
     def write_xml(self, f: TextIO):
+        """Write the song and chart metadata in XML format."""
         f.write(
             f'  <music id="{self.song_info.id}">\n'
             "    <info>\n"
@@ -628,6 +648,7 @@ class KSHSongChartContainer(SongChartContainer):
 
 
 def convert_laser_pos(s: str) -> Fraction:
+    """Convert laser position according to KSH specifications to a fraction."""
     for laser_str in LASER_POSITION:
         if s in laser_str:
             laser_pos = laser_str.index(s)
@@ -637,6 +658,8 @@ def convert_laser_pos(s: str) -> Fraction:
 
 @dataclasses.dataclass(eq=False)
 class KSHParser(Parser):
+    """A parser for the KSH file format."""
+
     # Override from parent class
     _song_chart_data: KSHSongChartContainer = dataclasses.field(init=False)
 
@@ -1415,7 +1438,10 @@ class KSHParser(Parser):
                 part_dist = self.chart_info.get_distance(time_i, timept)
                 total_dist = self.chart_info.get_distance(time_i, time_f)
                 position = interpolate(
-                    EasingType.LINEAR, part_dist, total_dist, vol_data[time_i].end, vol_data[time_f].start
+                    get_ease_function(EasingType.LINEAR),
+                    part_dist / total_dist,
+                    vol_data[time_i].end,
+                    vol_data[time_f].start,
                 )
                 new_ease_points[vol_name].append(
                     (
@@ -1461,7 +1487,11 @@ class KSHParser(Parser):
                         cur_span = INTERPOLATION_DISTANCE * i
                         timept = self.chart_info.add_duration(time_i, cur_span)
                         position = interpolate(
-                            vol_i.ease_type, cur_span, total_span, vol_i.end, vol_f.start, limit_bot, limit_top
+                            get_ease_function(vol_i.ease_type),
+                            cur_span / total_span,
+                            vol_i.end,
+                            vol_f.start,
+                            (limit_bot, limit_top),
                         )
                         vol_data[timept] = VolInfo(
                             position,
@@ -1500,7 +1530,10 @@ class KSHParser(Parser):
                     part_dist = self.chart_info.get_distance(time_i, timept)
                     total_dist = self.chart_info.get_distance(time_i, time_f)
                     position = interpolate(
-                        EasingType.LINEAR, part_dist, total_dist, vol_data[time_i].end, vol_data[time_f].start
+                        get_ease_function(EasingType.LINEAR),
+                        part_dist / total_dist,
+                        vol_data[time_i].end,
+                        vol_data[time_f].start,
                     )
                     new_points[timept] = VolInfo(
                         position,

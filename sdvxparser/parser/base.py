@@ -7,6 +7,11 @@ from ..classes.base import AbstractDataclass
 from ..classes.chart import ChartInfo
 from ..classes.song import SongInfo
 
+__all__ = [
+    "SongChartContainer",
+    "Parser",
+]
+
 
 @dataclass
 class SongChartContainer(AbstractDataclass):
