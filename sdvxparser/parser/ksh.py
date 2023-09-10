@@ -30,6 +30,7 @@ from ..classes.chart import (
     FXInfo,
     SPControllerInfo,
     VolInfo,
+    TICKS_PER_BAR,
 )
 from ..classes.enums import (
     DifficultySlot,
@@ -99,7 +100,7 @@ NOTE_TYPE_TRACK_MAP = {
 KSH_SLAM_DISTANCE = Fraction(1, 32)
 INTERPOLATION_DISTANCE = Fraction(1, 64)
 SPIN_CONVERSION_RATE = Fraction(4, 3) / 48
-STOP_CONVERSION_RATE = Fraction(1, 192)
+STOP_CONVERSION_RATE = Fraction(1, TICKS_PER_BAR)
 # KSM provides "top zoom" and "bottom zoom" while SDVX actually offers camera angle
 # change and distance change... basically, polar coordinates for the camera. This
 # means that the mapping between KSM and SDVX isn't as clean-cut as we'd like.
@@ -348,7 +349,7 @@ class KSHSongChartContainer(SongChartContainer):
         # Track auto tab (FX on lasers activation)
         f.write("#TRACK AUTO TAB\n")
         for timept, autotab_info in self.chart_info.autotab_infos.items():
-            tick_amt = round(192 * autotab_info.duration)
+            tick_amt = round(TICKS_PER_BAR * autotab_info.duration)
             f.write(
                 "\t".join(
                     [
@@ -418,7 +419,7 @@ class KSHSongChartContainer(SongChartContainer):
                             ]
                         )
                     )
-                tick_amt = round(192 * self.chart_info.get_distance(timept_i, timept_f))
+                tick_amt = round(TICKS_PER_BAR * self.chart_info.get_distance(timept_i, timept_f))
                 f.write(
                     "\t".join(
                         [
@@ -484,7 +485,7 @@ class KSHSongChartContainer(SongChartContainer):
                     and (not sp_f.is_snap() and SegmentFlag.END in sp_f.point_type)
                     else 0
                 )
-                tick_amt = round(192 * self.chart_info.get_distance(timept_i, timept_f))
+                tick_amt = round(TICKS_PER_BAR * self.chart_info.get_distance(timept_i, timept_f))
                 f.write(
                     "\t".join(
                         [

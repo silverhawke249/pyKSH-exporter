@@ -20,6 +20,7 @@ from ..classes.chart import (
     FXInfo,
     SPControllerInfo,
     VolInfo,
+    TICKS_PER_BAR,
 )
 from ..classes.enums import (
     EasingType,
@@ -186,7 +187,7 @@ class VOXParser(Parser):
         # This assumes there is no need to normalize the timepoint
         m, c, d = map(int, s.split(",", maxsplit=3))
         timesig = self.chart_info.get_timesig(m)
-        position = Fraction(c - 1, timesig.lower) + Fraction(d, 192)
+        position = Fraction(c - 1, timesig.lower) + Fraction(d, TICKS_PER_BAR)
         t = TimePoint(m, position.numerator, position.denominator)
         return t
 
@@ -279,7 +280,7 @@ class VOXParser(Parser):
                 fx_dict = self.chart_info.note_data.fx_l
             else:
                 fx_dict = self.chart_info.note_data.fx_r
-            fx_dict[timepoint] = FXInfo(Fraction(duration, 192), special)
+            fx_dict[timepoint] = FXInfo(Fraction(duration, TICKS_PER_BAR), special)
         elif self._current_section in [
             VOXSection.TRACK_BT_A,
             VOXSection.TRACK_BT_B,
@@ -297,7 +298,7 @@ class VOXParser(Parser):
                 bt_dict = self.chart_info.note_data.bt_c
             else:
                 bt_dict = self.chart_info.note_data.bt_d
-            bt_dict[timepoint] = BTInfo(Fraction(duration, 192))
+            bt_dict[timepoint] = BTInfo(Fraction(duration, TICKS_PER_BAR))
         elif self._current_section == VOXSection.AUTOTAB_SETTING:
             pass
         elif self._current_section in [VOXSection.TRACK_VOL_L_ORIG, VOXSection.TRACK_VOL_R_ORIG]:

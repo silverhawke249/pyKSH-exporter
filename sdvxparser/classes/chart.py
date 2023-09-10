@@ -50,6 +50,12 @@ __all__ = [
     "ChartInfo",
 ]
 
+TICKS_PER_BAR = 192
+"""Number of ticks in a single 4/4 bar."""
+
+HALF_TICK_BPM_THRESHOLD = Decimal("255")
+"""Threshold for the BPM at which the tick rate halves."""
+
 MIN_RADAR_VAL = Decimal()
 MAX_RADAR_VAL = Decimal("200")
 NOTE_STR_FLAG_MAP = {
@@ -95,7 +101,7 @@ HANDTRIP_NOTETYPES_MAP = {
     NoteType.VOL_R: {NoteType.BT_C, NoteType.BT_D, NoteType.FX_R},
 }
 TRICKY_CAM_FLAT_INC = Decimal("0.103")
-TRICKY_JACK_DISTANCE = (Decimal() + 15) / 130
+TRICKY_JACK_DISTANCE = Decimal("15") / 130
 """Distance (in seconds) between two consecutive 1/16ths at 130bpm."""
 
 logger = logging.getLogger(__name__)
@@ -123,7 +129,7 @@ class BTInfo(Validateable):
 
     def duration_as_tick(self) -> int:
         """Convert the button duration to tick count."""
-        return round(192 * self.duration)
+        return round(TICKS_PER_BAR * self.duration)
 
 
 @dataclass
@@ -151,7 +157,7 @@ class FXInfo(Validateable):
 
     def duration_as_tick(self) -> int:
         """Convert the button duration to tick count."""
-        return round(192 * self.duration)
+        return round(TICKS_PER_BAR * self.duration)
 
 
 @dataclass
@@ -948,7 +954,9 @@ class ChartInfo:
         :returns: The active tick rate at that time point. Holds and lasers tick at this rate.
         """
         if timepoint not in self._tickrate_cache:
-            self._tickrate_cache[timepoint] = Fraction(1, 16) if self.get_bpm(timepoint) < 256 else Fraction(1, 8)
+            self._tickrate_cache[timepoint] = (
+                Fraction(1, 16) if self.get_bpm(timepoint) < HALF_TICK_BPM_THRESHOLD else Fraction(1, 8)
+            )
 
         return self._tickrate_cache[timepoint]
 
@@ -985,7 +993,7 @@ class ChartInfo:
         if isinstance(b, Fraction):
             modified_length = a.position + b
         else:
-            modified_length = a.position + Fraction(b, 192)
+            modified_length = a.position + Fraction(b, TICKS_PER_BAR)
 
         m_no = a.measure
         while modified_length >= (m_len := self.get_timesig(m_no).as_fraction()):
@@ -1007,7 +1015,7 @@ class ChartInfo:
 
         note_val = Fraction(1, timesig.lower)
         div = timepoint.position // note_val
-        subdiv = round(192 * (timepoint.position % note_val))
+        subdiv = round(TICKS_PER_BAR * (timepoint.position % note_val))
 
         return f"{timepoint.measure:03},{div + 1:02},{subdiv:02}"
 
