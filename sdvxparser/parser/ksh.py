@@ -23,8 +23,6 @@ from ..classes import (
 )
 from ..classes.base import (
     ParserWarning,
-    TimePoint,
-    TimeSignature,
 )
 from ..classes.chart import (
     AutoTabInfo,
@@ -41,6 +39,10 @@ from ..classes.enums import (
     SegmentFlag,
     SpinType,
     TiltType,
+)
+from ..classes.time import (
+    TimePoint,
+    TimeSignature,
 )
 from ..utils import (
     clamp,

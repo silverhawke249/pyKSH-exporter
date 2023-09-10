@@ -11,8 +11,6 @@ from fractions import Fraction
 from typing import Any
 
 from .base import (
-    TimePoint,
-    TimeSignature,
     Validateable,
 )
 from .effects import (
@@ -34,6 +32,10 @@ from .filters import (
     Filter,
     get_default_autotab,
     get_default_filters,
+)
+from .time import (
+    TimePoint,
+    TimeSignature,
 )
 from ..utils import clamp
 

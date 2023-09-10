@@ -15,10 +15,6 @@ from .base import (
     Parser,
     SongChartContainer,
 )
-from ..classes.base import (
-    TimePoint,
-    TimeSignature,
-)
 from ..classes.chart import (
     BTInfo,
     FXInfo,
@@ -31,6 +27,10 @@ from ..classes.enums import (
     SegmentFlag,
     SpinType,
     VOXSection,
+)
+from ..classes.time import (
+    TimePoint,
+    TimeSignature,
 )
 
 __all__ = [
