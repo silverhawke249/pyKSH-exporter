@@ -8,6 +8,8 @@ The following chart comments are treated as commands:
 * ``curveEndL``, ``curveEndR``, ``curveEndLR``
 * ``lightFXL``, ``lightFXR``, ``lightFXLR``
 * ``applyFilter``
+* ``hideBars``, ``addBars``
+* ``scriptBegin``, ``scriptEnd``
 
 Multiple commands may be issued at the same time point, separated by a semicolon (``;``) -- e.g. ``curveBeginL=4;curveEndR``.
 
@@ -66,4 +68,35 @@ To use this command, simply write ``applyFilter=[filter]`` as a chart comment wh
 Valid ``filter`` values are: ``lpf``, ``hpf``, ``bitc``, ``1``, ``2``, ``3``, ``4``, ``5``.
 
 
-Hiding bars
+Bar lines
+---------
+
+By writing ``hideBars=on``, bar lines from this point onwards will be hidden. If this command is issued on the start of a measure, that measure's bar line **WILL** be hidden.
+Write ``hideBars=off`` to make bar lines appear again. This is subject to the same quirk as ``hideBars=on``.
+
+While ``hideBars`` is active, the command ``addBars`` can be issued to manually draw a bar line at that point.
+
+
+Scripts
+-------
+
+This command is intended to make writing charts with scripted sections easier. Write ``scriptBegin=`` followed by at least two comma separated numbers.
+The first number is the track specifier, which indicates which tracks will have scripts applied to. The following numbers indicates the script ID that will be applied to the specified tracks.
+
+The way the track specifier encodes which track gets scripts applied to is via binary flags::
+
+      Flag for VOL-L
+      | Flag for BT-A
+      | | Flag for BT-C
+      | | | Flag for FX-R
+      | | | |
+    0b10100010 = 0xA2 = 162
+       | | | |
+       | | | Flag for VOL-R
+       | | Flag for BT-D
+       | Flag for BT-B
+       Flag for FX-L
+
+This number can be provided in hexadecimal (with the ``0x`` prefix), binary (with the ``0b`` prefix), or decimal.
+
+In the generated VOX file, sections to define the script will be provided for each script ID specified in the commands.
