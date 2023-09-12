@@ -329,6 +329,7 @@ class SPControllerData:
     lane_split: dict[TimePoint, SPControllerInfo] = field(default_factory=dict)
 
     hidden_bars: dict[TimePoint, bool] = field(default_factory=dict)
+    manual_bars: list[TimePoint] = field(default_factory=list)
 
 
 @dataclass

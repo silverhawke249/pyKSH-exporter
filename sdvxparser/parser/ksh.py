@@ -521,6 +521,23 @@ class KSHSongChartContainer(SongChartContainer):
                 )
                 bars_hidden = hide_bars
 
+        # BAR data
+        for timept in self.chart_info.spcontroller_data.manual_bars:
+            f.write(
+                "\t".join(
+                    [
+                        f"{self.chart_info.timepoint_to_vox(timept)}",
+                        "BAR",
+                        "0",
+                        "0",
+                        "0.00",
+                        "0.00",
+                        "0.00",
+                        "0.00\n",
+                    ]
+                )
+            )
+
         f.write("#END\n")
         f.write("\n")
 
@@ -709,10 +726,8 @@ class KSHParser(Parser):
 
     # Stateful laser easing data
     _ease_start: dict[str, TimePoint] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _ease_ranges: dict[TimePoint, tuple[float, float]] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _ease_midpoints: dict[str, list[tuple[TimePoint, EasingType]]] = dataclasses.field(
-        default_factory=dict, init=False, repr=False
-    )
+    _ease_ranges: dict[str, dict[TimePoint, tuple[float, float]]] = dataclasses.field(init=False, repr=False)
+    _ease_midpoints: dict[str, list[tuple[TimePoint, EasingType]]] = dataclasses.field(init=False, repr=False)
     _cur_easing: dict[str, EasingType] = dataclasses.field(default_factory=dict, init=False, repr=False)
     """When a key is missing from this dict, it means that easing is currently active on that volume track."""
 
@@ -744,6 +759,10 @@ class KSHParser(Parser):
         self._parse_notedata()
 
     def _initialize_stateful_data(self) -> None:
+        self._ease_ranges = {
+            "vol_l": {},
+            "vol_r": {},
+        }
         self._ease_midpoints = {
             "vol_l": [],
             "vol_r": [],
@@ -971,122 +990,109 @@ class KSHParser(Parser):
             else:
                 name = chunk
                 value = ""
-            # FX SE
-            if name == "lightFXL":
-                self._set_se["fx_l"] = int(value)
-            elif name == "lightFXR":
-                self._set_se["fx_r"] = int(value)
-            elif name == "lightFXLR":
-                self._set_se["fx_l"] = int(value)
-                self._set_se["fx_r"] = int(value)
-            # Curves/easing
-            elif name == "curveBeginL":
-                self._ease_start["vol_l"] = cur_time
-                self._cur_easing["vol_l"] = EasingType(int(value))
-            elif name == "curveBeginR":
-                self._ease_start["vol_r"] = cur_time
-                self._cur_easing["vol_r"] = EasingType(int(value))
-            elif name == "curveBeginLR":
-                if "," in value:
-                    value_l, value_r = value.split(",")[:2]
-                else:
-                    value_l, value_r = value, value
-                self._ease_start["vol_l"] = cur_time
-                self._cur_easing["vol_l"] = EasingType(int(value_l))
-                self._ease_start["vol_r"] = cur_time
-                self._cur_easing["vol_r"] = EasingType(int(value_r))
-            elif name == "curveBeginSpL":
-                values = value.split(",")
-                if len(values) != 3:
-                    raise ValueError(f"incorrect number of args supplied to {name}")
-                ease, init_str, final_str = value.split(",")
-                init, final = float(init_str), float(final_str)
-                if init > final:
-                    init, final = final, init
-                init = clamp(init, 0.0, 1.0)
-                final = clamp(final, 0.0, 1.0)
-                self._ease_start["vol_l"] = cur_time
-                self._cur_easing["vol_l"] = EasingType(int(ease))
-                self._ease_ranges[cur_time] = init, final
-            elif name == "curveBeginSpR":
-                values = value.split(",")
-                if len(values) != 3:
-                    raise ValueError(f"incorrect number of args supplied to {name}")
-                ease, init_str, final_str = value.split(",")
-                init, final = float(init_str), float(final_str)
-                if init > final:
-                    init, final = final, init
-                init = clamp(init, 0.0, 1.0)
-                final = clamp(final, 0.0, 1.0)
-                self._ease_start["vol_r"] = cur_time
-                self._cur_easing["vol_r"] = EasingType(int(ease))
-                self._ease_ranges[cur_time] = init, final
-            elif name == "curveEndL":
-                self._ease_start["vol_l"] = cur_time
-                self._cur_easing["vol_l"] = EasingType.NO_EASING
-            elif name == "curveEndR":
-                self._ease_start["vol_r"] = cur_time
-                self._cur_easing["vol_r"] = EasingType.NO_EASING
-            elif name == "curveEndLR":
-                self._ease_start["vol_l"] = cur_time
-                self._cur_easing["vol_l"] = EasingType.NO_EASING
-                self._ease_start["vol_r"] = cur_time
-                self._cur_easing["vol_r"] = EasingType.NO_EASING
-            elif name == "applyFilter":
-                if value == "lpf":
-                    filter_now = FilterIndex.LPF
-                elif value == "hpf":
-                    filter_now = FilterIndex.HPF
-                elif value == "bitc":
-                    filter_now = FilterIndex.BITCRUSH
-                else:
-                    intval = int(value)
-                    filter_now = FilterIndex(intval if 1 <= intval <= 5 else 0)
-                if filter_now == FilterIndex.PEAK:
-                    return
-                self._filter_override = filter_now
-                self._cur_filter = filter_now
-                if cur_time in self.chart_info.active_filter:
-                    self.chart_info.active_filter[cur_time] = filter_now
-            elif name == "scriptBegin":
-                values = value.split(",")
-                if len(values) < 2:
-                    raise ValueError(f"incorrect number of args supplied to {name}")
-                if values[0].lower().startswith("0x"):
-                    flag_value = int(values[0], 16)
-                elif values[0].lower().startswith("0b"):
-                    flag_value = int(values[0], 2)
-                else:
-                    flag_value = int(values[0])
-                flags = NoteType(flag_value % 0x100)
-                script_ids = [int(v) for v in values[1:]]
-                for note_type in NoteType:
-                    if note_type in flags:
-                        if note_type not in self.chart_info.script_ids:
-                            self.chart_info.script_ids[note_type] = {}
-                        self.chart_info.script_ids[note_type][cur_time] = script_ids
-            elif name == "scriptEnd":
-                if value.lower().startswith("0x"):
-                    flag_value = int(value, 16)
-                elif value.lower().startswith("0b"):
-                    flag_value = int(value, 2)
-                else:
-                    flag_value = int(value)
-                flags = NoteType(flag_value % 0x100)
-                for note_type in NoteType:
-                    if note_type in flags:
-                        if note_type not in self.chart_info.script_ids:
-                            self.chart_info.script_ids[note_type] = {}
-                        self.chart_info.script_ids[note_type][cur_time] = []
-            elif name == "hideBars":
-                match value:
-                    case "on" | "1":
-                        self.chart_info.spcontroller_data.hidden_bars[cur_time] = True
-                    case "off" | "0":
-                        self.chart_info.spcontroller_data.hidden_bars[cur_time] = False
-            else:
-                # Silently ignoring all other metadata
-                pass
+            match name:
+                # FX SE
+                case "lightFXL" | "lightFXR" | "lightFXLR":
+                    # Not 100% correct, but looks good
+                    if "L" in name:
+                        self._set_se["fx_l"] = int(value)
+                    if "R" in name:
+                        self._set_se["fx_r"] = int(value)
+                # Curves/easing
+                case "curveBeginL" | "curveBeginR" | "curveBeginLR":
+                    if "," in value:
+                        value_l, value_r = value.split(",")[:2]
+                    else:
+                        value_l, value_r = value, value
+                    if "L" in name:
+                        self._ease_start["vol_l"] = cur_time
+                        self._cur_easing["vol_l"] = EasingType(int(value))
+                    if "R" in name:
+                        self._ease_start["vol_r"] = cur_time
+                        self._cur_easing["vol_r"] = EasingType(int(value))
+                case "curveBeginSpL" | "curveBeginSpR":
+                    values = value.split(",")
+                    if len(values) != 3:
+                        raise ValueError(f"incorrect number of args supplied to {name}")
+                    ease, init_str, final_str = value.split(",")
+                    init, final = float(init_str), float(final_str)
+                    if init > final:
+                        init, final = final, init
+                    init = clamp(init, 0.0, 1.0)
+                    final = clamp(final, 0.0, 1.0)
+                    if "L" in name:
+                        self._ease_start["vol_l"] = cur_time
+                        self._cur_easing["vol_l"] = EasingType(int(ease))
+                        self._ease_ranges["vol_l"][cur_time] = init, final
+                    if "R" in name:
+                        self._ease_start["vol_l"] = cur_time
+                        self._cur_easing["vol_l"] = EasingType(int(ease))
+                        self._ease_ranges["vol_l"][cur_time] = init, final
+                case "curveEndL" | "curveEndR" | "curveEndLR":
+                    if "L" in name:
+                        self._ease_start["vol_l"] = cur_time
+                        self._cur_easing["vol_l"] = EasingType.NO_EASING
+                    if "R" in name:
+                        self._ease_start["vol_r"] = cur_time
+                        self._cur_easing["vol_r"] = EasingType.NO_EASING
+                # Filter override
+                case "applyFilter":
+                    match value:
+                        case "lpf":
+                            filter_now = FilterIndex.LPF
+                        case "hpf":
+                            filter_now = FilterIndex.HPF
+                        case "bitc":
+                            filter_now = FilterIndex.BITCRUSH
+                        case _:
+                            intval = int(value)
+                            filter_now = FilterIndex(intval if 1 <= intval <= 5 else 0)
+                    if filter_now == FilterIndex.PEAK:
+                        return
+                    self._filter_override = filter_now
+                    self._cur_filter = filter_now
+                    if cur_time in self.chart_info.active_filter:
+                        self.chart_info.active_filter[cur_time] = filter_now
+                # Measure line manipulation
+                case "hideBars":
+                    match value:
+                        case "on" | "1":
+                            self.chart_info.spcontroller_data.hidden_bars[cur_time] = True
+                        case "off" | "0":
+                            self.chart_info.spcontroller_data.hidden_bars[cur_time] = False
+                case "addBars":
+                    self.chart_info.spcontroller_data.manual_bars.append(cur_time)
+                # Scripting
+                case "scriptBegin":
+                    values = value.split(",")
+                    if len(values) < 2:
+                        raise ValueError(f"incorrect number of args supplied to {name}")
+                    if values[0].lower().startswith("0x"):
+                        flag_value = int(values[0], 16)
+                    elif values[0].lower().startswith("0b"):
+                        flag_value = int(values[0], 2)
+                    else:
+                        flag_value = int(values[0])
+                    flags = NoteType(flag_value % 0x100)
+                    script_ids = [int(v) for v in values[1:]]
+                    for note_type in NoteType:
+                        if note_type in flags:
+                            if note_type not in self.chart_info.script_ids:
+                                self.chart_info.script_ids[note_type] = {}
+                            self.chart_info.script_ids[note_type][cur_time] = script_ids
+                case "scriptEnd":
+                    if value.lower().startswith("0x"):
+                        flag_value = int(value, 16)
+                    elif value.lower().startswith("0b"):
+                        flag_value = int(value, 2)
+                    else:
+                        flag_value = int(value)
+                    flags = NoteType(flag_value % 0x100)
+                    for note_type in NoteType:
+                        if note_type in flags:
+                            if note_type not in self.chart_info.script_ids:
+                                self.chart_info.script_ids[note_type] = {}
+                            self.chart_info.script_ids[note_type][cur_time] = []
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split("=", 1)
@@ -1481,7 +1487,7 @@ class KSHParser(Parser):
                     continue
                 # Interpolate lasers (no interpolation done if the first point is an endpoint)
                 if vol_i.ease_type != EasingType.NO_EASING:
-                    limit_bot, limit_top = self._ease_ranges.get(time_i, (0.0, 1.0))
+                    limit_bot, limit_top = self._ease_ranges[vol_name].get(time_i, (0.0, 1.0))
                     total_span = self.chart_info.get_distance(time_i, time_f)
                     div_count = int(total_span / INTERPOLATION_DISTANCE)
                     if div_count * INTERPOLATION_DISTANCE < total_span:
