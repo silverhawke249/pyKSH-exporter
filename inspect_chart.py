@@ -40,16 +40,16 @@ def main() -> int:
                 raise OSError("invalid file extension")
 
             with fpath.open("r", encoding="utf-8") as f:
-                file_parser = FileParser(f)
+                song_chart_data = FileParser().parse(f)
 
             if args.porcelain:
                 print(
                     "\t".join(
                         str(n)
                         for n in [
-                            file_parser.chart_info.chip_notecount,
-                            file_parser.chart_info.long_notecount,
-                            file_parser.chart_info.vol_notecount,
+                            song_chart_data.chart_info.chip_notecount,
+                            song_chart_data.chart_info.long_notecount,
+                            song_chart_data.chart_info.vol_notecount,
                         ]
                     )
                 )
@@ -57,28 +57,28 @@ def main() -> int:
                     "\t".join(
                         str(n)
                         for n in [
-                            file_parser.chart_info.radar_notes,
-                            file_parser.chart_info.radar_peak,
-                            file_parser.chart_info.radar_tsumami,
-                            file_parser.chart_info.radar_onehand,
-                            file_parser.chart_info.radar_handtrip,
-                            file_parser.chart_info.radar_tricky,
+                            song_chart_data.chart_info.radar_notes,
+                            song_chart_data.chart_info.radar_peak,
+                            song_chart_data.chart_info.radar_tsumami,
+                            song_chart_data.chart_info.radar_onehand,
+                            song_chart_data.chart_info.radar_handtrip,
+                            song_chart_data.chart_info.radar_tricky,
                         ]
                     )
                 )
             else:
                 print(fn)
                 print("=====  NOTECOUNTS  =====")
-                print(f"CHIP             | {file_parser.chart_info.chip_notecount:>5}")
-                print(f"LONG             | {file_parser.chart_info.long_notecount:>5}")
-                print(f"VOL              | {file_parser.chart_info.vol_notecount:>5}")
+                print(f"CHIP             | {song_chart_data.chart_info.chip_notecount:>5}")
+                print(f"LONG             | {song_chart_data.chart_info.long_notecount:>5}")
+                print(f"VOL              | {song_chart_data.chart_info.vol_notecount:>5}")
                 print("===== RADAR VALUES =====")
-                print(f"NOTES            | {file_parser.chart_info.radar_notes:>5}")
-                print(f"PEAK             | {file_parser.chart_info.radar_peak:>5}")
-                print(f"TSUMAMI          | {file_parser.chart_info.radar_tsumami:>5}")
-                print(f"ONE-HAND         | {file_parser.chart_info.radar_onehand:>5}")
-                print(f"HAND-TRIP        | {file_parser.chart_info.radar_handtrip:>5}")
-                print(f"TRICKY           | {file_parser.chart_info.radar_tricky:>5}")
+                print(f"NOTES            | {song_chart_data.chart_info.radar_notes:>5}")
+                print(f"PEAK             | {song_chart_data.chart_info.radar_peak:>5}")
+                print(f"TSUMAMI          | {song_chart_data.chart_info.radar_tsumami:>5}")
+                print(f"ONE-HAND         | {song_chart_data.chart_info.radar_onehand:>5}")
+                print(f"HAND-TRIP        | {song_chart_data.chart_info.radar_handtrip:>5}")
+                print(f"TRICKY           | {song_chart_data.chart_info.radar_tricky:>5}")
                 print()
         except Exception as err:
             if args.porcelain:

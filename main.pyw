@@ -15,6 +15,7 @@ from exporter.audio import get_2dxs
 from exporter.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
 from sdvxparser.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
 from sdvxparser.classes.enums import DifficultySlot, GameBackground, InfVer
+from sdvxparser.parser.base import SongChartContainer
 from sdvxparser.parser.ksh import KSHParser
 
 ObjectID = int | str
@@ -67,7 +68,7 @@ class KSH2VOXApp:
     ui: dict[str, ObjectID] = dict()
     reverse_ui_map: dict[ObjectID, str] = dict()
 
-    parser: KSHParser
+    song_chart_data: SongChartContainer
     gmbg_data: GMBGHandler
 
     current_path: Path | None = None
@@ -79,6 +80,7 @@ class KSH2VOXApp:
     gmbg_image_index: int = 0
     popup_result: bool = False
 
+    current_file_path: Path
     effect_params: dict[ObjectID, dict[str, ObjectID]]
     filter_mappings: dict[str, ObjectID]
 
@@ -429,14 +431,22 @@ class KSH2VOXApp:
         try:
             obj_name = self.get_obj_name(sender)
             if obj_name in SONG_INFO_FIELDS:
-                setattr(self.parser.song_info, obj_name, self.parser.song_info.__annotations__[obj_name](app_data))
+                setattr(
+                    self.song_chart_data.song_info,
+                    obj_name,
+                    self.song_chart_data.song_info.__annotations__[obj_name](app_data),
+                )
             elif obj_name in CHART_INFO_FIELDS:
-                setattr(self.parser.chart_info, obj_name, self.parser.chart_info.__annotations__[obj_name](app_data))
+                setattr(
+                    self.song_chart_data.chart_info,
+                    obj_name,
+                    self.song_chart_data.chart_info.__annotations__[obj_name](app_data),
+                )
         except AttributeError:
             pass
 
     def populate_effects_list(self, list_index: int = 0):
-        effect_list = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.parser.chart_info.effect_list)]
+        effect_list = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.song_chart_data.chart_info.effect_list)]
         dpg.configure_item(self.ui["effect_def_combo"], items=effect_list)
         dpg.set_value(self.ui["effect_def_combo"], effect_list[list_index])
 
@@ -448,7 +458,7 @@ class KSH2VOXApp:
 
     def load_effects(self, sender: ObjectID):
         choice_index = self.get_combo_index(sender)
-        current_effect = self.parser.chart_info.effect_list[choice_index]
+        current_effect = self.song_chart_data.chart_info.effect_list[choice_index]
 
         dpg.set_value(self.ui["effect_def_1_combo"], current_effect.effect1.effect_name)
         dpg.set_value(self.ui["effect_def_2_combo"], current_effect.effect2.effect_name)
@@ -463,10 +473,10 @@ class KSH2VOXApp:
         target: ObjectID | None = None
         if sender == self.ui["effect_def_1_combo"]:
             target = self.ui["effect_def_1_params"]
-            reference_fx = self.parser.chart_info.effect_list[effect_index].effect1
+            reference_fx = self.song_chart_data.chart_info.effect_list[effect_index].effect1
         elif sender == self.ui["effect_def_2_combo"]:
             target = self.ui["effect_def_2_params"]
-            reference_fx = self.parser.chart_info.effect_list[effect_index].effect2
+            reference_fx = self.song_chart_data.chart_info.effect_list[effect_index].effect2
         else:
             return
 
@@ -509,7 +519,7 @@ class KSH2VOXApp:
             self.effect_params[sender][param_name] = obj_id
 
     def update_effect_def_button_state(self) -> None:
-        button_state = bool(self.parser.chart_info.effect_list)
+        button_state = bool(self.song_chart_data.chart_info.effect_list)
         dpg.configure_item(self.ui["effect_def_update"], enabled=button_state)
         dpg.configure_item(self.ui["effect_def_delete"], enabled=button_state)
 
@@ -520,7 +530,7 @@ class KSH2VOXApp:
                 continue
             self.parser._filter_to_effect[filter_name] += 1
 
-        self.parser.chart_info.effect_list.insert(effect_index, EffectEntry())
+        self.song_chart_data.chart_info.effect_list.insert(effect_index, EffectEntry())
 
         self.populate_effects_list(effect_index)
         self.update_filter_combo_box()
@@ -544,7 +554,7 @@ class KSH2VOXApp:
                     param_value = self.get_combo_index(obj_id)
                 setattr(effect_obj, param_name, param_type(param_value))
 
-        self.parser.chart_info.effect_list[effect_index] = EffectEntry(effect_1, effect_2)
+        self.song_chart_data.chart_info.effect_list[effect_index] = EffectEntry(effect_1, effect_2)
 
         self.populate_effects_list(effect_index)
         self.update_filter_combo_box()
@@ -558,15 +568,16 @@ class KSH2VOXApp:
                 self.logger.warning(f"effect corresponding to filter {filter_name} was deleted")
             self.parser._filter_to_effect[filter_name] -= 1
 
-        self.parser.chart_info.effect_list.pop(effect_index)
+        self.song_chart_data.chart_info.effect_list.pop(effect_index)
 
         # Don't allow effect list to be empty
-        if not self.parser.chart_info.effect_list:
-            self.parser.chart_info.effect_list.append(EffectEntry())
+        if not self.song_chart_data.chart_info.effect_list:
+            self.song_chart_data.chart_info.effect_list.append(EffectEntry())
 
         self.populate_effects_list(effect_index)
         self.update_filter_combo_box()
 
+    # TODO: Fix usage of _filter_to_effect
     def populate_filters_list(self) -> None:
         parent = self.ui["section_filter_group"]
 
@@ -581,10 +592,13 @@ class KSH2VOXApp:
                 callback=self.update_filter_mapping,
             )
 
+        if not self.parser._filter_to_effect:
+            dpg.add_text("No custom filter found!", parent=parent, color=GREY_TEXT_COLOR)
+
         self.update_filter_combo_box()
 
     def update_filter_combo_box(self) -> None:
-        combo_items = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.parser.chart_info.effect_list)]
+        combo_items = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.song_chart_data.chart_info.effect_list)]
 
         for filter_name, obj_id in self.filter_mappings.items():
             dpg.configure_item(obj_id, items=combo_items)
@@ -600,7 +614,7 @@ class KSH2VOXApp:
 
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
-            file_path = filedialog.askopenfilename(
+            file_path_str = filedialog.askopenfilename(
                 filetypes=(
                     ("K-Shoot Mania charts", "*.ksh"),
                     ("All files", "*"),
@@ -608,25 +622,26 @@ class KSH2VOXApp:
                 initialdir=self.current_path,
                 title="Open KSH file",
             )
-            if not file_path:
+            if not file_path_str:
                 return
 
-            dpg.set_value(self.ui["loaded_file"], file_path)
-            self.log(f'Reading from "{file_path}"...')
+            self.current_file_path = Path(file_path_str)
+            dpg.set_value(self.ui["loaded_file"], self.current_file_path)
+            self.log(f'Reading from "{self.current_file_path}"...')
 
-            with open(file_path, "r", encoding="utf-8-sig") as f:
-                self.parser = KSHParser(f)
+            with self.current_file_path.open("r", encoding="utf-8-sig") as f:
+                self.song_chart_data = KSHParser().parse(f)
 
-            self.current_path = self.parser.file_path.parent
+            self.current_path = self.current_file_path.parent
             self.log(
-                f"Chart loaded: {self.parser.song_info.title} / {self.parser.song_info.artist} "
-                f"({SLOT_MAPPING[self.parser.chart_info.difficulty]} {self.parser.chart_info.level})"
+                f"Chart loaded: {self.song_chart_data.song_info.title} / {self.song_chart_data.song_info.artist} "
+                f"({SLOT_MAPPING[self.song_chart_data.chart_info.difficulty]} {self.song_chart_data.chart_info.level})"
             )
 
             for field in SONG_INFO_FIELDS:
-                dpg.set_value(self.ui[field], getattr(self.parser.song_info, field))
+                dpg.set_value(self.ui[field], getattr(self.song_chart_data.song_info, field))
             for field in CHART_INFO_FIELDS:
-                dpg.set_value(self.ui[field], getattr(self.parser.chart_info, field))
+                dpg.set_value(self.ui[field], getattr(self.song_chart_data.chart_info, field))
 
             dpg.configure_item(self.ui["effect_def_1_combo"], items=list(FXType))
             dpg.configure_item(self.ui["effect_def_2_combo"], items=list(FXType))
@@ -634,7 +649,7 @@ class KSH2VOXApp:
             self.populate_effects_list()
             self.populate_filters_list()
 
-            self.background_id = self.parser.song_info.background.value
+            self.background_id = self.song_chart_data.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
 
         # Remove placeholder text and show hidden parts
@@ -656,27 +671,27 @@ class KSH2VOXApp:
         self.update_effect_def_button_state()
 
     def validate_metadata(self):
-        title_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.title_yomigana)
+        title_check = YOMIGANA_VALIDATION_REGEX.match(self.song_chart_data.song_info.title_yomigana)
         if title_check is None:
             self.logger.warning("Title yomigana is not a valid yomigana string or is empty")
 
-        artist_check = YOMIGANA_VALIDATION_REGEX.match(self.parser.song_info.artist_yomigana)
+        artist_check = YOMIGANA_VALIDATION_REGEX.match(self.song_chart_data.song_info.artist_yomigana)
         if artist_check is None:
             self.logger.warning("Artist yomigana is not a valid yomigana string or is empty")
 
-        if not (self.parser.song_info.ascii_label and self.parser.song_info.ascii_label.isascii()):
+        if not (self.song_chart_data.song_info.ascii_label and self.song_chart_data.song_info.ascii_label.isascii()):
             self.logger.warning("ASCII label is not an ASCII string or is empty")
 
         try:
-            time.strptime(self.parser.song_info.release_date, "%Y%m%d")
+            time.strptime(self.song_chart_data.song_info.release_date, "%Y%m%d")
         except ValueError:
             self.logger.warning("Release date is not a valid YYYYMMDD date string")
 
     def export_vox(self):
         with disable_buttons(self), show_throbber(self):
             file_name = (
-                f"{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}_"
-                f"{self.parser.chart_info.difficulty.to_shorthand()}.vox"
+                f"{self.song_chart_data.song_info.id:04}_{self.song_chart_data.song_info.ascii_label}_"
+                f"{self.song_chart_data.chart_info.difficulty.to_shorthand()}.vox"
             )
             file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -696,7 +711,7 @@ class KSH2VOXApp:
             self.log(f'Writing to "{file_path}"...')
             self.current_path = Path(file_path).parent
             with open(file_path, "w") as f:
-                self.parser.write_vox(f)
+                self.song_chart_data.write_vox(f)
 
             self.log(f"File saved: {file_name}")
 
@@ -705,8 +720,8 @@ class KSH2VOXApp:
             self.validate_metadata()
 
             file_name = (
-                f"{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}_"
-                f"{self.parser.chart_info.difficulty.to_shorthand()}.xml"
+                f"{self.song_chart_data.song_info.id:04}_{self.song_chart_data.song_info.ascii_label}_"
+                f"{self.song_chart_data.chart_info.difficulty.to_shorthand()}.xml"
             )
             file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -726,18 +741,18 @@ class KSH2VOXApp:
             self.log(f'Writing to "{file_path}"...')
             self.current_path = Path(file_path).parent
             with open(file_path, "w") as f:
-                self.parser.write_xml(f)
+                self.song_chart_data.write_xml(f)
 
             self.log(f"File saved: {file_name}")
 
     def export_2dx(self):
         with disable_buttons(self), show_throbber(self):
-            audio_path = (self.parser.file_path.parent / self.parser.chart_info.music_path).resolve()
+            audio_path = (self.current_file_path.parent / self.song_chart_data.chart_info.music_path).resolve()
             if not audio_path.exists():
                 self.log(f'Cannot open "{audio_path}".')
                 return
 
-            song_label = f"{self.parser.song_info.id:04}_{self.parser.song_info.ascii_label}"
+            song_label = f"{self.song_chart_data.song_info.id:04}_{self.song_chart_data.song_info.ascii_label}"
             song_file_name = f"{song_label}.2dx"
             song_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
@@ -772,7 +787,10 @@ class KSH2VOXApp:
 
             self.log("Converting audio to 2DX format...")
             song_bytes, preview_bytes = get_2dxs(
-                audio_path, song_label, self.parser.chart_info.preview_start, self.parser.chart_info.music_offset
+                audio_path,
+                song_label,
+                self.song_chart_data.chart_info.preview_start,
+                self.song_chart_data.chart_info.music_offset,
             )
 
             self.log(f'Writing to "{song_file_path}"...')
@@ -787,14 +805,20 @@ class KSH2VOXApp:
 
     def export_jacket(self):
         with disable_buttons(self), show_throbber(self):
-            jacket_path = (self.parser.file_path.parent / self.parser.chart_info.jacket_path).resolve()
+            jacket_path = (self.current_file_path.parent / self.song_chart_data.chart_info.jacket_path).resolve()
             if not jacket_path.exists():
                 self.log(f'Cannot open "{jacket_path}".')
                 return
 
-            jacket_r_file_name = f"jk_{self.parser.song_info.id:04}_{self.parser.chart_info.difficulty.value}.png"
-            jacket_b_file_name = f"jk_{self.parser.song_info.id:04}_{self.parser.chart_info.difficulty.value}_b.png"
-            jacket_s_file_name = f"jk_{self.parser.song_info.id:04}_{self.parser.chart_info.difficulty.value}_s.png"
+            jacket_r_file_name = (
+                f"jk_{self.song_chart_data.song_info.id:04}_{self.song_chart_data.chart_info.difficulty.value}.png"
+            )
+            jacket_b_file_name = (
+                f"jk_{self.song_chart_data.song_info.id:04}_{self.song_chart_data.chart_info.difficulty.value}_b.png"
+            )
+            jacket_s_file_name = (
+                f"jk_{self.song_chart_data.song_info.id:04}_{self.song_chart_data.chart_info.difficulty.value}_s.png"
+            )
 
             jacket_r_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,

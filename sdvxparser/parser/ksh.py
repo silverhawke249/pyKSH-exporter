@@ -203,7 +203,6 @@ class KSHSongChartContainer(SongChartContainer):
                 )
 
     def write_vox(self, f: TextIO):
-        """Write the chart data in VOX format."""
         # Header
         f.write(
             "//====================================\n"
@@ -599,7 +598,6 @@ class KSHSongChartContainer(SongChartContainer):
             f.write("//====================================\n")
 
     def write_xml(self, f: TextIO):
-        """Write the song and chart metadata in XML format."""
         f.write(
             f'  <music id="{self.song_info.id}">\n'
             "    <info>\n"
@@ -676,64 +674,127 @@ def convert_laser_pos(s: str) -> Fraction:
     return Fraction()
 
 
-@dataclasses.dataclass(eq=False)
 class KSHParser(Parser):
     """A parser for the KSH file format."""
 
-    # Override from parent class
-    _song_chart_data: KSHSongChartContainer = dataclasses.field(init=False)
+    __song_chart_data: KSHSongChartContainer
 
     # Intrinsic data that is parsed to chart data
-    _raw_metadata: list[str] = dataclasses.field(init=False, repr=False)
-    _raw_notedata: list[str] = dataclasses.field(init=False, repr=False)
-    _raw_definitions: list[str] = dataclasses.field(init=False, repr=False)
+    _raw_metadata: list[str]
+    _raw_notedata: list[str]
+    _raw_definitions: list[str]
 
-    _bts: dict[str, dict[TimePoint, BTInfo]] = dataclasses.field(init=False, repr=False)
-    _fxs: dict[str, dict[TimePoint, FXInfo]] = dataclasses.field(init=False, repr=False)
-    _vols: dict[str, dict[TimePoint, VolInfo]] = dataclasses.field(init=False, repr=False)
+    _bts: dict[str, dict[TimePoint, BTInfo]]
+    _fxs: dict[str, dict[TimePoint, FXInfo]]
+    _vols: dict[str, dict[TimePoint, VolInfo]]
 
-    _final_zoom_top_timepoint: TimePoint = dataclasses.field(init=False, repr=False)
-    _final_zoom_bottom_timepoint: TimePoint = dataclasses.field(init=False, repr=False)
-    _first_lane_split_timepoint: TimePoint | None = dataclasses.field(default=None, init=False, repr=False)
-    _final_lane_split_timepoint: TimePoint | None = dataclasses.field(default=None, init=False, repr=False)
+    _final_zoom_top_timepoint: TimePoint
+    _final_zoom_bottom_timepoint: TimePoint
+    _first_lane_split_timepoint: TimePoint | None
+    _final_lane_split_timepoint: TimePoint | None
 
-    _spins: dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _stops: dict[TimePoint, Fraction] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _spins: dict[TimePoint, str]
+    _stops: dict[TimePoint, Fraction]
 
-    _fx_list: list[str] = dataclasses.field(default_factory=list, init=False, repr=False)
+    _fx_list: list[str]
     """List of effects used in the chart, including different parameters."""
 
-    _filter_names: dict[TimePoint, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _filter_to_effect: dict[str, int] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _filter_names: dict[TimePoint, str]
+    _filter_to_effect: dict[str, int]
 
     # Stateful data for notechart parsing
-    _cur_timesig: TimeSignature = dataclasses.field(default=TimeSignature(), init=False, repr=False)
-    _cur_filter: FilterIndex = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
+    _cur_timesig: TimeSignature
+    _cur_filter: FilterIndex
 
-    _filter_changed: bool = dataclasses.field(default=False, init=False, repr=False)
-    _tilt_segment: bool = dataclasses.field(default=False, init=False, repr=False)
-    _last_tilt_value: Decimal = dataclasses.field(default_factory=Decimal, init=False, repr=False)
-    _filter_override: FilterIndex = dataclasses.field(default=FilterIndex.PEAK, init=False, repr=False)
+    _filter_changed: bool
+    _tilt_segment: bool
+    _last_tilt_value: Decimal
+    _filter_override: FilterIndex
 
-    _holds: dict[str, _HoldInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _set_fx: dict[str, str] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _set_se: dict[str, int] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _holds: dict[str, _HoldInfo]
+    _set_fx: dict[str, str]
+    _set_se: dict[str, int]
 
     # Stateful data that is specific to particular tracks
-    _recent_vol: dict[str, _LastVolInfo] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _cont_segment: dict[str, bool] = dataclasses.field(init=False, repr=False)
-    _wide_segment: dict[str, bool] = dataclasses.field(init=False, repr=False)
+    _recent_vol: dict[str, _LastVolInfo]
+    _cont_segment: dict[str, bool]
+    _wide_segment: dict[str, bool]
 
     # Stateful laser easing data
-    _ease_start: dict[str, TimePoint] = dataclasses.field(default_factory=dict, init=False, repr=False)
-    _ease_ranges: dict[str, dict[TimePoint, tuple[float, float]]] = dataclasses.field(init=False, repr=False)
-    _ease_midpoints: dict[str, list[tuple[TimePoint, EasingType]]] = dataclasses.field(init=False, repr=False)
-    _cur_easing: dict[str, EasingType] = dataclasses.field(default_factory=dict, init=False, repr=False)
+    _ease_start: dict[str, TimePoint]
+    _ease_ranges: dict[str, dict[TimePoint, tuple[float, float]]]
+    _ease_midpoints: dict[str, list[tuple[TimePoint, EasingType]]]
+    _cur_easing: dict[str, EasingType]
     """When a key is missing from this dict, it means that easing is currently active on that volume track."""
 
-    def __post_init__(self, file: TextIO):
+    def __init__(self) -> None:
+        self.__song_chart_data = KSHSongChartContainer()
+
+        self._bts = {
+            "bt_a": {},
+            "bt_b": {},
+            "bt_c": {},
+            "bt_d": {},
+        }
+        self._fxs = {
+            "fx_l": {},
+            "fx_r": {},
+        }
+        self._vols = {
+            "vol_l": {},
+            "vol_r": {},
+        }
+
+        self._final_zoom_bottom_timepoint = TimePoint()
+        self._final_zoom_top_timepoint = TimePoint()
+        self._first_lane_split_timepoint = None
+        self._final_lane_split_timepoint = None
+
+        self._spins = {}
+        self._stops = {}
+
+        self._fx_list = []
+
+        self._filter_names = {}
+        self._filter_to_effect = {}
+
+        self._cur_timesig = TimeSignature()
+        self._cur_filter = FilterIndex.PEAK
+
+        self._filter_changed = False
+        self._tilt_segment = False
+        self._last_tilt_value = Decimal()
+        self._filter_override = FilterIndex.PEAK
+
+        self._holds = {}
+        self._set_fx = {}
+        self._set_se = {}
+
+        self._recent_vol = {}
+        self._cont_segment = {
+            "vol_l": False,
+            "vol_r": False,
+        }
+        self._wide_segment = {
+            "vol_l": False,
+            "vol_r": False,
+        }
+
+        self._ease_ranges = {
+            "vol_l": {},
+            "vol_r": {},
+        }
+        self._ease_midpoints = {
+            "vol_l": [],
+            "vol_r": [],
+        }
+        self._cur_easing = {
+            "vol_l": EasingType.NO_EASING,
+            "vol_r": EasingType.NO_EASING,
+        }
+
+    def parse(self, file: TextIO) -> KSHSongChartContainer:
         self._file_path = Path(file.name).resolve()
-        self._song_chart_data = KSHSongChartContainer()
 
         self._raw_metadata = []
         for line in file:
@@ -758,43 +819,7 @@ class KSHParser(Parser):
         self._parse_definitions()
         self._parse_notedata()
 
-    def _initialize_stateful_data(self) -> None:
-        self._ease_ranges = {
-            "vol_l": {},
-            "vol_r": {},
-        }
-        self._ease_midpoints = {
-            "vol_l": [],
-            "vol_r": [],
-        }
-        self._cur_easing = {
-            "vol_l": EasingType.NO_EASING,
-            "vol_r": EasingType.NO_EASING,
-        }
-        self._cont_segment = {
-            "vol_l": False,
-            "vol_r": False,
-        }
-        self._wide_segment = {
-            "vol_l": False,
-            "vol_r": False,
-        }
-        self._bts = {
-            "bt_a": {},
-            "bt_b": {},
-            "bt_c": {},
-            "bt_d": {},
-        }
-        self._fxs = {
-            "fx_l": {},
-            "fx_r": {},
-        }
-        self._vols = {
-            "vol_l": {},
-            "vol_r": {},
-        }
-        self._final_zoom_bottom_timepoint = TimePoint()
-        self._final_zoom_top_timepoint = TimePoint()
+        return self.__song_chart_data
 
     def _parse_metadata(self) -> None:
         for line_no, line in enumerate(self._raw_metadata):
@@ -803,55 +828,55 @@ class KSHParser(Parser):
                     logger.warning(f'unrecognized line at line {line_no + 1}: "{line}"')
                 key, value = line.split("=", 1)
                 if key == "title":
-                    self.song_info.title = value
-                    self.song_info.ascii_label = "".join(TITLE_REGEX.split(value)).lower()
+                    self.__song_chart_data.song_info.title = value
+                    self.__song_chart_data.song_info.ascii_label = "".join(TITLE_REGEX.split(value)).lower()
                 elif key == "artist":
-                    self.song_info.artist = value
+                    self.__song_chart_data.song_info.artist = value
                 elif key == "effect":
-                    self.chart_info.effector = value
+                    self.__song_chart_data.chart_info.effector = value
                 elif key == "jacket":
-                    self.chart_info.jacket_path = value
+                    self.__song_chart_data.chart_info.jacket_path = value
                 elif key == "illustrator":
-                    self.chart_info.illustrator = value
+                    self.__song_chart_data.chart_info.illustrator = value
                 elif key == "difficulty":
                     if value == "light":
-                        self.chart_info.difficulty = DifficultySlot.NOVICE
+                        self.__song_chart_data.chart_info.difficulty = DifficultySlot.NOVICE
                     elif value == "challenge":
-                        self.chart_info.difficulty = DifficultySlot.ADVANCED
+                        self.__song_chart_data.chart_info.difficulty = DifficultySlot.ADVANCED
                     elif value == "extended":
-                        self.chart_info.difficulty = DifficultySlot.EXHAUST
+                        self.__song_chart_data.chart_info.difficulty = DifficultySlot.EXHAUST
                     else:
-                        self.chart_info.difficulty = DifficultySlot.MAXIMUM
+                        self.__song_chart_data.chart_info.difficulty = DifficultySlot.MAXIMUM
                 elif key == "level":
-                    self.chart_info.level = int(value)
+                    self.__song_chart_data.chart_info.level = int(value)
                 elif key == "t":
                     if "-" in value:
                         min_bpm_str, max_bpm_str = value.split("-")
-                        self.song_info.min_bpm = Decimal(min_bpm_str)
-                        self.song_info.max_bpm = Decimal(max_bpm_str)
+                        self.__song_chart_data.song_info.min_bpm = Decimal(min_bpm_str)
+                        self.__song_chart_data.song_info.max_bpm = Decimal(max_bpm_str)
                     else:
                         bpm = Decimal(value)
-                        self.song_info.min_bpm = bpm
-                        self.song_info.max_bpm = bpm
-                        self.chart_info.bpms[TimePoint()] = bpm
+                        self.__song_chart_data.song_info.min_bpm = bpm
+                        self.__song_chart_data.song_info.max_bpm = bpm
+                        self.__song_chart_data.chart_info.bpms[TimePoint()] = bpm
                 elif key == "beat":
                     upper_str, lower_str = value.split("/")
                     upper, lower = int(upper_str), int(lower_str)
-                    self.chart_info.timesigs[TimePoint()] = TimeSignature(upper, lower)
+                    self.__song_chart_data.chart_info.timesigs[TimePoint()] = TimeSignature(upper, lower)
                     self._cur_timesig = TimeSignature(upper, lower)
                 elif key == "m":
-                    self.chart_info.music_path, *music_path_ex = value.split(";")
+                    self.__song_chart_data.chart_info.music_path, *music_path_ex = value.split(";")
                     if music_path_ex:
                         logger.warning("multiple song files are not supported yet")
                 elif key == "mvol":
-                    self.song_info.music_volume = int(value)
+                    self.__song_chart_data.song_info.music_volume = int(value)
                 elif key == "o":
-                    self.chart_info.music_offset = int(value)
+                    self.__song_chart_data.chart_info.music_offset = int(value)
                 elif key == "po":
-                    self.chart_info.preview_start = int(value)
+                    self.__song_chart_data.chart_info.preview_start = int(value)
                 elif key == "filtertype":
                     if value in FILTER_TYPE_MAP:
-                        self.chart_info.active_filter[TimePoint()] = FILTER_TYPE_MAP[value]
+                        self.__song_chart_data.chart_info.active_filter[TimePoint()] = FILTER_TYPE_MAP[value]
                 elif key == "ver":
                     # You know, I should probably differentiate handling top/bottom zooms depending if
                     # the version is >= 167 or not, but I'm most likely not going to fucking bother
@@ -894,9 +919,9 @@ class KSHParser(Parser):
                         if dash_count > 1 or (dash_count == 1 and not val.startswith("-")):
                             del params_dict[key]
                 if line_type == "define_fx":
-                    self.chart_info._custom_effect[name] = effects.from_definition(params_dict)
+                    self.__song_chart_data.chart_info._custom_effect[name] = effects.from_definition(params_dict)
                 elif line_type == "define_filter":
-                    self.chart_info._custom_filter[name] = effects.from_definition(params_dict)
+                    self.__song_chart_data.chart_info._custom_filter[name] = effects.from_definition(params_dict)
                 else:
                     logger.warning(
                         f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning
@@ -909,8 +934,6 @@ class KSHParser(Parser):
                 logger.warning(f"this is caused by: {e}")
 
     def _parse_notedata(self) -> None:
-        self._initialize_stateful_data()
-
         # Measure data
         ln_offset: int = len(self._raw_metadata) + 1
         measure_data: list[str] = []
@@ -945,18 +968,18 @@ class KSHParser(Parser):
         # Store note data in chart
         for k, v1 in self._bts.items():
             v1 = dict(sorted(v1.items()))
-            setattr(self.chart_info.note_data, k, v1)
+            setattr(self.__song_chart_data.chart_info.note_data, k, v1)
         for k, v2 in self._fxs.items():
             v2 = dict(sorted(v2.items()))
-            setattr(self.chart_info.note_data, k, v2)
+            setattr(self.__song_chart_data.chart_info.note_data, k, v2)
         for k, v3 in self._vols.items():
             v3 = dict(sorted(v3.items()))
-            setattr(self.chart_info.note_data, k, v3)
+            setattr(self.__song_chart_data.chart_info.note_data, k, v3)
 
     def _parse_measure(self, measure: list[str], m_no: int, m_linecount: int) -> None:
         # Check time signatures that get pushed to the next measure
-        if TimePoint(m_no, 0, 1) in self.chart_info.timesigs:
-            self._cur_timesig = self.chart_info.timesigs[TimePoint(m_no, 0, 1)]
+        if TimePoint(m_no, 0, 1) in self.__song_chart_data.chart_info.timesigs:
+            self._cur_timesig = self.__song_chart_data.chart_info.timesigs[TimePoint(m_no, 0, 1)]
 
         noteline_count = 0
         for line in measure:
@@ -1051,17 +1074,17 @@ class KSHParser(Parser):
                         return
                     self._filter_override = filter_now
                     self._cur_filter = filter_now
-                    if cur_time in self.chart_info.active_filter:
-                        self.chart_info.active_filter[cur_time] = filter_now
+                    if cur_time in self.__song_chart_data.chart_info.active_filter:
+                        self.__song_chart_data.chart_info.active_filter[cur_time] = filter_now
                 # Measure line manipulation
                 case "hideBars":
                     match value:
                         case "on" | "1":
-                            self.chart_info.spcontroller_data.hidden_bars[cur_time] = True
+                            self.__song_chart_data.chart_info.spcontroller_data.hidden_bars[cur_time] = True
                         case "off" | "0":
-                            self.chart_info.spcontroller_data.hidden_bars[cur_time] = False
+                            self.__song_chart_data.chart_info.spcontroller_data.hidden_bars[cur_time] = False
                 case "addBars":
-                    self.chart_info.spcontroller_data.manual_bars.append(cur_time)
+                    self.__song_chart_data.chart_info.spcontroller_data.manual_bars.append(cur_time)
                 # Scripting
                 case "scriptBegin":
                     values = value.split(",")
@@ -1077,9 +1100,9 @@ class KSHParser(Parser):
                     script_ids = [int(v) for v in values[1:]]
                     for note_type in NoteType:
                         if note_type in flags:
-                            if note_type not in self.chart_info.script_ids:
-                                self.chart_info.script_ids[note_type] = {}
-                            self.chart_info.script_ids[note_type][cur_time] = script_ids
+                            if note_type not in self.__song_chart_data.chart_info.script_ids:
+                                self.__song_chart_data.chart_info.script_ids[note_type] = {}
+                            self.__song_chart_data.chart_info.script_ids[note_type][cur_time] = script_ids
                 case "scriptEnd":
                     if value.lower().startswith("0x"):
                         flag_value = int(value, 16)
@@ -1090,15 +1113,15 @@ class KSHParser(Parser):
                     flags = NoteType(flag_value % 0x100)
                     for note_type in NoteType:
                         if note_type in flags:
-                            if note_type not in self.chart_info.script_ids:
-                                self.chart_info.script_ids[note_type] = {}
-                            self.chart_info.script_ids[note_type][cur_time] = []
+                            if note_type not in self.__song_chart_data.chart_info.script_ids:
+                                self.__song_chart_data.chart_info.script_ids[note_type] = {}
+                            self.__song_chart_data.chart_info.script_ids[note_type][cur_time] = []
 
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split("=", 1)
         try:
             if key == "t":
-                self.chart_info.bpms[cur_time] = Decimal(value)
+                self.__song_chart_data.chart_info.bpms[cur_time] = Decimal(value)
             elif key == "beat":
                 if "/" not in value:
                     logger.warning(f"invalid time signature (got {value})")
@@ -1107,9 +1130,9 @@ class KSHParser(Parser):
                 # Time signature changes should be at the start of the measure
                 # Otherwise, it takes effect on the next measure
                 if cur_time.position != 0:
-                    self.chart_info.timesigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
+                    self.__song_chart_data.chart_info.timesigs[TimePoint(m_no + 1, 0, 1)] = TimeSignature(upper, lower)
                 else:
-                    self.chart_info.timesigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
+                    self.__song_chart_data.chart_info.timesigs[TimePoint(m_no, 0, 1)] = TimeSignature(upper, lower)
                     self._cur_timesig = TimeSignature(upper, lower)
             elif key == "stop":
                 self._stops[cur_time] = int(value) * STOP_CONVERSION_RATE
@@ -1121,10 +1144,10 @@ class KSHParser(Parser):
                         tilt_val = (Decimal(value) * TILT_CONVERSION_RATE).normalize() + 0
                     self._last_tilt_value = tilt_val
                     # Modify existing tilt value if it exists
-                    if cur_time in self.chart_info.spcontroller_data.tilt:
-                        self.chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
+                    if cur_time in self.__song_chart_data.chart_info.spcontroller_data.tilt:
+                        self.__song_chart_data.chart_info.spcontroller_data.tilt[cur_time].end = tilt_val
                     else:
-                        self.chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
+                        self.__song_chart_data.chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
                             tilt_val,
                             tilt_val,
                             point_type=SegmentFlag.MIDDLE if self._tilt_segment else SegmentFlag.START,
@@ -1135,34 +1158,34 @@ class KSHParser(Parser):
                         logger.warning(f'unrecognized tilt mode "{value}" at m{m_no}')
                     else:
                         # Make sure manual tilt segments are terminated properly
-                        if self._tilt_segment and cur_time not in self.chart_info.spcontroller_data.tilt:
-                            self.chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
+                        if self._tilt_segment and cur_time not in self.__song_chart_data.chart_info.spcontroller_data.tilt:
+                            self.__song_chart_data.chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
                                 self._last_tilt_value, self._last_tilt_value, point_type=SegmentFlag.MIDDLE
                             )  # Will get updated later anyway
                         self._tilt_segment = False
                         if value == "normal":
-                            self.chart_info.tilt_type[cur_time] = TiltType.NORMAL
+                            self.__song_chart_data.chart_info.tilt_type[cur_time] = TiltType.NORMAL
                         elif value in ["bigger", "biggest"]:
-                            self.chart_info.tilt_type[cur_time] = TiltType.BIGGER
+                            self.__song_chart_data.chart_info.tilt_type[cur_time] = TiltType.BIGGER
                             if value == "biggest":
                                 logger.warning(f'downgrading tilt "{value}" at m{m_no} to "bigger"')
                         elif value in ["keep_normal", "keep_bigger", "keep_biggest"]:
-                            self.chart_info.tilt_type[cur_time] = TiltType.KEEP
+                            self.__song_chart_data.chart_info.tilt_type[cur_time] = TiltType.KEEP
             elif key == "zoom_top":
                 zoom_val = (int(value) * ZOOM_TOP_CONVERSION_RATE).normalize() + 0
-                if cur_time in self.chart_info.spcontroller_data.zoom_top:
-                    self.chart_info.spcontroller_data.zoom_top[cur_time].end = zoom_val
+                if cur_time in self.__song_chart_data.chart_info.spcontroller_data.zoom_top:
+                    self.__song_chart_data.chart_info.spcontroller_data.zoom_top[cur_time].end = zoom_val
                 else:
-                    self.chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
+                    self.__song_chart_data.chart_info.spcontroller_data.zoom_top[cur_time] = SPControllerInfo(
                         zoom_val, zoom_val, point_type=SegmentFlag.MIDDLE
                     )
                 self._final_zoom_top_timepoint = cur_time
             elif key == "zoom_bottom":
                 zoom_val = (int(value) * ZOOM_BOTTOM_CONVERSION_RATE).normalize() + 0
-                if cur_time in self.chart_info.spcontroller_data.zoom_bottom:
-                    self.chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
+                if cur_time in self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom:
+                    self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[cur_time].end = zoom_val
                 else:
-                    self.chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(
+                    self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[cur_time] = SPControllerInfo(
                         zoom_val, zoom_val, point_type=SegmentFlag.MIDDLE
                     )
                 self._final_zoom_bottom_timepoint = cur_time
@@ -1171,10 +1194,10 @@ class KSHParser(Parser):
                     self._first_lane_split_timepoint = cur_time
                 self._final_lane_split_timepoint = cur_time
                 split_val = (int(value) * LANE_SPLIT_CONVERSION_RATE).normalize() + 0
-                if cur_time in self.chart_info.spcontroller_data.lane_split:
-                    self.chart_info.spcontroller_data.lane_split[cur_time].end = split_val
+                if cur_time in self.__song_chart_data.chart_info.spcontroller_data.lane_split:
+                    self.__song_chart_data.chart_info.spcontroller_data.lane_split[cur_time].end = split_val
                 else:
-                    self.chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(
+                    self.__song_chart_data.chart_info.spcontroller_data.lane_split[cur_time] = SPControllerInfo(
                         split_val, split_val, point_type=SegmentFlag.MIDDLE
                     )
             elif key in ["laserrange_l", "laserrange_r"]:
@@ -1220,7 +1243,7 @@ class KSHParser(Parser):
                     filter_now = FilterIndex.CUSTOM
                 if filter_now != self._cur_filter:
                     self._cur_filter = filter_now
-                    self.chart_info.active_filter[cur_time] = filter_now
+                    self.__song_chart_data.chart_info.active_filter[cur_time] = filter_now
             elif ":" in key:
                 # This might get supported in the future, but is too complicated
                 pass
@@ -1362,7 +1385,7 @@ class KSHParser(Parser):
             self._spins[cur_time] = spin
         if update_measure_end:
             # TODO: See if rounding up to next measure is necessary or not
-            self.chart_info.end_measure = cur_time.measure + 2
+            self.__song_chart_data.chart_info.end_measure = cur_time.measure + 2
 
     def _handle_notechart_postprocessing(self) -> None:
         # Equalize FX effects and SE
@@ -1424,9 +1447,9 @@ class KSHParser(Parser):
 
         # Convert stop durations to timepoints
         for cur_time, duration in self._stops.items():
-            self.chart_info.stops[cur_time] = True
-            stop_end = self.chart_info.add_duration(cur_time, duration)
-            self.chart_info.stops[stop_end] = False
+            self.__song_chart_data.chart_info.stops[cur_time] = True
+            stop_end = self.__song_chart_data.chart_info.add_duration(cur_time, duration)
+            self.__song_chart_data.chart_info.stops[stop_end] = False
 
         # Insert points where easing change happens without a laser point
         new_ease_points: dict[str, list[tuple[TimePoint, VolInfo]]] = {
@@ -1444,8 +1467,8 @@ class KSHParser(Parser):
                         break
                     time_i = time_f
                 # Linearly interpolate
-                part_dist = self.chart_info.get_distance(time_i, timept)
-                total_dist = self.chart_info.get_distance(time_i, time_f)
+                part_dist = self.__song_chart_data.chart_info.get_distance(time_i, timept)
+                total_dist = self.__song_chart_data.chart_info.get_distance(time_i, time_f)
                 position = interpolate(
                     get_ease_function(EasingType.LINEAR),
                     part_dist / total_dist,
@@ -1488,13 +1511,13 @@ class KSHParser(Parser):
                 # Interpolate lasers (no interpolation done if the first point is an endpoint)
                 if vol_i.ease_type != EasingType.NO_EASING:
                     limit_bot, limit_top = self._ease_ranges[vol_name].get(time_i, (0.0, 1.0))
-                    total_span = self.chart_info.get_distance(time_i, time_f)
+                    total_span = self.__song_chart_data.chart_info.get_distance(time_i, time_f)
                     div_count = int(total_span / INTERPOLATION_DISTANCE)
                     if div_count * INTERPOLATION_DISTANCE < total_span:
                         div_count += 1
                     for i in range(1, div_count):
                         cur_span = INTERPOLATION_DISTANCE * i
-                        timept = self.chart_info.add_duration(time_i, cur_span)
+                        timept = self.__song_chart_data.chart_info.add_duration(time_i, cur_span)
                         position = interpolate(
                             get_ease_function(vol_i.ease_type),
                             cur_span / total_span,
@@ -1519,7 +1542,7 @@ class KSHParser(Parser):
         # Insert laser midpoints where filter type changes
         for vol_data in self._vols.values():
             new_points: dict[TimePoint, VolInfo] = {}
-            for timept, filter_index in self.chart_info.active_filter.items():
+            for timept, filter_index in self.__song_chart_data.chart_info.active_filter.items():
                 if timept not in vol_data:
                     time_i = TimePoint()
                     time_f = TimePoint()
@@ -1536,8 +1559,8 @@ class KSHParser(Parser):
                     # Ignore filter changes between segments
                     if SegmentFlag.END in vol_data[time_i].point_type:
                         continue
-                    part_dist = self.chart_info.get_distance(time_i, timept)
-                    total_dist = self.chart_info.get_distance(time_i, time_f)
+                    part_dist = self.__song_chart_data.chart_info.get_distance(time_i, timept)
+                    total_dist = self.__song_chart_data.chart_info.get_distance(time_i, time_f)
                     position = interpolate(
                         get_ease_function(EasingType.LINEAR),
                         part_dist / total_dist,
@@ -1558,25 +1581,25 @@ class KSHParser(Parser):
             vol_data.update(new_points)
 
         # Add final point for zooms
-        end_point = TimePoint(self.chart_info.end_measure, 0, 1)
-        zt_end = self.chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint].duplicate()
+        end_point = TimePoint(self.__song_chart_data.chart_info.end_measure, 0, 1)
+        zt_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint].duplicate()
         zt_end.start = zt_end.end
-        self.chart_info.spcontroller_data.zoom_top[end_point] = zt_end
-        zb_end = self.chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint].duplicate()
+        self.__song_chart_data.chart_info.spcontroller_data.zoom_top[end_point] = zt_end
+        zb_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint].duplicate()
         zb_end.start = zb_end.end
-        self.chart_info.spcontroller_data.zoom_bottom[end_point] = zb_end
+        self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[end_point] = zb_end
 
         # Mark first lane split point as start and add final point
         if self._first_lane_split_timepoint is not None and self._final_lane_split_timepoint is not None:
             first_timept = self._first_lane_split_timepoint
-            self.chart_info.spcontroller_data.lane_split[first_timept].point_type |= SegmentFlag.START
+            self.__song_chart_data.chart_info.spcontroller_data.lane_split[first_timept].point_type |= SegmentFlag.START
             final_timept = self._final_lane_split_timepoint
-            ls_end = self.chart_info.spcontroller_data.lane_split[final_timept].duplicate()
+            ls_end = self.__song_chart_data.chart_info.spcontroller_data.lane_split[final_timept].duplicate()
             ls_end.start = ls_end.end
-            self.chart_info.spcontroller_data.lane_split[end_point] = ls_end
+            self.__song_chart_data.chart_info.spcontroller_data.lane_split[end_point] = ls_end
 
         # Mark tilt and lane split points as end of segment
-        for data_dict in [self.chart_info.spcontroller_data.tilt, self.chart_info.spcontroller_data.lane_split]:
+        for data_dict in [self.__song_chart_data.chart_info.spcontroller_data.tilt, self.__song_chart_data.chart_info.spcontroller_data.lane_split]:
             timepts = list(data_dict.keys())
             if timepts:
                 time_f = timepts[0]
@@ -1588,10 +1611,10 @@ class KSHParser(Parser):
         # Convert detected FX list into effect instances
         if len(self._fx_list) > 12:
             logger.warning(f"found more than 12 distinct effects")
-            while len(self.chart_info.effect_list) < len(self._fx_list):
-                index = len(self.chart_info.effect_list)
-                self.chart_info.effect_list.append(effects.EffectEntry())
-                self.chart_info.autotab_list.append(
+            while len(self.__song_chart_data.chart_info.effect_list) < len(self._fx_list):
+                index = len(self.__song_chart_data.chart_info.effect_list)
+                self.__song_chart_data.chart_info.effect_list.append(effects.EffectEntry())
+                self.__song_chart_data.chart_info.autotab_list.append(
                     filters.AutoTabEntry(filters.AutoTabSetting(index), filters.AutoTabSetting(index))
                 )
         for i, fx_entry in enumerate(self._fx_list):
@@ -1609,28 +1632,28 @@ class KSHParser(Parser):
                 effect = KSH_EFFECT_MAP[fx_name].duplicate()
             # Custom effect -- check definitions
             else:
-                effect = self.chart_info._custom_effect[fx_name].duplicate()
+                effect = self.__song_chart_data.chart_info._custom_effect[fx_name].duplicate()
             effect.map_params(fx_params)
-            self.chart_info.effect_list[i] = effects.EffectEntry(effect)
+            self.__song_chart_data.chart_info.effect_list[i] = effects.EffectEntry(effect)
 
         # Remove filters that are unused
-        for filter_name in list(self.chart_info._custom_filter):
+        for filter_name in list(self.__song_chart_data.chart_info._custom_filter):
             if filter_name not in self._filter_names.values():
-                del self.chart_info._custom_filter[filter_name]
+                del self.__song_chart_data.chart_info._custom_filter[filter_name]
 
         # Write custom filter as FX
         # TODO: Try matching with existing effects
-        if len(self._fx_list) + len(self.chart_info._custom_filter) > 12:
+        if len(self._fx_list) + len(self.__song_chart_data.chart_info._custom_filter) > 12:
             logger.warning(f"including custom filters causes more than 12 distinct effects")
-            while len(self.chart_info.effect_list) < len(self._fx_list) + len(self.chart_info._custom_filter):
-                index = len(self.chart_info.effect_list)
-                self.chart_info.effect_list.append(effects.EffectEntry())
-                self.chart_info.autotab_list.append(
+            while len(self.__song_chart_data.chart_info.effect_list) < len(self._fx_list) + len(self.__song_chart_data.chart_info._custom_filter):
+                index = len(self.__song_chart_data.chart_info.effect_list)
+                self.__song_chart_data.chart_info.effect_list.append(effects.EffectEntry())
+                self.__song_chart_data.chart_info.autotab_list.append(
                     filters.AutoTabEntry(filters.AutoTabSetting(index), filters.AutoTabSetting(index))
                 )
-        for i, name in enumerate(self.chart_info._custom_filter):
-            filter_effect = self.chart_info._custom_filter[name]
-            self.chart_info.effect_list[len(self._fx_list) + i] = effects.EffectEntry(filter_effect)
+        for i, name in enumerate(self.__song_chart_data.chart_info._custom_filter):
+            filter_effect = self.__song_chart_data.chart_info._custom_filter[name]
+            self.__song_chart_data.chart_info.effect_list[len(self._fx_list) + i] = effects.EffectEntry(filter_effect)
             self._filter_to_effect[name] = len(self._fx_list) + i
 
         # Write track auto tab info
@@ -1639,10 +1662,10 @@ class KSHParser(Parser):
             filter_i = self._filter_names[time_i]
             if filter_i in FILTER_TYPE_MAP:
                 continue
-            self.chart_info.autotab_infos[time_i] = AutoTabInfo(
-                self._filter_to_effect[filter_i], self.chart_info.get_distance(time_i, time_f)
+            self.__song_chart_data.chart_info.autotab_infos[time_i] = AutoTabInfo(
+                self._filter_to_effect[filter_i], self.__song_chart_data.chart_info.get_distance(time_i, time_f)
             )
 
         # Properly terminate script segments, if any
-        for script_dict in self.chart_info.script_ids.values():
-            script_dict[TimePoint(self.chart_info.end_measure)] = []
+        for script_dict in self.__song_chart_data.chart_info.script_ids.values():
+            script_dict[TimePoint(self.__song_chart_data.chart_info.end_measure)] = []

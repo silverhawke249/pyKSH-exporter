@@ -3,7 +3,6 @@ Base, generic classes supporting other more specialized classes.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from fractions import Fraction
 
 __all__ = [
     "AbstractDataclass",

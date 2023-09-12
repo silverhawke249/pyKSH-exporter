@@ -1,5 +1,8 @@
-from abc import abstractmethod
-from dataclasses import InitVar, dataclass, field
+"""
+Abstract base classes for parsers.
+"""
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
@@ -15,39 +18,37 @@ __all__ = [
 
 @dataclass
 class SongChartContainer(AbstractDataclass):
+    """
+    An abstract base class that encapsulates song and chart data.
+    """
+
     chart_info: ChartInfo = field(default_factory=ChartInfo)
     song_info: SongInfo = field(default_factory=SongInfo)
 
     @abstractmethod
     def write_vox(self, f: TextIO) -> None:
+        """Write the chart data in VOX format."""
         pass
 
     @abstractmethod
     def write_xml(self, f: TextIO) -> None:
+        """Write the song and chart metadata in XML format."""
         pass
 
 
-@dataclass
-class Parser(AbstractDataclass):
-    file: InitVar[TextIO]
+class Parser(ABC):
+    """
+    An abstract base class for parsers that read a specific format.
+    """
 
-    _file_path: Path = field(init=False)
-    _song_chart_data: SongChartContainer = field(init=False)
+    _file_path: Path
+
+    @abstractmethod
+    def parse(self, f: TextIO) -> SongChartContainer:
+        """Parse a file, producing chart data and supporting metadata."""
+        pass
 
     @property
     def file_path(self):
+        """Path to the file to parse."""
         return self._file_path
-
-    @property
-    def chart_info(self):
-        return self._song_chart_data.chart_info
-
-    @property
-    def song_info(self):
-        return self._song_chart_data.song_info
-
-    def write_vox(self, f: TextIO):
-        self._song_chart_data.write_vox(f)
-
-    def write_xml(self, f: TextIO):
-        self._song_chart_data.write_xml(f)

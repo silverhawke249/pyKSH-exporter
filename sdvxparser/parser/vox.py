@@ -139,23 +139,30 @@ class VOXSongChartContainer(SongChartContainer):
         pass
 
 
-@dataclasses.dataclass(eq=False)
 class VOXParser(Parser):
     """A parser for the VOX file format."""
 
+    __song_chart_data: VOXSongChartContainer
+
     # Intrinsic data
-    _vox_version: int = dataclasses.field(default=0, init=False)
-    _laser_scale: Fraction = dataclasses.field(default=LASER_SCALE_DEFAULT, init=False)
+    _vox_version: int
+    _laser_scale: Fraction
 
     # Stateful data
-    _current_section: VOXSection = dataclasses.field(default=VOXSection.NONE, init=False)
+    _current_section: VOXSection
 
-    def __post_init__(self, file: TextIO):
-        self._song_chart_data = VOXSongChartContainer()
-        del self.chart_info.spcontroller_data.zoom_bottom[TimePoint()]
-        del self.chart_info.spcontroller_data.zoom_top[TimePoint()]
+    def __init__(self) -> None:
+        self.__song_chart_data = VOXSongChartContainer()
+        del self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[TimePoint()]
+        del self.__song_chart_data.chart_info.spcontroller_data.zoom_top[TimePoint()]
 
-        self._vox_path = Path(file.name).resolve()
+        self._vox_version = 0
+        self._laser_scale = LASER_SCALE_DEFAULT
+
+        self._current_section = VOXSection.NONE
+
+    def parse(self, file: TextIO) -> VOXSongChartContainer:
+        self._file_path = Path(file.name).resolve()
 
         for lineno, line in enumerate(file):
             # Remove comments
@@ -183,10 +190,12 @@ class VOXParser(Parser):
 
         self._post_process()
 
+        return self.__song_chart_data
+
     def _convert_vox_timepoint(self, s: str) -> TimePoint:
         # This assumes there is no need to normalize the timepoint
         m, c, d = map(int, s.split(",", maxsplit=3))
-        timesig = self.chart_info.get_timesig(m)
+        timesig = self.__song_chart_data.chart_info.get_timesig(m)
         position = Fraction(c - 1, timesig.lower) + Fraction(d, TICKS_PER_BAR)
         t = TimePoint(m, position.numerator, position.denominator)
         return t
@@ -209,12 +218,12 @@ class VOXParser(Parser):
             m, c, d = map(int, timepoint.split(",", maxsplit=3))
             if (c, d) != (1, 0):
                 m += 1
-            self.chart_info.timesigs[TimePoint(m, 0, 1)] = TimeSignature(upper, lower)
+            self.__song_chart_data.chart_info.timesigs[TimePoint(m, 0, 1)] = TimeSignature(upper, lower)
         elif self._current_section == VOXSection.BPM:
             timepoint = self._convert_vox_timepoint(match["timepoint"])
             bpm = Decimal(match["bpm"])
             # Ignoring stops because it's unnecessary (for now)
-            self.chart_info.bpms[timepoint] = bpm
+            self.__song_chart_data.chart_info.bpms[timepoint] = bpm
         elif self._current_section == VOXSection.TILT:
             pass
         elif self._current_section == VOXSection.LYRICS:
@@ -260,9 +269,9 @@ class VOXParser(Parser):
             # Insert into the right dictionary
             vol_dict: dict[TimePoint, VolInfo]
             if self._current_section == VOXSection.TRACK_VOL_L:
-                vol_dict = self.chart_info.note_data.vol_l
+                vol_dict = self.__song_chart_data.chart_info.note_data.vol_l
             else:
-                vol_dict = self.chart_info.note_data.vol_r
+                vol_dict = self.__song_chart_data.chart_info.note_data.vol_r
             # Become slam if timepoint already exists
             if timepoint in vol_dict:
                 vol_dict[timepoint].point_type |= segment_type
@@ -277,9 +286,9 @@ class VOXParser(Parser):
             special = int(match["special"] or 0)
             fx_dict: dict[TimePoint, FXInfo]
             if self._current_section == VOXSection.TRACK_FX_L:
-                fx_dict = self.chart_info.note_data.fx_l
+                fx_dict = self.__song_chart_data.chart_info.note_data.fx_l
             else:
-                fx_dict = self.chart_info.note_data.fx_r
+                fx_dict = self.__song_chart_data.chart_info.note_data.fx_r
             fx_dict[timepoint] = FXInfo(Fraction(duration, TICKS_PER_BAR), special)
         elif self._current_section in [
             VOXSection.TRACK_BT_A,
@@ -291,13 +300,13 @@ class VOXParser(Parser):
             duration = int(match["duration"] or 0)
             bt_dict: dict[TimePoint, BTInfo]
             if self._current_section == VOXSection.TRACK_BT_A:
-                bt_dict = self.chart_info.note_data.bt_a
+                bt_dict = self.__song_chart_data.chart_info.note_data.bt_a
             elif self._current_section == VOXSection.TRACK_BT_B:
-                bt_dict = self.chart_info.note_data.bt_b
+                bt_dict = self.__song_chart_data.chart_info.note_data.bt_b
             elif self._current_section == VOXSection.TRACK_BT_C:
-                bt_dict = self.chart_info.note_data.bt_c
+                bt_dict = self.__song_chart_data.chart_info.note_data.bt_c
             else:
-                bt_dict = self.chart_info.note_data.bt_d
+                bt_dict = self.__song_chart_data.chart_info.note_data.bt_d
             bt_dict[timepoint] = BTInfo(Fraction(duration, TICKS_PER_BAR))
         elif self._current_section == VOXSection.AUTOTAB_SETTING:
             pass
@@ -313,13 +322,13 @@ class VOXParser(Parser):
             end_val = Decimal(end_val_str)
             sp_dict: dict[TimePoint, SPControllerInfo]
             if sp_type == "CAM_RotX":
-                sp_dict = self.chart_info.spcontroller_data.zoom_top
+                sp_dict = self.__song_chart_data.chart_info.spcontroller_data.zoom_top
             elif sp_type == "CAM_Radi":
-                sp_dict = self.chart_info.spcontroller_data.zoom_bottom
+                sp_dict = self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom
             elif sp_type == "Tilt":
-                sp_dict = self.chart_info.spcontroller_data.tilt
+                sp_dict = self.__song_chart_data.chart_info.spcontroller_data.tilt
             elif sp_type == "Morphing3":
-                sp_dict = self.chart_info.spcontroller_data.lane_split
+                sp_dict = self.__song_chart_data.chart_info.spcontroller_data.lane_split
             else:
                 return
             if duration == 0:
@@ -330,7 +339,7 @@ class VOXParser(Parser):
                     sp_dict[timepoint].point_type = SegmentFlag.MIDDLE
                 else:
                     sp_dict[timepoint] = SPControllerInfo(init_val, init_val, SegmentFlag.MIDDLE)
-                timepoint = self.chart_info.add_duration(timepoint, duration)
+                timepoint = self.__song_chart_data.chart_info.add_duration(timepoint, duration)
                 sp_dict[timepoint] = SPControllerInfo(end_val, end_val, SegmentFlag.END)
         elif self._current_section == VOXSection.SCRIPT:
             pass
@@ -342,12 +351,15 @@ class VOXParser(Parser):
     def _post_process(self) -> None:
         # Get final measure
         final_note_timept = TimePoint()
-        for _, timept, _ in self.chart_info.note_data.iter_notes():
+        for _, timept, _ in self.__song_chart_data.chart_info.note_data.iter_notes():
             final_note_timept = max(timept, final_note_timept)
-        self.chart_info.end_measure = final_note_timept.measure + 2
+        self.__song_chart_data.chart_info.end_measure = final_note_timept.measure + 2
 
         # Fix when last vol segment isn't properly indicated
-        for vol_data in [self.chart_info.note_data.vol_l, self.chart_info.note_data.vol_r]:
+        for vol_data in [
+            self.__song_chart_data.chart_info.note_data.vol_l,
+            self.__song_chart_data.chart_info.note_data.vol_r,
+        ]:
             vol_keys = list(vol_data.keys())
             if not vol_keys:
                 continue
@@ -357,7 +369,10 @@ class VOXParser(Parser):
             vol_data[last_timept].point_type |= SegmentFlag.END
 
         # Fix zoom_top and zoom_bottom segment flags
-        camera_dicts = [self.chart_info.spcontroller_data.zoom_bottom, self.chart_info.spcontroller_data.zoom_top]
+        camera_dicts = [
+            self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom,
+            self.__song_chart_data.chart_info.spcontroller_data.zoom_top,
+        ]
         for camera_dict in camera_dicts:
             if not camera_dict:
                 continue
@@ -365,11 +380,11 @@ class VOXParser(Parser):
             camera_dict[timept_i].point_type |= SegmentFlag.START
 
         # Fix the remaining SPController data segment flags
-        if self.chart_info.spcontroller_data.tilt:
-            timept_i = min(self.chart_info.spcontroller_data.tilt.keys())
-            self.chart_info.spcontroller_data.tilt[timept_i].point_type |= SegmentFlag.START
-            for timept_i, timept_f in pairwise(self.chart_info.spcontroller_data.tilt):
-                data_i = self.chart_info.spcontroller_data.tilt[timept_i]
-                data_f = self.chart_info.spcontroller_data.tilt[timept_f]
+        if self.__song_chart_data.chart_info.spcontroller_data.tilt:
+            timept_i = min(self.__song_chart_data.chart_info.spcontroller_data.tilt.keys())
+            self.__song_chart_data.chart_info.spcontroller_data.tilt[timept_i].point_type |= SegmentFlag.START
+            for timept_i, timept_f in pairwise(self.__song_chart_data.chart_info.spcontroller_data.tilt):
+                data_i = self.__song_chart_data.chart_info.spcontroller_data.tilt[timept_i]
+                data_f = self.__song_chart_data.chart_info.spcontroller_data.tilt[timept_f]
                 if SegmentFlag.END in data_i.point_type:
                     data_f.point_type |= SegmentFlag.START
