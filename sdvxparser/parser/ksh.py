@@ -47,6 +47,7 @@ from ..classes.time import (
 )
 from ..utils import (
     clamp,
+    dedent,
     interpolate,
     get_ease_function,
 )
@@ -205,15 +206,28 @@ class KSHSongChartContainer(SongChartContainer):
     def write_vox(self, f: TextIO):
         # Header
         f.write(
-            "//====================================\n"
-            "// SOUND VOLTEX OUTPUT TEXT FILE\n"
-            f'// Converted at {time.strftime("%Y.%m.%d %H:%M:%S")}\n'
-            "//====================================\n"
-            "\n"
+            dedent(
+                f"""
+                //====================================
+                // SOUND VOLTEX OUTPUT TEXT FILE
+                // Converted at {time.strftime("%Y.%m.%d %H:%M:%S")}
+                //====================================
+
+                """
+            )
         )
 
         # VOX version
-        f.write("#FORMAT VERSION\n" "12\n" "#END\n" "\n")
+        f.write(
+            dedent(
+                f"""
+                #FORMAT VERSION
+                12
+                #END
+
+                """
+            )
+        )
 
         # Time signatures
         f.write("#BEAT INFO\n")
@@ -251,10 +265,27 @@ class KSHSongChartContainer(SongChartContainer):
         f.write("\n")
 
         # Lyric info (unused)
-        f.write("#LYRIC INFO\n" "#END\n" "\n")
+        f.write(
+            dedent(
+                """
+                #LYRIC INFO
+                #END
+
+                """
+            )
+        )
 
         # End position
-        f.write("#END POSITION\n" f"{self.chart_info.end_measure:03},01,00\n" "#END\n")
+        f.write(
+            dedent(
+                f"""
+                #END POSITION
+                {self.chart_info.end_measure:03},01,00
+                #END
+
+                """
+            )
+        )
         f.write("\n")
 
         # Filter parameters
@@ -281,11 +312,26 @@ class KSHSongChartContainer(SongChartContainer):
         f.write("\n")
 
         # Reverb effect param (unused)
-        f.write("#REVERB EFFECT PARAM\n" "#END\n" "\n")
+        f.write(
+            dedent(
+                """
+                #REVERB EFFECT PARAM
+                #END
+
+                """
+            )
+        )
 
         # == TRACK INFO ==
         f.write(
-            "//====================================\n" "// TRACK INFO\n" "//====================================\n" "\n"
+            dedent(
+                """
+                //====================================
+                // TRACK INFO
+                //====================================
+
+                """
+            )
         )
 
         # Note data (TRACK1~8)
@@ -294,56 +340,56 @@ class KSHSongChartContainer(SongChartContainer):
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK2\n")
         self._write_fx(f, self.chart_info.note_data.fx_l)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK3\n")
         self._write_bt(f, self.chart_info.note_data.bt_a)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK4\n")
         self._write_bt(f, self.chart_info.note_data.bt_b)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK5\n")
         self._write_bt(f, self.chart_info.note_data.bt_c)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK6\n")
         self._write_bt(f, self.chart_info.note_data.bt_d)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK7\n")
         self._write_fx(f, self.chart_info.note_data.fx_r)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         f.write("#TRACK8\n")
         self._write_vol(f, self.chart_info.note_data.vol_r, apply_ease=True)
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         # Track auto tab (FX on lasers activation)
         f.write("#TRACK AUTO TAB\n")
@@ -361,7 +407,7 @@ class KSHSongChartContainer(SongChartContainer):
         f.write("#END\n")
         f.write("\n")
 
-        f.write("//====================================\n" "\n")
+        f.write("//====================================\n\n")
 
         # Original TRACK1/8
         f.write("#TRACK ORIGINAL L\n")
@@ -376,10 +422,14 @@ class KSHSongChartContainer(SongChartContainer):
 
         # == SPCONTROLER INFO == (sic)
         f.write(
-            "//====================================\n"
-            "// SPCONTROLER INFO\n"
-            "//====================================\n"
-            "\n"
+            dedent(
+                """
+                //====================================
+                // SPCONTROLER INFO
+                //====================================
+
+                """
+            )
         )
 
         # SPController data and default stuff I never tried to figure out
@@ -600,7 +650,7 @@ class KSHSongChartContainer(SongChartContainer):
     def write_xml(self, f: TextIO):
         f.write(
             f'  <music id="{self.song_info.id}">\n'
-            "    <info>\n"
+            f"    <info>\n"
             f"      <label>{self.song_info.id}</label>\n"
             f"      <title_name>{escape(self.song_info.title)}</title_name>\n"
             f"      <title_yomigana>{self.song_info.title_yomigana}</title_yomigana>\n"
@@ -612,13 +662,13 @@ class KSHSongChartContainer(SongChartContainer):
             f'      <distribution_date __type="u32">{self.song_info.release_date}</distribution_date>\n'
             f'      <volume __type="u16">{self.song_info.music_volume}</volume>\n'
             f'      <bg_no __type="u16">{self.song_info.background.value}</bg_no>\n'
-            '      <genre __type="u8">32</genre>\n'
-            '      <is_fixed __type="u8">1</is_fixed>\n'
-            '      <version __type="u8">6</version>\n'
-            '      <demo_pri __type="s8">-2</demo_pri>\n'
+            f'      <genre __type="u8">32</genre>\n'
+            f'      <is_fixed __type="u8">1</is_fixed>\n'
+            f'      <version __type="u8">6</version>\n'
+            f'      <demo_pri __type="s8">-2</demo_pri>\n'
             f'      <inf_ver __type="u8">{self.song_info.inf_ver.value}</inf_ver>\n'
-            "    </info>\n"
-            "    <difficulty>\n"
+            f"    </info>\n"
+            f"    <difficulty>\n"
         )
 
         for diff in DifficultySlot:
@@ -628,19 +678,19 @@ class KSHSongChartContainer(SongChartContainer):
                     f'        <difnum __type="u8">{self.chart_info.level}</difnum>\n'
                     f"        <illustrator>{escape(self.chart_info.illustrator)}</illustrator>\n"
                     f"        <effected_by>{escape(self.chart_info.effector)}</effected_by>\n"
-                    '        <price __type="s32">-1</price>\n'
-                    '        <limited __type="u8">3</limited>\n'
-                    '        <jacket_print __type="s32">-2</jacket_print>\n'
-                    '        <jacket_mask __type="s32">0</jacket_mask>\n'
+                    f'        <price __type="s32">-1</price>\n'
+                    f'        <limited __type="u8">3</limited>\n'
+                    f'        <jacket_print __type="s32">-2</jacket_print>\n'
+                    f'        <jacket_mask __type="s32">0</jacket_mask>\n'
                     f'        <max_exscore __type="s32">{self.chart_info.max_ex_score}</max_exscore>\n'
-                    "        <radar>\n"
+                    f"        <radar>\n"
                     f'          <notes __type="u8">{self.chart_info.radar_notes}</notes>\n'
                     f'          <peak __type="u8">{self.chart_info.radar_peak}</peak>\n'
                     f'          <tsumami __type="u8">{self.chart_info.radar_tsumami}</tsumami>\n'
                     f'          <tricky __type="u8">{self.chart_info.radar_tricky}</tricky>\n'
                     f'          <hand-trip __type="u8">{self.chart_info.radar_handtrip}</hand-trip>\n'
                     f'          <one-hand __type="u8">{self.chart_info.radar_onehand}</one-hand>\n'
-                    "        </radar>\n"
+                    f"        </radar>\n"
                 )
             else:
                 f.write(
@@ -662,7 +712,8 @@ class KSHSongChartContainer(SongChartContainer):
                     "        </radar>\n"
                 )
             f.write(f"      </{diff.name.lower()}>\n")
-        f.write("    </difficulty>\n" "  </music>\n")
+        f.write("    </difficulty>\n")
+        f.write("  </music>\n")
 
 
 def convert_laser_pos(s: str) -> Fraction:
@@ -1158,7 +1209,10 @@ class KSHParser(Parser):
                         logger.warning(f'unrecognized tilt mode "{value}" at m{m_no}')
                     else:
                         # Make sure manual tilt segments are terminated properly
-                        if self._tilt_segment and cur_time not in self.__song_chart_data.chart_info.spcontroller_data.tilt:
+                        if (
+                            self._tilt_segment
+                            and cur_time not in self.__song_chart_data.chart_info.spcontroller_data.tilt
+                        ):
                             self.__song_chart_data.chart_info.spcontroller_data.tilt[cur_time] = SPControllerInfo(
                                 self._last_tilt_value, self._last_tilt_value, point_type=SegmentFlag.MIDDLE
                             )  # Will get updated later anyway
@@ -1582,10 +1636,14 @@ class KSHParser(Parser):
 
         # Add final point for zooms
         end_point = TimePoint(self.__song_chart_data.chart_info.end_measure, 0, 1)
-        zt_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_top[self._final_zoom_top_timepoint].duplicate()
+        zt_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_top[
+            self._final_zoom_top_timepoint
+        ].duplicate()
         zt_end.start = zt_end.end
         self.__song_chart_data.chart_info.spcontroller_data.zoom_top[end_point] = zt_end
-        zb_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[self._final_zoom_bottom_timepoint].duplicate()
+        zb_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[
+            self._final_zoom_bottom_timepoint
+        ].duplicate()
         zb_end.start = zb_end.end
         self.__song_chart_data.chart_info.spcontroller_data.zoom_bottom[end_point] = zb_end
 
@@ -1599,7 +1657,10 @@ class KSHParser(Parser):
             self.__song_chart_data.chart_info.spcontroller_data.lane_split[end_point] = ls_end
 
         # Mark tilt and lane split points as end of segment
-        for data_dict in [self.__song_chart_data.chart_info.spcontroller_data.tilt, self.__song_chart_data.chart_info.spcontroller_data.lane_split]:
+        for data_dict in [
+            self.__song_chart_data.chart_info.spcontroller_data.tilt,
+            self.__song_chart_data.chart_info.spcontroller_data.lane_split,
+        ]:
             timepts = list(data_dict.keys())
             if timepts:
                 time_f = timepts[0]
@@ -1645,7 +1706,9 @@ class KSHParser(Parser):
         # TODO: Try matching with existing effects
         if len(self._fx_list) + len(self.__song_chart_data.chart_info._custom_filter) > 12:
             logger.warning(f"including custom filters causes more than 12 distinct effects")
-            while len(self.__song_chart_data.chart_info.effect_list) < len(self._fx_list) + len(self.__song_chart_data.chart_info._custom_filter):
+            while len(self.__song_chart_data.chart_info.effect_list) < len(self._fx_list) + len(
+                self.__song_chart_data.chart_info._custom_filter
+            ):
                 index = len(self.__song_chart_data.chart_info.effect_list)
                 self.__song_chart_data.chart_info.effect_list.append(effects.EffectEntry())
                 self.__song_chart_data.chart_info.autotab_list.append(

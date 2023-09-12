@@ -171,3 +171,8 @@ def parse_time(s: str) -> float:
         if s.endswith("m"):
             return float(s[:-1])
         return float(s) * 1000
+
+
+def dedent(s: str) -> str:
+    """Remove leading whitespaces from every line, and trim to first non-empty line."""
+    return "\n".join(ss.lstrip() for ss in s.lstrip().split("\n"))
