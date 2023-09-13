@@ -15,6 +15,7 @@ from exporter.audio import get_2dxs
 from exporter.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
 from sdvxparser.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
 from sdvxparser.classes.enums import DifficultySlot, GameBackground, InfVer
+from sdvxparser.classes.time import TimePoint
 from sdvxparser.parser.base import SongChartContainer
 from sdvxparser.parser.ksh import KSHParser
 
@@ -82,7 +83,7 @@ class KSH2VOXApp:
 
     current_file_path: Path
     effect_params: dict[ObjectID, dict[str, ObjectID]]
-    filter_mappings: dict[str, ObjectID]
+    autotab_list: dict[ObjectID, TimePoint]
 
     logger: logging.Logger
 
@@ -267,10 +268,10 @@ class KSH2VOXApp:
                                 with dpg.group() as self.ui["effect_def_2_params"]:
                                     dpg.add_text("No configurable parameters!", color=GREY_TEXT_COLOR)
 
-                    with dpg.tab(label="Filter mapping") as self.ui["section_filter_info"]:
-                        self.ui["section_filter_placeholder_text"] = dpg.add_text("No chart loaded yet!")
+                    with dpg.tab(label="Laser effects") as self.ui["section_laser_effect_info"]:
+                        self.ui["section_laser_effect_placeholder"] = dpg.add_text("No chart loaded yet!")
 
-                        with dpg.group(show=False) as self.ui["section_filter_group"]:
+                        with dpg.group(show=False) as self.ui["section_laser_effect_group"]:
                             pass
 
                     with dpg.tab(label="Track autotab") as self.ui["section_autotab_info"]:
@@ -525,15 +526,15 @@ class KSH2VOXApp:
 
     def add_new_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
-        for filter_name, filter_index in self.parser._filter_to_effect.items():
-            if filter_index < effect_index:
+        for autotab_info in self.song_chart_data.chart_info.autotab_infos.values():
+            if autotab_info.which < effect_index:
                 continue
-            self.parser._filter_to_effect[filter_name] += 1
+            autotab_info.which += 1
 
         self.song_chart_data.chart_info.effect_list.insert(effect_index, EffectEntry())
 
         self.populate_effects_list(effect_index)
-        self.update_filter_combo_box()
+        self.update_laser_effect_combo_box()
 
     def update_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
@@ -557,16 +558,17 @@ class KSH2VOXApp:
         self.song_chart_data.chart_info.effect_list[effect_index] = EffectEntry(effect_1, effect_2)
 
         self.populate_effects_list(effect_index)
-        self.update_filter_combo_box()
+        self.update_laser_effect_combo_box()
 
     def delete_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
-        for filter_name, filter_index in self.parser._filter_to_effect.items():
-            if filter_index < effect_index:
+        for timept, autotab_info in self.song_chart_data.chart_info.autotab_infos.items():
+            if autotab_info.which < effect_index:
                 continue
-            if filter_index == effect_index:
-                self.logger.warning(f"effect corresponding to filter {filter_name} was deleted")
-            self.parser._filter_to_effect[filter_name] -= 1
+            if autotab_info.which == effect_index:
+                timept_str = self.song_chart_data.chart_info.timepoint_to_vox(timept)
+                self.logger.warning(f"effect corresponding to laser effect at {timept_str} was deleted")
+            autotab_info.which -= 1
 
         self.song_chart_data.chart_info.effect_list.pop(effect_index)
 
@@ -575,42 +577,48 @@ class KSH2VOXApp:
             self.song_chart_data.chart_info.effect_list.append(EffectEntry())
 
         self.populate_effects_list(effect_index)
-        self.update_filter_combo_box()
+        self.update_laser_effect_combo_box()
 
-    # TODO: Fix usage of _filter_to_effect
-    def populate_filters_list(self) -> None:
-        parent = self.ui["section_filter_group"]
+    def populate_laser_effect_list(self) -> None:
+        parent = self.ui["section_laser_effect_group"]
 
-        self.filter_mappings = {}
+        self.autotab_list = {}
         dpg.delete_item(parent, children_only=True)
 
-        dpg.add_text("Custom filter to effect definition mapping:", parent=parent)
-        for filter_name in self.parser._filter_to_effect:
-            self.filter_mappings[filter_name] = dpg.add_combo(
-                label=filter_name,
-                parent=parent,
-                callback=self.update_filter_mapping,
+        dpg.add_text("Laser effects used in chart:", parent=parent)
+        for timept, autotab_info in self.song_chart_data.chart_info.autotab_infos.items():
+            start_timept = self.song_chart_data.chart_info.timepoint_to_vox(timept)
+            end_timept = self.song_chart_data.chart_info.timepoint_to_vox(
+                self.song_chart_data.chart_info.add_duration(timept, autotab_info.duration)
             )
+            self.autotab_list[
+                dpg.add_combo(
+                    label=f"{start_timept} ~ {end_timept}",
+                    parent=parent,
+                    callback=self.update_autotab_value,
+                )
+            ] = timept
 
-        if not self.parser._filter_to_effect:
-            dpg.add_text("No custom filter found!", parent=parent, color=GREY_TEXT_COLOR)
+        if not self.song_chart_data.chart_info.autotab_infos:
+            dpg.add_text("Laser effects are not used in this chart!", parent=parent, color=GREY_TEXT_COLOR)
 
-        self.update_filter_combo_box()
+        self.update_laser_effect_combo_box()
 
-    def update_filter_combo_box(self) -> None:
+    def update_laser_effect_combo_box(self) -> None:
         combo_items = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.song_chart_data.chart_info.effect_list)]
 
-        for filter_name, obj_id in self.filter_mappings.items():
+        for obj_id, timept in self.autotab_list.items():
             dpg.configure_item(obj_id, items=combo_items)
-            dpg.set_value(obj_id, combo_items[self.parser._filter_to_effect[filter_name]])
+            dpg.set_value(obj_id, combo_items[self.song_chart_data.chart_info.autotab_infos[timept].which])
 
-    def update_filter_mapping(self, sender: ObjectID) -> None:
+    def update_autotab_value(self, sender: ObjectID) -> None:
         filter_name = dpg.get_item_label(sender)
         if filter_name is None:
             return
 
         effect_index = self.get_combo_index(sender)
-        self.parser._filter_to_effect[filter_name] = effect_index
+        timept = self.autotab_list[sender]
+        self.song_chart_data.chart_info.autotab_infos[timept].which = effect_index
 
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
@@ -647,17 +655,17 @@ class KSH2VOXApp:
             dpg.configure_item(self.ui["effect_def_2_combo"], items=list(FXType))
 
             self.populate_effects_list()
-            self.populate_filters_list()
+            self.populate_laser_effect_list()
 
             self.background_id = self.song_chart_data.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
 
         # Remove placeholder text and show hidden parts
         dpg.hide_item(self.ui["section_effect_placeholder_text"])
-        dpg.hide_item(self.ui["section_filter_placeholder_text"])
+        dpg.hide_item(self.ui["section_laser_effect_placeholder"])
         dpg.hide_item(self.ui["section_autotab_placeholder_text"])
         dpg.show_item(self.ui["section_effect_group"])
-        dpg.show_item(self.ui["section_filter_group"])
+        dpg.show_item(self.ui["section_laser_effect_group"])
         dpg.show_item(self.ui["section_autotab_group"])
 
         # Main buttons
