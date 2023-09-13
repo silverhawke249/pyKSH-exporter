@@ -831,6 +831,7 @@ class KSHParser(Parser):
             "vol_r": False,
         }
 
+        self._ease_start = {}
         self._ease_ranges = {
             "vol_l": {},
             "vol_r": {},
