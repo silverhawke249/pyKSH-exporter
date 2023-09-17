@@ -150,6 +150,10 @@ class AutoTabEntry(VoxEntity):
     effect1: AutoTabSetting
     effect2: AutoTabSetting
 
+    def __init__(self, effect_index: int) -> None:
+        self.effect1 = AutoTabSetting(effect_index)
+        self.effect2 = AutoTabSetting(effect_index)
+
     def to_vox_string(self) -> str:
         return f"{self.effect1.to_vox_string()}\n" f"{self.effect1.to_vox_string()}\n"
 
@@ -157,16 +161,16 @@ class AutoTabEntry(VoxEntity):
 def get_default_autotab() -> list[AutoTabEntry]:
     """Get the default auto-tab settings."""
     return [
-        AutoTabEntry(AutoTabSetting(0), AutoTabSetting(0)),
-        AutoTabEntry(AutoTabSetting(1), AutoTabSetting(1)),
-        AutoTabEntry(AutoTabSetting(2), AutoTabSetting(2)),
-        AutoTabEntry(AutoTabSetting(3), AutoTabSetting(3)),
-        AutoTabEntry(AutoTabSetting(4), AutoTabSetting(4)),
-        AutoTabEntry(AutoTabSetting(5), AutoTabSetting(5)),
-        AutoTabEntry(AutoTabSetting(6), AutoTabSetting(6)),
-        AutoTabEntry(AutoTabSetting(7), AutoTabSetting(7)),
-        AutoTabEntry(AutoTabSetting(8), AutoTabSetting(8)),
-        AutoTabEntry(AutoTabSetting(9), AutoTabSetting(9)),
-        AutoTabEntry(AutoTabSetting(10), AutoTabSetting(10)),
-        AutoTabEntry(AutoTabSetting(11), AutoTabSetting(11)),
+        AutoTabEntry(0),
+        AutoTabEntry(1),
+        AutoTabEntry(2),
+        AutoTabEntry(3),
+        AutoTabEntry(4),
+        AutoTabEntry(5),
+        AutoTabEntry(6),
+        AutoTabEntry(7),
+        AutoTabEntry(8),
+        AutoTabEntry(9),
+        AutoTabEntry(10),
+        AutoTabEntry(11),
     ]

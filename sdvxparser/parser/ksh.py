@@ -1676,9 +1676,7 @@ class KSHParser(Parser):
             while len(self.__song_chart_data.chart_info.effect_list) < len(self._fx_list):
                 index = len(self.__song_chart_data.chart_info.effect_list)
                 self.__song_chart_data.chart_info.effect_list.append(effects.EffectEntry())
-                self.__song_chart_data.chart_info.autotab_list.append(
-                    filters.AutoTabEntry(filters.AutoTabSetting(index), filters.AutoTabSetting(index))
-                )
+                self.__song_chart_data.chart_info.autotab_list.append(filters.AutoTabEntry(index))
         for i, fx_entry in enumerate(self._fx_list):
             if ";" in fx_entry:
                 fx_name, *fx_params_str = fx_entry.split(";")
@@ -1712,9 +1710,7 @@ class KSHParser(Parser):
             ):
                 index = len(self.__song_chart_data.chart_info.effect_list)
                 self.__song_chart_data.chart_info.effect_list.append(effects.EffectEntry())
-                self.__song_chart_data.chart_info.autotab_list.append(
-                    filters.AutoTabEntry(filters.AutoTabSetting(index), filters.AutoTabSetting(index))
-                )
+                self.__song_chart_data.chart_info.autotab_list.append(filters.AutoTabEntry(index))
         for i, name in enumerate(self.__song_chart_data.chart_info._custom_filter):
             filter_effect = self.__song_chart_data.chart_info._custom_filter[name]
             self.__song_chart_data.chart_info.effect_list[len(self._fx_list) + i] = effects.EffectEntry(filter_effect)
