@@ -18,11 +18,11 @@ is not recommended, since this does not update the note objects in the charts.
     TODO: Explain the parameters for each effect
 
 
-Filter mapping
---------------
+Laser effects
+-------------
 
-This tab allows the user to change which effect definition is used for each custom filter. This is due to how the VOX
-format works -- every effect applied to a laser as a custom filter requires an effect definition.
+This tab allows the user to change which effect definition is used with each custom filter segment. This is due to how
+the VOX format works -- every effect applied to a laser as a custom filter requires an effect definition.
 
 
 Autotab params
