@@ -106,18 +106,18 @@ class KSH2VOXApp:
         dpg.set_viewport_large_icon("resources/icon.ico")
         dpg.setup_dearpygui()
 
-        # ==================#
+        # ================ #
         # TEXTURE REGISTRY #
-        # ==================#
+        # ================ #
 
         with dpg.texture_registry():
             self.ui["gmbg_texture"] = dpg.add_dynamic_texture(
                 width=BG_WIDTH, height=BG_HEIGHT, default_value=[0.0, 0.0, 0.0, 1.0] * (BG_WIDTH * BG_HEIGHT)
             )
 
-        # ===================#
+        # ================= #
         # WINDOW/APP LAYOUT #
-        # ===================#
+        # ================= #
 
         with dpg.window(label="KSH Exporter") as self.ui["primary_window"]:
             self.ui["throbber"] = dpg.add_loading_indicator(
@@ -144,7 +144,7 @@ class KSH2VOXApp:
             dpg.add_spacer(height=1)
 
             with dpg.child_window(height=510, width=-1, border=False) as self.ui["info_container"]:
-                with dpg.tab_bar():
+                with dpg.tab_bar(show=False) as self.ui["inner_info_container"]:
                     with dpg.tab(label="Song info") as self.ui["section_song_info"]:
                         self.ui["id"] = dpg.add_input_int(
                             label="Song ID", min_clamped=True, callback=self.update_and_validate
@@ -226,22 +226,18 @@ class KSH2VOXApp:
                         )
 
                     with dpg.tab(label="Effects") as self.ui["section_effect_info"]:
-                        self.ui["section_effect_placeholder_text"] = dpg.add_text("No chart loaded yet!")
-
-                        with dpg.group(show=False) as self.ui["section_effect_group"]:
+                        with dpg.group() as self.ui["section_effect_group"]:
                             self.ui["effect_def_combo"] = dpg.add_combo(
                                 label="Effect definition list", callback=self.load_effects
                             )
 
                             with dpg.group(horizontal=True) as effect_def_buttons:
-                                self.ui["effect_def_new"] = dpg.add_button(
-                                    label="New", enabled=False, callback=self.add_new_effect
-                                )
+                                self.ui["effect_def_new"] = dpg.add_button(label="New", callback=self.add_new_effect)
                                 self.ui["effect_def_update"] = dpg.add_button(
-                                    label="Update", enabled=False, callback=self.update_effect
+                                    label="Update", callback=self.update_effect
                                 )
                                 self.ui["effect_def_delete"] = dpg.add_button(
-                                    label="Delete", enabled=False, callback=self.delete_effect
+                                    label="Delete", callback=self.delete_effect
                                 )
 
                             dpg.add_spacer(height=1)
@@ -269,32 +265,28 @@ class KSH2VOXApp:
                                     dpg.add_text("No configurable parameters!", color=GREY_TEXT_COLOR)
 
                     with dpg.tab(label="Laser effects") as self.ui["section_laser_effect_info"]:
-                        self.ui["section_laser_effect_placeholder"] = dpg.add_text("No chart loaded yet!")
-
-                        with dpg.group(show=False) as self.ui["section_laser_effect_group"]:
+                        with dpg.group() as self.ui["section_laser_effect_group"]:
                             pass
 
                     with dpg.tab(label="Track autotab") as self.ui["section_autotab_info"]:
-                        self.ui["section_autotab_placeholder_text"] = dpg.add_text("No chart loaded yet!")
-
-                        with dpg.group(show=False) as self.ui["section_autotab_group"]:
+                        with dpg.group() as self.ui["section_autotab_group"]:
                             pass
 
             with dpg.child_window(label="Logs", width=-1, height=-1, horizontal_scrollbar=True) as self.ui["log"]:
                 self.ui["log_last_line"] = 0
 
-        # ================#
+        # ============== #
         # EVENT HANDLERS #
-        # ================#
+        # ============== #
 
         with dpg.item_handler_registry() as background_handler:
             dpg.add_item_visible_handler(callback=self.change_image_texture)
 
         dpg.bind_item_handler_registry(self.ui["background"], background_handler)
 
-        # ===============#
+        # ============= #
         # FONT REGISTRY #
-        # ===============#
+        # ============= #
 
         with dpg.font_registry():
             with dpg.font("resources/NotoSansJP-Regular.ttf", 20) as font:
@@ -303,9 +295,9 @@ class KSH2VOXApp:
 
             dpg.bind_font(font)
 
-        # ================#
+        # ============== #
         # THEME REGISTRY #
-        # ================#
+        # ============== #
 
         with dpg.theme() as button_theme:
             with dpg.theme_component(dpg.mvAll):
@@ -661,12 +653,7 @@ class KSH2VOXApp:
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
 
         # Remove placeholder text and show hidden parts
-        dpg.hide_item(self.ui["section_effect_placeholder_text"])
-        dpg.hide_item(self.ui["section_laser_effect_placeholder"])
-        dpg.hide_item(self.ui["section_autotab_placeholder_text"])
-        dpg.show_item(self.ui["section_effect_group"])
-        dpg.show_item(self.ui["section_laser_effect_group"])
-        dpg.show_item(self.ui["section_autotab_group"])
+        dpg.show_item(self.ui["inner_info_container"])
 
         # Main buttons
         dpg.configure_item(self.ui["vox_button"], enabled=True)
@@ -675,7 +662,6 @@ class KSH2VOXApp:
         dpg.configure_item(self.ui["jackets_button"], enabled=True)
 
         # Effect definition buttons
-        dpg.configure_item(self.ui["effect_def_new"], enabled=True)
         self.update_effect_def_button_state()
 
     def validate_metadata(self):
