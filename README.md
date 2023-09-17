@@ -36,6 +36,11 @@ Generate the documentation for advanced usage.
 
 ## Version history
 
+- v1.4 (2023/09/17)
+  - Implement the "Effects", "Laser effects", and "Autotab params" tabs.
+  - Add `hideBars`, `addBars`, `scriptBegin`, and `scriptEnd` commands.
+  - Introduce documentation for the app and the library.
+  - Improved various things behind the scenes.
 - v1.3-hotfix.1 (2023/08/20)
   - Fix issue with inserting interpolated laser points due to curve commands mid-segment.
 - v1.3 (2023/08/17)
