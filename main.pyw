@@ -15,6 +15,7 @@ from exporter.audio import get_2dxs
 from exporter.images import BG_WIDTH, BG_HEIGHT, GMBGHandler, get_game_backgrounds, get_jacket_images
 from sdvxparser.classes.effects import Effect, EffectEntry, FXType, enum_to_effect
 from sdvxparser.classes.enums import DifficultySlot, GameBackground, InfVer
+from sdvxparser.classes.filters import AutoTabEntry, AutoTabSetting
 from sdvxparser.classes.time import TimePoint
 from sdvxparser.parser.base import SongChartContainer
 from sdvxparser.parser.ksh import KSHParser
@@ -268,9 +269,31 @@ class KSH2VOXApp:
                         with dpg.group() as self.ui["section_laser_effect_group"]:
                             pass
 
-                    with dpg.tab(label="Track autotab") as self.ui["section_autotab_info"]:
+                    with dpg.tab(label="Autotab params") as self.ui["section_autotab_info"]:
                         with dpg.group() as self.ui["section_autotab_group"]:
-                            pass
+                            self.ui["autotab_effect_combo"] = dpg.add_combo(
+                                label="Effect list", callback=self.update_autotab_params
+                            )
+
+                            dpg.add_spacer(height=1)
+
+                            with dpg.group():
+                                self.ui["autotab_effect_1_param_combo"] = dpg.add_combo(
+                                    label="1st effect param", callback=self.update_autotab_param_settings
+                                )
+
+                                with dpg.group() as self.ui["autotab_effect_1_param_setting"]:
+                                    dpg.add_text("No configurable parameters!", color=GREY_TEXT_COLOR)
+
+                            dpg.add_spacer(height=1)
+
+                            with dpg.group():
+                                self.ui["autotab_effect_2_param_combo"] = dpg.add_combo(
+                                    label="2nd effect param", callback=self.update_autotab_param_settings
+                                )
+
+                                with dpg.group() as self.ui["autotab_effect_2_param_setting"]:
+                                    dpg.add_text("No configurable parameters!", color=GREY_TEXT_COLOR)
 
             with dpg.child_window(label="Logs", width=-1, height=-1, horizontal_scrollbar=True) as self.ui["log"]:
                 self.ui["log_last_line"] = 0
@@ -523,10 +546,21 @@ class KSH2VOXApp:
                 continue
             autotab_info.which += 1
 
+        autotab_index = self.get_combo_index(self.ui["autotab_effect_combo"])
+        if autotab_index >= effect_index:
+            autotab_index += 1
+        for autotab_setting in self.song_chart_data.chart_info.autotab_list:
+            if autotab_setting.effect1.effect_index < effect_index:
+                continue
+            autotab_setting.effect1.effect_index += 1
+            autotab_setting.effect2.effect_index += 1
+
         self.song_chart_data.chart_info.effect_list.insert(effect_index, EffectEntry())
+        self.song_chart_data.chart_info.autotab_list.insert(effect_index, AutoTabEntry(effect_index))
 
         self.populate_effects_list(effect_index)
         self.update_laser_effect_combo_box()
+        self.populate_track_autotab_list(autotab_index)
 
     def update_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
@@ -539,7 +573,7 @@ class KSH2VOXApp:
         pairs: list[tuple[Effect, str]] = [(effect_1, "effect_def_1_combo"), (effect_2, "effect_def_2_combo")]
         for effect_obj, ui_key in pairs:
             for param_name, obj_id in self.effect_params[self.ui[ui_key]].items():
-                field_data: Field = effect_1.__dataclass_fields__[param_name]
+                field_data: Field = effect_obj.__dataclass_fields__[param_name]
                 param_value = dpg.get_value(obj_id)
                 param_type = field_data.type
                 # If it's an enum, it needs to be converted to the underlying value
@@ -548,9 +582,11 @@ class KSH2VOXApp:
                 setattr(effect_obj, param_name, param_type(param_value))
 
         self.song_chart_data.chart_info.effect_list[effect_index] = EffectEntry(effect_1, effect_2)
+        self.song_chart_data.chart_info.autotab_list[effect_index] = AutoTabEntry(effect_index)
 
         self.populate_effects_list(effect_index)
         self.update_laser_effect_combo_box()
+        self.populate_track_autotab_list(self.get_combo_index(self.ui["autotab_effect_combo"]))
 
     def delete_effect(self) -> None:
         effect_index = self.get_combo_index(self.ui["effect_def_combo"])
@@ -562,14 +598,26 @@ class KSH2VOXApp:
                 self.logger.warning(f"effect corresponding to laser effect at {timept_str} was deleted")
             autotab_info.which -= 1
 
+        autotab_index = self.get_combo_index(self.ui["autotab_effect_combo"])
+        if autotab_index >= effect_index:
+            autotab_index -= 1
+        for autotab_setting in self.song_chart_data.chart_info.autotab_list:
+            if autotab_setting.effect1.effect_index < effect_index:
+                continue
+            autotab_setting.effect1.effect_index -= 1
+            autotab_setting.effect2.effect_index -= 1
+
         self.song_chart_data.chart_info.effect_list.pop(effect_index)
+        self.song_chart_data.chart_info.autotab_list.pop(effect_index)
 
         # Don't allow effect list to be empty
         if not self.song_chart_data.chart_info.effect_list:
             self.song_chart_data.chart_info.effect_list.append(EffectEntry())
+            self.song_chart_data.chart_info.autotab_list.pop(effect_index)
 
         self.populate_effects_list(effect_index)
         self.update_laser_effect_combo_box()
+        self.populate_track_autotab_list(autotab_index)
 
     def populate_laser_effect_list(self) -> None:
         parent = self.ui["section_laser_effect_group"]
@@ -612,6 +660,85 @@ class KSH2VOXApp:
         timept = self.autotab_list[sender]
         self.song_chart_data.chart_info.autotab_infos[timept].which = effect_index
 
+    def populate_track_autotab_list(self, list_index: int = 0) -> None:
+        effect_list = [f"FX {i + 1}: {fx}" for i, fx in enumerate(self.song_chart_data.chart_info.effect_list)]
+        dpg.configure_item(self.ui["autotab_effect_combo"], items=effect_list)
+        dpg.set_value(self.ui["autotab_effect_combo"], effect_list[list_index])
+
+        self.update_autotab_params()
+
+    def update_autotab_params(self):
+        effect_index = self.get_combo_index(self.ui["autotab_effect_combo"])
+        effect_entry = self.song_chart_data.chart_info.effect_list[effect_index]
+        autotab_params = self.song_chart_data.chart_info.autotab_list[effect_index]
+
+        param_list = ["(none)"]
+        param_list += effect_entry.effect1.__dataclass_fields__.keys()
+        dpg.configure_item(
+            self.ui["autotab_effect_1_param_combo"],
+            items=param_list,
+            label=f"1st effect ({effect_entry.effect1.effect_name}) param",
+        )
+        dpg.set_value(self.ui["autotab_effect_1_param_combo"], param_list[autotab_params.effect1.param_index])
+
+        param_list = ["(none)"]
+        param_list += effect_entry.effect2.__dataclass_fields__.keys()
+        dpg.configure_item(
+            self.ui["autotab_effect_2_param_combo"],
+            items=param_list,
+            label=f"2nd effect ({effect_entry.effect2.effect_name}) param",
+        )
+        dpg.set_value(self.ui["autotab_effect_2_param_combo"], param_list[autotab_params.effect2.param_index])
+
+        self.update_autotab_param_settings()
+
+    def update_autotab_param_settings(self, sender: ObjectID | None = None):
+        effect_index = self.get_combo_index(self.ui["autotab_effect_combo"])
+
+        for i in range(1, 3):
+            combo_id = self.ui[f"autotab_effect_{i}_param_combo"]
+            parent = self.ui[f"autotab_effect_{i}_param_setting"]
+            param_name = dpg.get_value(combo_id)
+            autotab_setting: AutoTabSetting = getattr(
+                self.song_chart_data.chart_info.autotab_list[effect_index], f"effect{i}"
+            )
+            effect: Effect = getattr(self.song_chart_data.chart_info.effect_list[effect_index], f"effect{i}")
+
+            if sender is not None and sender != combo_id:
+                continue
+
+            dpg.delete_item(parent, children_only=True)
+
+            combo_index = self.get_combo_index(combo_id)
+            if combo_index == 0:
+                dpg.add_text("No configurable parameters!", parent=parent, color=GREY_TEXT_COLOR)
+            else:
+                if sender is not None:
+                    autotab_setting.param_index = combo_index
+                    autotab_setting.min_value = getattr(effect, param_name)
+                    autotab_setting.max_value = getattr(effect, param_name)
+                param_value = (autotab_setting.min_value, autotab_setting.max_value)
+
+                dpg.add_input_floatx(
+                    label="Param range",
+                    parent=parent,
+                    default_value=param_value,
+                    format="%.2f",
+                    size=2,
+                    callback=self.update_chart_autotab_values,
+                    user_data=i,
+                )
+
+    def update_chart_autotab_values(self, sender: ObjectID, app_data: tuple[float, float], user_data: int):
+        effect_index = self.get_combo_index(self.ui["autotab_effect_combo"])
+        autotab_setting: AutoTabSetting = getattr(
+            self.song_chart_data.chart_info.autotab_list[effect_index], f"effect{user_data}"
+        )
+
+        min_value, max_value, *_ = app_data
+        autotab_setting.min_value = min_value
+        autotab_setting.max_value = max_value
+
     def load_ksh(self):
         with disable_buttons(self), show_throbber(self):
             file_path_str = filedialog.askopenfilename(
@@ -648,6 +775,7 @@ class KSH2VOXApp:
 
             self.populate_effects_list()
             self.populate_laser_effect_list()
+            self.populate_track_autotab_list()
 
             self.background_id = self.song_chart_data.song_info.background.value
             self.gmbg_available = self.gmbg_data.has_image(self.background_id)
