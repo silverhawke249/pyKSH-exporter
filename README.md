@@ -36,6 +36,8 @@ Generate the documentation for advanced usage.
 
 ## Version history
 
+- v1.4-hotfix.1 (2023/10/23)
+  - Fix exception caused when the last effect definition entry is deleted.
 - v1.4 (2023/09/17)
   - Implement the "Effects", "Laser effects", and "Autotab params" tabs.
   - Add `hideBars`, `addBars`, `scriptBegin`, and `scriptEnd` commands.
