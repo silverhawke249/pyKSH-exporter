@@ -615,6 +615,9 @@ class KSH2VOXApp:
             self.song_chart_data.chart_info.effect_list.append(EffectEntry())
             self.song_chart_data.chart_info.autotab_list.pop(effect_index)
 
+        if effect_index == len(self.song_chart_data.chart_info.effect_list):
+            effect_index -= 1
+
         self.populate_effects_list(effect_index)
         self.update_laser_effect_combo_box()
         self.populate_track_autotab_list(autotab_index)
