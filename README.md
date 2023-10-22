@@ -18,7 +18,7 @@ Convert your KSH files into VOX format, export supporting assets, all in one pla
 - Tcl/Tk >= 8.6
 - construct >= 2.10
 - pydub >= 0.25.1
-- PIL >= 9.1.0
+- PIL >= 10.1.0
 
 If documentation is needed:
 
@@ -36,6 +36,9 @@ Generate the documentation for advanced usage.
 
 ## Version history
 
+- v1.4-hotfix.1 (2023/10/23)
+  - Fix exception caused when the last effect definition entry is deleted.
+  - Upgrade required version of Pillow.
 - v1.4 (2023/09/17)
   - Implement the "Effects", "Laser effects", and "Autotab params" tabs.
   - Add `hideBars`, `addBars`, `scriptBegin`, and `scriptEnd` commands.
