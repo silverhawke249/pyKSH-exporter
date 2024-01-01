@@ -1081,10 +1081,10 @@ class KSHParser(Parser):
                         value_l, value_r = value, value
                     if "L" in name:
                         self._ease_start["vol_l"] = cur_time
-                        self._cur_easing["vol_l"] = EasingType(int(value))
+                        self._cur_easing["vol_l"] = EasingType(int(value_l))
                     if "R" in name:
                         self._ease_start["vol_r"] = cur_time
-                        self._cur_easing["vol_r"] = EasingType(int(value))
+                        self._cur_easing["vol_r"] = EasingType(int(value_r))
                 case "curveBeginSpL" | "curveBeginSpR":
                     values = value.split(",")
                     if len(values) != 3:
