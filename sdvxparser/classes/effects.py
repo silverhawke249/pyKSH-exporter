@@ -327,11 +327,11 @@ class Sidechain(Effect):
         if "period" in s:
             effect.frequency = 0.25 / parse_length(s["period"])
         if "attackTime" in s:
-            effect.attack = int(parse_time(s["attackTime"]))
+            effect.attack = int(parse_time(s["attackTime"], s["bpm"]))
         if "holdTime" in s:
-            effect.hold = int(parse_time(s["holdTime"]))
+            effect.hold = int(parse_time(s["holdTime"], s["bpm"]))
         if "releaseTime" in s:
-            effect.release = int(parse_time(s["releaseTime"]))
+            effect.release = int(parse_time(s["releaseTime"], s["bpm"]))
         # Not actually in KSM spec
         if "mix" in s:
             effect.mix = parse_length(s["mix"]) * 100

@@ -953,6 +953,7 @@ class KSHParser(Parser):
             line_type, name, definition = re.split(r"\s+", line[1:])
             params_list = [s.split("=", 1) for s in definition.split(";")]
             params_dict: dict[str, str] = {s[0]: s[1] for s in params_list}
+            params_dict["bpm"] = str(self.__song_chart_data.chart_info.get_bpm(TimePoint()))
             if "type" not in params_dict:
                 logger.warning(
                     f'ignoring definition at line {ln_offset + line_no + 1}; "type" parameter missing: "{line}"',

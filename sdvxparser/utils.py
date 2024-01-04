@@ -162,15 +162,20 @@ def parse_frequency(s: str) -> float:
         return float(s)
 
 
-def parse_time(s: str) -> float:
+def parse_time(s: str, b: str | None = None) -> float:
     """Parse a string describing a KSH-spec duration."""
-    if not s.endswith("s"):
-        raise ValueError(f"{s} is not a valid time value")
-    else:
+    if s.endswith("s"):
         s = s[:-1]
         if s.endswith("m"):
             return float(s[:-1])
         return float(s) * 1000
+    elif "/" in s:
+        if b is None:
+            raise ValueError(f"cannot convert {s} as time duration -- bpm not specified")
+        num, denom = s.split("/")
+        bpm = float(b)
+        return 60 * 1000 / bpm * 4 * float(num) / float(denom)
+    raise ValueError(f"{s} is not a valid time value")
 
 
 def dedent(s: str) -> str:
