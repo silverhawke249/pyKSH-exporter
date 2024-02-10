@@ -125,6 +125,8 @@ class GameBackground(Enum):
     EXCEED_GEAR_JAPANESQUE = 101
     HEXA_DIVER_APOCALYPSE_RAY = 102
     HEXA_DIVER_HEAVENS_RAIN = 103
+    HEXA_DIVER_DIMIOURGEAR = 104
+    HEXA_DIVER_AKASHA = 105
 
     def __str__(self) -> str:
         name_parts = [s.capitalize() for s in self.name.split("_")]
