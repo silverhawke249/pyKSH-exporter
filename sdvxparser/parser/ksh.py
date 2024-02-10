@@ -21,9 +21,6 @@ from ..classes import (
     effects,
     filters,
 )
-from ..classes.base import (
-    ParserWarning,
-)
 from ..classes.chart import (
     AutoTabInfo,
     BTInfo,
@@ -956,8 +953,7 @@ class KSHParser(Parser):
             params_dict["bpm"] = str(self.__song_chart_data.chart_info.get_bpm(TimePoint()))
             if "type" not in params_dict:
                 logger.warning(
-                    f'ignoring definition at line {ln_offset + line_no + 1}; "type" parameter missing: "{line}"',
-                    ParserWarning,
+                    f'ignoring definition at line {ln_offset + line_no + 1}; "type" parameter missing: "{line}"'
                 )
                 continue
             try:
@@ -977,12 +973,11 @@ class KSHParser(Parser):
                     self.__song_chart_data.chart_info._custom_filter[name] = effects.from_definition(params_dict)
                 else:
                     logger.warning(
-                        f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"', ParserWarning
+                        f'unrecognized definition at line {ln_offset + line_no + 1}: "{definition}"'
                     )
             except ValueError as e:
                 logger.warning(
-                    f'ignoring definition at line {ln_offset + line_no + 1}; unable to parse definition: "{line}"',
-                    ParserWarning,
+                    f'ignoring definition at line {ln_offset + line_no + 1}; unable to parse definition: "{line}"'
                 )
                 logger.warning(f"this is caused by: {e}")
 
@@ -1272,8 +1267,7 @@ class KSHParser(Parser):
                     if value and self._set_fx[key] and self._set_fx[key] != value:
                         logger.warning(
                             f'ignoring effect "{value}" assigned to {key} that already has an assigned '
-                            f'effect "{self._set_fx[key]}" at m{m_no}',
-                            ParserWarning,
+                            f'effect "{self._set_fx[key]}" at m{m_no}'
                         )
                     return
                 self._set_fx[key] = value
