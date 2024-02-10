@@ -287,9 +287,9 @@ def prepare_audio(file_path: Path, preview_start: int, offset: int) -> tuple[wav
     preview = preview.fade_in(1000).fade_out(1000)
 
     # Apply offset
-    if offset > 0:
+    if offset < 0:
         audio = AudioSegment.silent(offset) + audio
-    elif offset < 0:
+    elif offset > 0:
         audio = audio[offset:]  # type: ignore
     else:
         pass
