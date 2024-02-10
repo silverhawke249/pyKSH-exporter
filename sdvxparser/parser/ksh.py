@@ -1101,9 +1101,9 @@ class KSHParser(Parser):
                         self._cur_easing["vol_l"] = EasingType(int(ease))
                         self._ease_ranges["vol_l"][cur_time] = init, final
                     if "R" in name:
-                        self._ease_start["vol_l"] = cur_time
-                        self._cur_easing["vol_l"] = EasingType(int(ease))
-                        self._ease_ranges["vol_l"][cur_time] = init, final
+                        self._ease_start["vol_r"] = cur_time
+                        self._cur_easing["vol_r"] = EasingType(int(ease))
+                        self._ease_ranges["vol_r"][cur_time] = init, final
                 case "curveEndL" | "curveEndR" | "curveEndLR":
                     if "L" in name:
                         self._ease_start["vol_l"] = cur_time
