@@ -140,8 +140,10 @@ class KSHSongChartContainer(SongChartContainer):
         for timept, fx in notedata.items():
             if fx.duration == 0:
                 f.write(f"{self.chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t{fx.special}\n")
-            else:
+            elif not self.chart_info.has_effected_track:
                 f.write(f"{self.chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t{fx.special + 2}\n")
+            else:
+                f.write(f"{self.chart_info.timepoint_to_vox(timept)}\t{fx.duration_as_tick()}\t254\n")
 
     def _write_vol(self, f: TextIO, notedata: dict[TimePoint, VolInfo], apply_ease: bool):
         for timept, vol in notedata.items():
@@ -295,16 +297,20 @@ class KSHSongChartContainer(SongChartContainer):
 
         # FX parameters
         f.write("#FXBUTTON EFFECT INFO\n")
-        for effect in self.chart_info.effect_list:
+        for i, effect in enumerate(self.chart_info.effect_list):
             f.write(effect.to_vox_string())
             f.write("\n")
+            if i >= 11 and self.chart_info.has_effected_track:
+                break
         f.write("#END\n")
         f.write("\n")
 
         # Tab parameters (FX on lasers parameters)
         f.write("#TAB PARAM ASSIGN INFO\n")
-        for autotab in self.chart_info.autotab_list:
+        for i, autotab in enumerate(self.chart_info.autotab_list):
             f.write(autotab.to_vox_string())
+            if i >= 11 and self.chart_info.has_effected_track:
+                break
         f.write("#END\n")
         f.write("\n")
 
@@ -392,12 +398,16 @@ class KSHSongChartContainer(SongChartContainer):
         f.write("#TRACK AUTO TAB\n")
         for timept, autotab_info in self.chart_info.autotab_infos.items():
             tick_amt = round(TICKS_PER_BAR * autotab_info.duration)
+            if self.chart_info.has_effected_track:
+                autotab_value = 254
+            else:
+                autotab_value = autotab_info.which + 2
             f.write(
                 "\t".join(
                     [
                         f"{self.chart_info.timepoint_to_vox(timept)}",
                         f"{tick_amt}",
-                        f"{autotab_info.which + 2}\n",
+                        f"{autotab_value}\n",
                     ]
                 )
             )
@@ -614,6 +624,7 @@ class KSHSongChartContainer(SongChartContainer):
                     if not script_dict[timept_i]:
                         continue
                     # TODO: Handle lasers
+                    note_dict: dict[TimePoint, BTInfo] | dict[TimePoint, FXInfo] | dict[TimePoint, VolInfo]
                     match note_type:
                         case NoteType.VOL_L:
                             note_dict = self.chart_info.note_data.vol_l
@@ -916,7 +927,7 @@ class KSHParser(Parser):
                 elif key == "m":
                     self.__song_chart_data.chart_info.music_path, *music_path_ex = value.split(";")
                     if music_path_ex:
-                        logger.warning("multiple song files are not supported yet")
+                        self.__song_chart_data.chart_info.effected_path = music_path_ex[0]
                 elif key == "mvol":
                     self.__song_chart_data.song_info.music_volume = int(value)
                 elif key == "o":

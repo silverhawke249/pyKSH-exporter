@@ -66,7 +66,8 @@ def _get_offsets(this) -> list[int]:
         if i == 0:
             offsets.append(this.headerSize)
         else:
-            offsets.append(offsets[-1] + len(this._.files.blob[i]))
+            # Previous offset + 2DX header size + file size
+            offsets.append(offsets[-1] + 24 + len(this._.files[i - 1]["blob"]))
     return offsets
 
 
@@ -268,44 +269,51 @@ class Container2DX:
 
 
 # Preview start must be in ms
-def prepare_audio(file_path: Path, preview_start: int, offset: int) -> tuple[wave.Wave_read, wave.Wave_read]:
+def prepare_audio(file_paths: list[Path], preview_start: int, offset: int) -> tuple[list[wave.Wave_read], wave.Wave_read]:
     """
     Convert an audio file to the correct WAV format and generate a song preview as well.
 
-    :param file_path: Path to audio file. Conversion is handled by ffmpeg.
+    :param file_paths: Path to audio files. Conversion is handled by ffmpeg.
     :param preview_start: Time at which the 10s preview should start, given in milliseconds.
     :param offset: Offset for the audio file in milliseconds.
     :returns: 2-tuple of :class:`~wave.Wave_read` objects containing the prepared audio and the preview audio.
     """
-    audio: AudioSegment = AudioSegment.from_file(str(file_path))
-    audio = audio.set_frame_rate(44100)
-    audio = audio.set_channels(2)
-    audio = audio.set_sample_width(2)
+    if not file_paths:
+        raise ValueError("file_paths cannot be empty!")
 
-    # 10s preview sample
-    preview: AudioSegment = audio[preview_start : preview_start + 10_000]  # type: ignore
-    preview = preview.fade_in(1000).fade_out(1000)
+    output = []
+    for i, file_path in enumerate(file_paths):
+        audio: AudioSegment = AudioSegment.from_file(str(file_path))
+        audio = audio.set_frame_rate(44100)
+        audio = audio.set_channels(2)
+        audio = audio.set_sample_width(2)
 
-    # Apply offset
-    if offset < 0:
-        audio = AudioSegment.silent(offset) + audio
-    elif offset > 0:
-        audio = audio[offset:]  # type: ignore
-    else:
-        pass
+        if i == 0:
+            # 10s preview sample
+            preview: AudioSegment = audio[preview_start : preview_start + 10_000]  # type: ignore
+            preview = preview.fade_in(1000).fade_out(1000)
+            preview_out = BytesIO()
+            preview.export(preview_out, "wav")
+            preview_out.seek(0)
 
-    audio_out = BytesIO()
-    preview_out = BytesIO()
-    audio.export(audio_out, "wav")
-    preview.export(preview_out, "wav")
+        # Apply offset
+        if offset < 0:
+            audio = AudioSegment.silent(offset) + audio
+        elif offset > 0:
+            audio = audio[offset:]  # type: ignore
+        else:
+            pass
 
-    audio_out.seek(0)
-    preview_out.seek(0)
+        audio_out = BytesIO()
+        audio.export(audio_out, "wav")
 
-    return wave.open(audio_out, "rb"), wave.open(preview_out, "rb")
+        audio_out.seek(0)
+        output.append(wave.open(audio_out, "rb"))
+
+    return output, wave.open(preview_out, "rb")
 
 
-def get_2dxs(file_path: Path, song_label: str, preview_start: int, offset: int = 0) -> tuple[bytes, bytes]:
+def get_2dxs(file_paths: list[Path], song_label: str, preview_start: int, offset: int = 0) -> tuple[bytes, bytes]:
     """
     Return song files as 2DX blobs at full length and preview length, in that order.
 
@@ -319,12 +327,13 @@ def get_2dxs(file_path: Path, song_label: str, preview_start: int, offset: int =
     :param offset: Offset for the audio file in milliseconds.
     :returns: 2-tuple of the prepared audio and the preview audio in 2DX format as byte strings.
     """
-    song_wave, preview_wave = prepare_audio(file_path, preview_start, offset)
+    song_waves, preview_wave = prepare_audio(file_paths, preview_start, offset)
 
     song_container = Container2DX(f"{song_label}.2dx")
     preview_container = Container2DX(f"{song_label}_pre.2dx")
 
-    song_container.waves.append(MSADPCMWave(song_wave))
+    for song_wave in song_waves:
+        song_container.waves.append(MSADPCMWave(song_wave))
     preview_container.waves.append(MSADPCMWave(preview_wave))
 
     return song_container.serialize(), preview_container.serialize()

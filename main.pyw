@@ -872,10 +872,20 @@ class KSH2VOXApp:
 
     def export_2dx(self):
         with disable_buttons(self), show_throbber(self):
+            audio_paths = []
             audio_path = (self.current_file_path.parent / self.song_chart_data.chart_info.music_path).resolve()
             if not audio_path.exists():
                 self.log(f'Cannot open "{audio_path}".')
                 return
+            audio_paths.append(audio_path)
+
+            effect_path = None
+            if self.song_chart_data.chart_info.effected_path:
+                effect_path = (self.current_file_path.parent / self.song_chart_data.chart_info.effected_path).resolve()
+                if not effect_path.exists():
+                    self.log(f'Cannot open "{effect_path}".')
+                    return
+                audio_paths.append(effect_path)
 
             song_label = f"{self.song_chart_data.song_info.id:04}_{self.song_chart_data.song_info.ascii_label}"
             song_file_name = f"{song_label}.2dx"
@@ -912,7 +922,7 @@ class KSH2VOXApp:
 
             self.log("Converting audio to 2DX format...")
             song_bytes, preview_bytes = get_2dxs(
-                audio_path,
+                audio_paths,
                 song_label,
                 self.song_chart_data.chart_info.preview_start,
                 self.song_chart_data.chart_info.music_offset,

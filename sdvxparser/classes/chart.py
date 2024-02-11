@@ -356,6 +356,7 @@ class ChartInfo:
 
     # To be used by converters
     music_path: str = ""
+    effected_path: str = ""
     music_offset: int = 0
     preview_start: int = 0
     jacket_path: str = ""
@@ -1043,6 +1044,10 @@ class ChartInfo:
                 self._time_to_frac_cache[timepoint] = self.timepoint_to_fraction(prev_timepoint) + timepoint.position
 
         return self._time_to_frac_cache[timepoint]
+
+    @property
+    def has_effected_track(self) -> bool:
+        return bool(self.effected_path)
 
     @property
     def chip_notecount(self) -> int:
