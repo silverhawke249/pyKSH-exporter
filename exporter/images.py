@@ -109,13 +109,14 @@ def get_game_backgrounds() -> GMBGHandler:
     return handler
 
 
-def get_jacket_images(file_path: Path) -> tuple[bytes, bytes, bytes]:
+def get_jacket_images(file_path: Path) -> tuple[bytes, bytes, bytes, bytes]:
     """
     Return jacket images as PNG blobs at regular, big, small sizes, in that order.
 
     Specifically:
      - Big size: 676x676
      - Regular size: 300x300
+     - IFS size: 128x128
      - Small size: 108x108
 
     :param file_path: Path to image file.
@@ -125,14 +126,17 @@ def get_jacket_images(file_path: Path) -> tuple[bytes, bytes, bytes]:
 
     image_r = image.resize((300, 300), Image.BICUBIC)
     image_b = image.resize((676, 676), Image.BICUBIC)
+    image_t = image.resize((128, 128), Image.BICUBIC)
     image_s = image.resize((108, 108), Image.BICUBIC)
 
     fobj_r = BytesIO()
     fobj_b = BytesIO()
+    fobj_t = BytesIO()
     fobj_s = BytesIO()
 
     image_r.save(fobj_r, format="png")
     image_b.save(fobj_b, format="png")
+    image_t.save(fobj_t, format="png")
     image_s.save(fobj_s, format="png")
 
-    return fobj_r.getvalue(), fobj_b.getvalue(), fobj_s.getvalue()
+    return fobj_r.getvalue(), fobj_b.getvalue(), fobj_t.getvalue(), fobj_s.getvalue()

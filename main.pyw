@@ -968,6 +968,9 @@ class KSH2VOXApp:
             jacket_b_file_name = (
                 f"jk_{self.song_chart_data.song_info.id:04}_{self.song_chart_data.chart_info.difficulty.value}_b.png"
             )
+            jacket_t_file_name = (
+                f"jk_{self.song_chart_data.song_info.id:04}_{self.song_chart_data.chart_info.difficulty.value}_t.png"
+            )
             jacket_s_file_name = (
                 f"jk_{self.song_chart_data.song_info.id:04}_{self.song_chart_data.chart_info.difficulty.value}_s.png"
             )
@@ -1002,6 +1005,21 @@ class KSH2VOXApp:
                 return None
             jacket_b_file_name = Path(jacket_b_file_path).name
 
+            jacket_t_file_path = filedialog.asksaveasfilename(
+                confirmoverwrite=True,
+                defaultextension="png",
+                filetypes=(
+                    ("PNG images", "*.png"),
+                    ("All files", "*"),
+                ),
+                initialdir=self.current_path,
+                initialfile=jacket_t_file_name,
+                title="Save IFS jacket image",
+            )
+            if not jacket_t_file_path:
+                return None
+            jacket_t_file_name = Path(jacket_t_file_path).name
+
             jacket_s_file_path = filedialog.asksaveasfilename(
                 confirmoverwrite=True,
                 defaultextension="png",
@@ -1018,7 +1036,7 @@ class KSH2VOXApp:
             jacket_s_file_name = Path(jacket_s_file_path).name
 
             self.log("Resizing jacket image...")
-            jk_r_bytes, jk_b_bytes, jk_s_bytes = get_jacket_images(jacket_path)
+            jk_r_bytes, jk_b_bytes, jk_t_bytes, jk_s_bytes = get_jacket_images(jacket_path)
 
             self.log(f'Writing to "{jacket_r_file_path}"...')
             with open(jacket_r_file_path, "wb") as f:
@@ -1029,6 +1047,11 @@ class KSH2VOXApp:
             with open(jacket_b_file_path, "wb") as f:
                 f.write(jk_b_bytes)
             self.log(f"File saved: {jacket_b_file_name}")
+
+            self.log(f'Writing to "{jacket_t_file_path}"...')
+            with open(jacket_t_file_path, "wb") as f:
+                f.write(jk_t_bytes)
+            self.log(f"File saved: {jacket_t_file_name}")
 
             self.log(f'Writing to "{jacket_s_file_path}"...')
             with open(jacket_s_file_path, "wb") as f:
