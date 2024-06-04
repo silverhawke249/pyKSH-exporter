@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import codecs
 import logging
 import re
 import time
@@ -85,6 +86,8 @@ class KSH2VOXApp:
     current_file_path: Path
     effect_params: dict[ObjectID, dict[str, ObjectID]]
     autotab_list: dict[ObjectID, TimePoint]
+
+    string_encode: str = ""
 
     logger: logging.Logger
 
@@ -375,6 +378,11 @@ class KSH2VOXApp:
         dpg.start_dearpygui()
 
         dpg.destroy_context()
+
+    def _codec_error_handler(self, error: UnicodeEncodeError) -> tuple[str, int]:
+        self.logger.warning(f"{self.string_encode} contains characters that cannot be encoded into Shift-JIS")
+
+        return "", error.end
 
     def get_obj_name(self, uuid: ObjectID):
         if uuid not in self.reverse_ui_map:
@@ -796,6 +804,15 @@ class KSH2VOXApp:
         self.update_effect_def_button_state()
 
     def validate_metadata(self):
+        self.string_encode = "song title"
+        codecs.encode(self.song_chart_data.song_info.title, encoding="cp932")
+        self.string_encode = "song artist"
+        codecs.encode(self.song_chart_data.song_info.artist, encoding="cp932")
+        self.string_encode = "chart effector"
+        codecs.encode(self.song_chart_data.chart_info.effector, encoding="cp932")
+        self.string_encode = "jacket illustrator"
+        codecs.encode(self.song_chart_data.chart_info.illustrator, encoding="cp932")
+
         title_check = YOMIGANA_VALIDATION_REGEX.match(self.song_chart_data.song_info.title_yomigana)
         if title_check is None:
             self.logger.warning("Title yomigana is not a valid yomigana string or is empty")
@@ -835,7 +852,7 @@ class KSH2VOXApp:
 
             self.log(f'Writing to "{file_path}"...')
             self.current_path = Path(file_path).parent
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 self.song_chart_data.write_vox(f)
 
             self.log(f"File saved: {file_name}")
@@ -865,7 +882,7 @@ class KSH2VOXApp:
 
             self.log(f'Writing to "{file_path}"...')
             self.current_path = Path(file_path).parent
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 self.song_chart_data.write_xml(f)
 
             self.log(f"File saved: {file_name}")
