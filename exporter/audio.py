@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from io import BytesIO
 from pathlib import Path
 
-from pydub import AudioSegment
+from pydub import AudioSegment  # mypy: ignore
 
 __all__ = [
     "get_2dxs",
