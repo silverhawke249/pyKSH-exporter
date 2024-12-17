@@ -697,11 +697,11 @@ def from_definition(definition: MutableMapping[str, str]) -> Effect:
         effect_class = Bitcrush
     elif definition["type"] == "Phaser":
         effect_class = Flanger
-        definition["period"] = definition.get("period", "1/2")
-        definition["feedback"] = definition.get("feedback", "35%")
-        definition["stereo_width"] = definition.get("stereoWidth", "0%")
-        definition["hicut_gain"] = definition.get("hiCutGain", "8dB")
-        definition["mix"] = definition.get("mix", "50%")
+        definition["period"] = definition.get("period", "2")
+        definition["feedback"] = definition.get("feedback", "50%")
+        definition["stereo_width"] = definition.get("stereoWidth", "90%")
+        definition["hicut_gain"] = definition.get("hiCutGain", "1dB")
+        definition["mix"] = definition.get("mix", "60%")
     elif definition["type"] == "Wobble":
         effect_class = Wobble
     elif definition["type"] == "TapeStop":
