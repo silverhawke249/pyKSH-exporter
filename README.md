@@ -13,12 +13,12 @@ Convert your KSH files into VOX format, export supporting assets, all in one pla
 
 ## Requirements
 
-- Python >= 3.10.10
-- DearPyGui >= 1.9.0
+- Python == 3.10
+- DearPyGui == 2.0.0
 - Tcl/Tk >= 8.6
 - construct >= 2.10
 - pydub >= 0.25.1
-- PIL >= 10.1.0
+- PIL == 11.0.0
 
 If documentation is needed:
 
@@ -26,7 +26,7 @@ If documentation is needed:
 - sphinx-autoapi >= 2.1.1
 - sphinx-rtd-theme >= 1.3.0
 
-Older versions of Python 3.10 is untested, but this certainly does not run on Python 3.9.
+A dependency of pydub, audioop, was deprecated in Python 3.11 and removed from the standard library in Python 3.13. As such, this exporter does not run out of the box in Python 3.13.
 
 ## Usage
 
@@ -92,7 +92,7 @@ The following are features/improvements that are being considered for implementa
 - [x] Convert lane splits.
 - [ ] Handle custom filters with a changing parameter.
 - [ ] Attempt to match custom filters with existing effects.
-- [ ] Handle charts with pre-effected audio file.
+- [x] Handle charts with pre-effected audio file.
 - [ ] Make MS ADPCM encoding faster (currently it takes ~15 seconds for typical audio files about ~2:30 in length).
 - [x] Show a preview of the selected background.
 - [ ] Release a standalone binary, possibly compiled with Nuitka.
