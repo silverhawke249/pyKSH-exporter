@@ -1195,6 +1195,7 @@ class KSHParser(Parser):
                     self._cur_timesig = TimeSignature(upper, lower)
             elif key == "stop":
                 self._stops[cur_time] = int(value) * STOP_CONVERSION_RATE
+            # TODO: Fix "zero" changing to explicit value not snapping
             elif key == "tilt":
                 try:
                     if value == "zero":
@@ -1642,6 +1643,7 @@ class KSHParser(Parser):
             vol_data.update(new_points)
 
         # Add final point for zooms
+        # TODO: Do the same for tilt and lane split
         end_point = TimePoint(self.__song_chart_data.chart_info.end_measure, 0, 1)
         zt_end = self.__song_chart_data.chart_info.spcontroller_data.zoom_top[
             self._final_zoom_top_timepoint
