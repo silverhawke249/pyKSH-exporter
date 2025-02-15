@@ -22,9 +22,9 @@ Convert your KSH files into VOX format, export supporting assets, all in one pla
 
 If documentation is needed:
 
-- sphinx >= 7.2.5
-- sphinx-autoapi >= 2.1.1
-- sphinx-rtd-theme >= 1.3.0
+- sphinx == 8.1.3
+- sphinx-autoapi == 3.5.0
+- sphinx-rtd-theme == 3.0.2
 
 A dependency of pydub, audioop, was deprecated in Python 3.11 and removed from the standard library in Python 3.13. As such, this exporter does not run out of the box in Python 3.13.
 
