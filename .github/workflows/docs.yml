@@ -1,9 +1,9 @@
 name: Generate docs
 
-on:
-  push:
-    branches:
-    - master
+on: push
+  # push:
+  #   branches:
+  #   - master
 jobs:
   pages:
     runs-on: ubuntu-20.04
