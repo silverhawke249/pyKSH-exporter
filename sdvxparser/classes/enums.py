@@ -130,6 +130,7 @@ class GameBackground(Enum):
     SPECIAL_NEMSYS_ARENA_WORLD_HEXATHLON = 106
     EXCEED_GEAR_BEMANI_PRO_LEAGUE_S3 = 107
     SPECIAL_EXLIPXE = 108
+    SPECIAL_DONT_YOU_DARE_PLAY_GOD = 109
 
     def __str__(self) -> str:
         name_parts = [s.capitalize() for s in self.name.split("_")]
