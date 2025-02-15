@@ -25,6 +25,11 @@ For the ``curveBegin`` commands, it must be followed by ``=`` and a number ``2``
 * ``curveBeginLR=2,5`` indicates that the left volume track will have a linear "curve", while the right volume track will have an ease-in curve.
 * ``curveBeginLR=4`` indicates that both volume tracks will have an ease-out curve.
 
+The following image illustrates the usage of these commands, as well as how ease-in/ease-out curves look like.
+
+.. image:: https://silverhawke.s-ul.eu/rJNQbWhm
+    :alt: Ease-in and ease-out curves annotated with the curve commands
+
 For the ``curveBeginSp`` commands, it must be followed by ``=`` and three numbers, separated by commas.
 
 * The first number indicates the curve type, as described above.
