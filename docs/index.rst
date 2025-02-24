@@ -14,14 +14,13 @@ Requirements
 * pydub >= 0.25.1
 * PIL == 11.0.0
 
+A dependency of pydub, audioop, was deprecated in Python 3.11 and removed from the standard library in Python 3.13. As such, this exporter does not run out of the box in Python 3.13.
+
 If documentation is needed:
 
 * sphinx >= 7.2.5
 * sphinx-autoapi >= 2.1.1
 * sphinx-rtd-theme >= 1.3.0
-
-A dependency of pydub, audioop, was deprecated in Python 3.11 and removed from the standard library in Python 3.13. As such, this exporter does not run out of the box in Python 3.13.
-
 
 Usage
 -----
