@@ -131,6 +131,10 @@ class GameBackground(Enum):
     EXCEED_GEAR_BEMANI_PRO_LEAGUE_S3 = 107
     SPECIAL_EXLIPXE = 108
     SPECIAL_DONT_YOU_DARE_PLAY_GOD = 109
+    EXCEED_GEAR_PLANETS = 110
+    SPECIAL_OUR_GARDEN_IS_BLUE = 111
+    EXCEED_GEAR_VARIANT_GATE = 112
+    SPECIAL_KANNAGI = 113
 
     def __str__(self) -> str:
         name_parts = [s.capitalize() for s in self.name.split("_")]
