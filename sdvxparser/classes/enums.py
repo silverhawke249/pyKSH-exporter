@@ -135,6 +135,8 @@ class GameBackground(Enum):
     SPECIAL_OUR_GARDEN_IS_BLUE = 111
     EXCEED_GEAR_VARIANT_GATE = 112
     SPECIAL_KANNAGI = 113
+    HEXA_DIVER_PHASE_12 = 114
+    HEXA_DIVER_KINGDOM_COME = 115
 
     def __str__(self) -> str:
         name_parts = [s.capitalize() for s in self.name.split("_")]
