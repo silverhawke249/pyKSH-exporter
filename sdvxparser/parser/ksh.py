@@ -1186,6 +1186,8 @@ class KSHParser(Parser):
                             if note_type not in self.__song_chart_data.chart_info.script_ids:
                                 self.__song_chart_data.chart_info.script_ids[note_type] = {}
                             self.__song_chart_data.chart_info.script_ids[note_type][cur_time] = []
+                case _:
+                    logger.warning(f'unrecognized command "{name}"')
 
     # TODO: handle curves for other metadata (zoom_top, zoom_bottom, center_split, tilt)
     # TODO: handle scroll_speed, rotation_deg and curved versions
