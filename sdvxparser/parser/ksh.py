@@ -1071,34 +1071,35 @@ class KSHParser(Parser):
 
     def _handle_notechart_custom_commands(self, line: str, cur_time: TimePoint) -> None:
         # Remove initial `//`
-        line = line[2:]
+        line = line.removeprefix("//")
         for chunk in line.split(";"):
             if "=" in chunk:
                 name, value = chunk.split("=", 1)
             else:
                 name = chunk
                 value = ""
+            name = name.casefold()
             match name:
                 # FX SE
-                case "lightFXL" | "lightFXR" | "lightFXLR":
+                case "lightfxl" | "lightfxr" | "lightfxlr":
                     # Not 100% correct, but looks good
-                    if "L" in name:
+                    if name.endswith("l") or name.endswith("lr"):
                         self._set_se["fx_l"] = int(value)
-                    if "R" in name:
+                    if name.endswith("r") or name.endswith("lr"):
                         self._set_se["fx_r"] = int(value)
                 # Curves/easing
-                case "curveBeginL" | "curveBeginR" | "curveBeginLR":
+                case "curvebeginl" | "curvebeginr" | "curvebeginlr":
                     if "," in value:
                         value_l, value_r = value.split(",")[:2]
                     else:
                         value_l, value_r = value, value
-                    if "L" in name:
+                    if name.endswith("l") or name.endswith("lr"):
                         self._ease_start["vol_l"] = cur_time
                         self._cur_easing["vol_l"] = EasingType(int(value_l))
-                    if "R" in name:
+                    if name.endswith("r") or name.endswith("lr"):
                         self._ease_start["vol_r"] = cur_time
                         self._cur_easing["vol_r"] = EasingType(int(value_r))
-                case "curveBeginSpL" | "curveBeginSpR":
+                case "curvebeginspl" | "curvebeginspr":
                     values = value.split(",")
                     if len(values) != 3:
                         raise ValueError(f"incorrect number of args supplied to {name}")
@@ -1108,23 +1109,23 @@ class KSHParser(Parser):
                         init, final = final, init
                     init = clamp(init, 0.0, 1.0)
                     final = clamp(final, 0.0, 1.0)
-                    if "L" in name:
+                    if name.endswith("l"):
                         self._ease_start["vol_l"] = cur_time
                         self._cur_easing["vol_l"] = EasingType(int(ease))
                         self._ease_ranges["vol_l"][cur_time] = init, final
-                    if "R" in name:
+                    if name.endswith("r"):
                         self._ease_start["vol_r"] = cur_time
                         self._cur_easing["vol_r"] = EasingType(int(ease))
                         self._ease_ranges["vol_r"][cur_time] = init, final
-                case "curveEndL" | "curveEndR" | "curveEndLR":
-                    if "L" in name:
+                case "curveendl" | "curveendr" | "curveendlr":
+                    if name.endswith("l") or name.endswith("lr"):
                         self._ease_start["vol_l"] = cur_time
                         self._cur_easing["vol_l"] = EasingType.NO_EASING
-                    if "R" in name:
+                    if name.endswith("r") or name.endswith("lr"):
                         self._ease_start["vol_r"] = cur_time
                         self._cur_easing["vol_r"] = EasingType.NO_EASING
                 # Filter override
-                case "applyFilter":
+                case "applyfilter":
                     match value:
                         case "lpf":
                             filter_now = FilterIndex.LPF
@@ -1142,16 +1143,20 @@ class KSHParser(Parser):
                     if cur_time in self.__song_chart_data.chart_info.active_filter:
                         self.__song_chart_data.chart_info.active_filter[cur_time] = filter_now
                 # Measure line manipulation
-                case "hideBars":
+                case "hidebars" | "hidebarlines":
+                    if name == "hidebars":
+                        logger.warning(f'command "{name}" will be deprecated. use "hidebarlines" instead!')
                     match value:
                         case "on" | "1":
                             self.__song_chart_data.chart_info.spcontroller_data.hidden_bars[cur_time] = True
                         case "off" | "0":
                             self.__song_chart_data.chart_info.spcontroller_data.hidden_bars[cur_time] = False
-                case "addBars":
+                case "addbars" | "addbarline":
+                    if name == "addbars":
+                        logger.warning(f'command "{name}" will be deprecated. use "addbarline" instead!')
                     self.__song_chart_data.chart_info.spcontroller_data.manual_bars.append(cur_time)
                 # Scripting
-                case "scriptBegin":
+                case "scriptbegin":
                     values = value.split(",")
                     if len(values) < 2:
                         raise ValueError(f"incorrect number of args supplied to {name}")
@@ -1168,7 +1173,7 @@ class KSHParser(Parser):
                             if note_type not in self.__song_chart_data.chart_info.script_ids:
                                 self.__song_chart_data.chart_info.script_ids[note_type] = {}
                             self.__song_chart_data.chart_info.script_ids[note_type][cur_time] = script_ids
-                case "scriptEnd":
+                case "scriptend":
                     if value.lower().startswith("0x"):
                         flag_value = int(value, 16)
                     elif value.lower().startswith("0b"):
