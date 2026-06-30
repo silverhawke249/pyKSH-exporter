@@ -6,3 +6,6 @@
 
 # Sphinx
 docs/_build/
+
+# Virtual env
+.venv/

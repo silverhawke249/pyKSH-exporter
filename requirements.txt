@@ -1,4 +1,4 @@
 construct==2.10.68
 dearpygui==2.0.0
-Pillow==11.0.0
+Pillow==13.0.0
 pydub==0.25.1

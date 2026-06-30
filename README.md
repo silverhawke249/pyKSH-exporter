@@ -18,7 +18,7 @@ Convert your KSH files into VOX format, export supporting assets, all in one pla
 - Tcl/Tk >= 8.6
 - construct >= 2.10
 - pydub >= 0.25.1
-- PIL == 11.0.0
+- PIL == 13.0.0
 
 A dependency of pydub, audioop, was deprecated in Python 3.11 and removed from the standard library in Python 3.13. As such, this exporter does not run out of the box in Python 3.13.
 
