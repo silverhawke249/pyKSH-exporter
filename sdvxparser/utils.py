@@ -4,7 +4,8 @@ Classes and functions that provide general utility.
 from abc import ABC
 from decimal import Decimal
 from fractions import Fraction
-from math import pi, sin
+from functools import partial
+from math import pi, sin, sqrt
 from numbers import Real
 from typing import Callable, TypeVar
 
@@ -81,8 +82,34 @@ class EaseFunctions(ABC):
         x = clamp(x, 0, 1)
         return sin((x - 1) * pi / 2) + 1
 
+    @classmethod
+    def bezier(cls, a: float, b: float, x: float) -> float:
+        """A quadratic Bezier curve, using (a, b) as midway point."""
+        # A quadratic Bezier curve is defined as b(t) = P_1 + (1 - t)^2 (P_0 - P_1) + t^2 (P_2 - P_1),
+        # where t is in [0, 1] and P_0, P_1, P_2 are control points. The resulting is a smooth curve starting at
+        # P_0 (corresponding to t=0) and ending at P_2 (corresponding to t=1). By setting P_0 = (0, 0), P_2 = (1, 1)
+        # and clamping (a, b) to [0, 1]^2, KSMv2 ensures the curve is also a self-bijection of [0, 1]. As such, if
+        # we consider the time dimension as the x-axis, we would need to find the t value that yields a given x.
+        # Solving the quadratic in t and requiring a non-negative value, we get t = x / (a + sqrt(a^2 + x - 2ax))
+        # for any given x. To avoid issues when a = x = 0, we'll just special case it.
+        x = clamp(x, 0, 1)
+        if x == 0:
+            return 0
+        if x == 1:
+            return 1
 
-def get_ease_function(ease_type: EasingType) -> EaseFunction:
+        a = clamp(a, 0, 1)
+        b = clamp(b, 0, 1)
+        t = x / (a + sqrt(a ** 2 + x - 2 * a * x))
+        # y(t) = b + (1 - t)^2 (0 - b) + t^2 (1 - b)
+        #      = b + (1 - 2t + t^2) (-b) + t^2 - bt^2
+        #      = b - b + 2bt - bt^2 + t^2 - bt^2
+        #      = 2bt - 2bt^2 + t^2
+        #      = 2bt(1 - t) + t^2
+        return clamp(2 * b * t * (1 - t) + t ** 2, 0, 1)
+
+
+def get_ease_function(ease_type: EasingType, **kwargs) -> EaseFunction:
     """Return the ease function corresponding to the enumeration member."""
     match ease_type:
         case EasingType.LINEAR:
@@ -91,6 +118,8 @@ def get_ease_function(ease_type: EasingType) -> EaseFunction:
             return EaseFunctions.ease_in_sin
         case EasingType.EASE_OUT_SINE:
             return EaseFunctions.ease_out_sin
+        case EasingType.BEZIER:
+            return partial(EaseFunctions.bezier, kwargs["a"], kwargs["b"])
 
     raise ValueError(f"invalid ease type (got {ease_type})")
 

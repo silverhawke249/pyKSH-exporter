@@ -186,6 +186,7 @@ class SpinType(Enum):
 class EasingType(Enum):
     """Enumeration for the laser segment's easing type."""
 
+    BEZIER = -1
     NO_EASING = 0
     LINEAR = 2
     EASE_IN_SINE = 4

@@ -785,6 +785,8 @@ class KSHParser(Parser):
     _ease_midpoints: dict[str, list[tuple[TimePoint, EasingType]]]
     _cur_easing: dict[str, EasingType]
     """When a key is missing from this dict, it means that easing is currently active on that volume track."""
+    _bezier_control: dict[str, dict[TimePoint, tuple[float, float]]]
+    # _cur_ease_func: dict[TimePoint, str]
 
     def __init__(self) -> None:
         self.__song_chart_data = KSHSongChartContainer()
@@ -851,6 +853,10 @@ class KSHParser(Parser):
         self._cur_easing = {
             "vol_l": EasingType.NO_EASING,
             "vol_r": EasingType.NO_EASING,
+        }
+        self._bezier_control = {
+            "vol_l": {},
+            "vol_r": {},
         }
 
     def parse(self, file: TextIO) -> KSHSongChartContainer:
@@ -1176,6 +1182,8 @@ class KSHParser(Parser):
                                 self.__song_chart_data.chart_info.script_ids[note_type] = {}
                             self.__song_chart_data.chart_info.script_ids[note_type][cur_time] = []
 
+    # TODO: handle curves for other metadata (zoom_top, zoom_bottom, center_split, tilt)
+    # TODO: handle scroll_speed, rotation_deg and curved versions
     def _handle_notechart_metadata(self, line: str, cur_time: TimePoint, m_no: int) -> None:
         key, value = line.split("=", 1)
         try:
@@ -1267,7 +1275,25 @@ class KSHParser(Parser):
                 key = f"vol_{key[-1]}"
                 if not self._cont_segment[key]:
                     self._wide_segment[key] = True
+            elif key in ["laser_l_curve", "laser_r_curve"]:
+                values = value.split(";")
+                if len(values) != 2:
+                    raise ValueError(f"invalid bezier curve specifier (got {value})")
+                try:
+                    if key.startswith("laser_l"):
+                        self._bezier_control["vol_l"][cur_time] = float(values[0]), float(values[1])
+                        self._ease_start["vol_l"] = cur_time
+                        self._cur_easing["vol_l"] = EasingType.BEZIER
+                    elif key.startswith("laser_r"):
+                        self._bezier_control["vol_r"][cur_time] = float(values[0]), float(values[1])
+                        self._ease_start["vol_r"] = cur_time
+                        self._cur_easing["vol_r"] = EasingType.BEZIER
+                except ValueError as e:
+                    raise ValueError(f"invalid bezier curve specifier (got {value})") from e
             elif key in ["fx-l", "fx-r"]:
+                # TODO: handle changing effects midway
+                #       probably do it by creating new note with new effect
+                #       need to add a toggle to switch between legacy and modern handling
                 key = key.replace("-", "_")
                 if value and value not in self._fx_list:
                     self._fx_list.append(value)
@@ -1385,8 +1411,13 @@ class KSHParser(Parser):
                 update_measure_end = True
                 # Add (linearly) interpolated laser point when curve command does not coincide with a laser point
                 # This obsoletes the warning that was implemented below
-                if vol in self._cur_easing:
-                    if vol in self._ease_start and cur_time == self._ease_start[vol]:
+                # Now this only works with curve commands added via comments, not the built-in bezier curves
+                # Hence, if a bezier command is added midway (which really shouldn't happen) it'll just reset the easing
+                # ...which may or may not break an existing command. I take no responsibility over ill-formed charts ¯\_(ツ)_/¯
+                if vol in self._cur_easing and self._ease_start.get(vol) == cur_time:
+                    if self._cur_easing[vol] == EasingType.BEZIER:
+                        self._cur_easing[vol] = EasingType.NO_EASING
+                    else:
                         self._ease_midpoints[vol].append((cur_time, self._cur_easing[vol]))
                         if self._cur_easing[vol] != EasingType.NO_EASING:
                             del self._cur_easing[vol]
@@ -1421,6 +1452,7 @@ class KSHParser(Parser):
                             point_type=SegmentFlag.MIDDLE if self._cont_segment[vol] else SegmentFlag.START,
                             wide_laser=self._wide_segment[vol],
                         )
+                # Remember most recent point in case it turns out to be a slam
                 if vol in self._cur_easing:
                     self._recent_vol[vol] = _LastVolInfo(
                         cur_time,
@@ -1435,6 +1467,9 @@ class KSHParser(Parser):
                         ),
                     )
                     self._cont_segment[vol] = True
+                    # Bezier easing only applies over one segment
+                    if self._cur_easing[vol] == EasingType.BEZIER:
+                        self._cur_easing[vol] = EasingType.NO_EASING
                     if self._cur_easing[vol] != EasingType.NO_EASING:
                         del self._cur_easing[vol]
             # Delete "last vol point" if laser segment ends, else extend duration
@@ -1575,13 +1610,18 @@ class KSHParser(Parser):
                     limit_bot, limit_top = self._ease_ranges[vol_name].get(time_i, (0.0, 1.0))
                     total_span = self.__song_chart_data.chart_info.get_distance(time_i, time_f)
                     div_count = int(total_span / INTERPOLATION_DISTANCE)
+                    # Get bezier control point with a reasonable default
+                    if vol_i.ease_type == EasingType.BEZIER:
+                        control_point = self._bezier_control[vol_name].get(time_i, (0, 0))
+                    else:
+                        control_point = 0, 0
                     if div_count * INTERPOLATION_DISTANCE < total_span:
                         div_count += 1
                     for i in range(1, div_count):
                         cur_span = INTERPOLATION_DISTANCE * i
                         timept = self.__song_chart_data.chart_info.add_duration(time_i, cur_span)
                         position = interpolate(
-                            get_ease_function(vol_i.ease_type),
+                            get_ease_function(vol_i.ease_type, a=control_point[0], b=control_point[1]),
                             cur_span / total_span,
                             vol_i.end,
                             vol_f.start,
