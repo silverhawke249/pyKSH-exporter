@@ -1752,7 +1752,9 @@ class KSHParser(Parser):
         # Write custom filter as FX
         # TODO: Try matching with existing effects
         if len(self._fx_list) + len(self.__song_chart_data.chart_info._custom_filter) > 12:
-            logger.warning(f"including custom filters causes more than 12 distinct effects")
+            if len(self._fx_list) <= 12:
+                logger.warning(f"including custom filters causes more than 12 distinct effects")
+            # Extend effect list and autotab list cuz charts only come with 12 by default
             while len(self.__song_chart_data.chart_info.effect_list) < len(self._fx_list) + len(
                 self.__song_chart_data.chart_info._custom_filter
             ):
